@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RolUsuario {
+  SUPERADMIN
+  ADMIN_SALON
+  ADMIN_OPERATIVO
+  PROFESOR
+  ALUMNO
+  FANTASMA
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  nombre    String
+  slug      String   @unique
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarios Usuario[]
+
+  @@map("tenants")
+}
+
+model Usuario {
+  id             String     @id @default(cuid())
+  tenantId       String
+  tenant         Tenant     @relation(fields: [tenantId], references: [id])
+  nombreCompleto String
+  email          String
+  passwordHash   String
+  rol            RolUsuario
+  activo         Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  refreshTokens RefreshToken[]
+
+  // Un email es único DENTRO de un tenant, no globalmente
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("usuarios")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  usuarioId String
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([usuarioId])
+  @@map("refresh_tokens")
+}
+
+model HistorialAccion {
+  id        String   @id @default(cuid())
+  tenantId  String
+  usuarioId String?
+  entidad   String
+  entidadId String
+  accion    String
+  detalle   Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, entidad, entidadId])
+  @@map("historial_acciones")
+}

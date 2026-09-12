@@ -1,0 +1,15 @@
+{
+  "name": "boxadmin",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20 <21"
+  },
+  "scripts": {
+    "api:dev": "pnpm --filter @boxadmin/api start:dev",
+    "api:test": "pnpm --filter @boxadmin/api test",
+    "api:test:e2e": "pnpm --filter @boxadmin/api test:e2e",
+    "shared:build": "pnpm --filter @boxadmin/shared build"
+  }
+}

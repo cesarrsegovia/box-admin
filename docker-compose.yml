@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: boxadmin
+      POSTGRES_PASSWORD: boxadmin_dev
+      POSTGRES_DB: boxadmin
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U boxadmin -d boxadmin"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: boxadmin
+      POSTGRES_PASSWORD: boxadmin_dev
+      POSTGRES_DB: boxadmin_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U boxadmin -d boxadmin_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile.dev
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://boxadmin:boxadmin_dev@postgres:5432/boxadmin?schema=public
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/repo/apps/api
+      - ./packages/shared:/repo/packages/shared
+      - /repo/node_modules
+      - /repo/apps/api/node_modules
+      - /repo/packages/shared/node_modules
+
+volumes:
+  pgdata:
