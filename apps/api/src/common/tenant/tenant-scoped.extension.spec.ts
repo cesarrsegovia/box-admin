@@ -503,3 +503,23 @@ describe('aplicarScopeDeTenant', () => {
     });
   });
 });
+
+describe('centinela de clasificacion', () => {
+  it('todo modelo del schema esta clasificado en la extension', () => {
+    const clasificados = new Set<string>([
+      ...MODELOS_CON_TENANT,
+      ...Object.keys(MODELOS_POR_RELACION),
+      ...MODELOS_GLOBALES,
+    ]);
+
+    const sinClasificar = Prisma.dmmf.datamodel.models
+      .map((modelo) => modelo.name)
+      .filter((nombre) => !clasificados.has(nombre));
+
+    // Si esto falla, alguien anadio un modelo al schema y no dijo como se
+    // aisla. La extension lo bloquearia en tiempo de ejecucion con
+    // ModeloNoClasificadoError, pero solo cuando alguien lo usara: este test
+    // lo detecta al compilar la suite, que es cuando duele barato.
+    expect(sinClasificar).toEqual([]);
+  });
+});

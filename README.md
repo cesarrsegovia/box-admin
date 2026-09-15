@@ -149,6 +149,195 @@ alta inicial de tenants y del primer usuario de cada uno. `/auth/register` recha
 registro sobre el mismo tenant: el alta normal de usuarios queda fuera del alcance de esta
 fase.
 
+## Endpoints de la Fase 1 — núcleo operativo
+
+Todos exigen JWT. El rol indicado es el **mínimo**: la jerarquía es acumulativa, así que
+`ADMIN_SALON` puede hacer todo lo de `ADMIN_OPERATIVO`, y `SUPERADMIN` todo lo demás. El PDF de la
+fase solo definía los roles de `/salas`; el resto sale de separar **configurar** el salón de
+**operarlo** día a día.
+
+### Salas
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/salas` | `ADMIN_SALON` |
+| GET | `/salas` | autenticado |
+| GET | `/salas/:id` | autenticado |
+| PATCH | `/salas/:id` | `ADMIN_SALON` |
+| DELETE | `/salas/:id` | `ADMIN_SALON` — baja lógica; **409** si tiene turnos de hoy en adelante |
+
+La visibilidad tiene tres niveles: el personal del salón ve todas las salas; un `PROFESOR` ve las
+activas aunque no sean visibles para alumnos; un `ALUMNO` solo ve las activas y visibles. El filtro
+va en el `where`, no en un `.filter()` posterior, así que la base nunca devuelve filas que el actor
+no puede ver. Una sala que el actor no puede ver da **404**, no 403: confirmar que existe ya sería
+filtrar información.
+
+Dar de baja una sala por `PATCH` con `activa: false` aplica la misma comprobación de turnos futuros
+que el `DELETE`, y se audita como baja. Reactivarla no comprueba nada.
+
+### Packs (catálogo de precios)
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/packs` | `ADMIN_SALON` |
+| GET | `/packs?salaId=&activo=` | autenticado |
+| GET | `/packs/:id` | autenticado |
+| PATCH | `/packs/:id` | `ADMIN_SALON` |
+| DELETE | `/packs/:id` | `ADMIN_SALON` — baja lógica siempre |
+
+El catálogo es una sección propia, no un campo escondido dentro del alta de un alumno. `precio` viaja
+como **string** con dos decimales (`"12500.00"`), nunca como número: un float binario pierde centavos
+y esto es dinero. `precio: null` significa "a consultar" y `salaId: null`, "vale para todas las
+salas" — al filtrar por sala, esos packs se incluyen igualmente, porque omitirlos escondería medio
+catálogo.
+
+### Usuarios de negocio
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/usuarios/alumnos` | `ADMIN_OPERATIVO` |
+| POST | `/usuarios/profesores` | `ADMIN_OPERATIVO` |
+| GET | `/usuarios?tipo=alumno|profesor&salaId=&activo=` | `ADMIN_OPERATIVO` |
+| GET | `/usuarios/:id` | `ADMIN_OPERATIVO`, o uno mismo |
+| PATCH | `/usuarios/:id` | `ADMIN_OPERATIVO` |
+| PATCH | `/usuarios/:id/salas` | `ADMIN_OPERATIVO` — **400** si el array viene vacío |
+| POST | `/usuarios/:id/reset-password` | `ADMIN_SALON` |
+| DELETE | `/usuarios/:id` | `ADMIN_OPERATIVO` — baja lógica |
+
+**Las dos altas usan DTOs distintos.** El de profesor no acepta `packId`, `clasesExtra`, `pagoAlDia`
+ni vigencias, y como el `ValidationPipe` global corre con `forbidNonWhitelisted`, mandárselos
+devuelve **400** en vez de ignorarlos en silencio. Un profesor no puede recibir un error de "clases
+mensuales requerido". Editar campos de alumno sobre un profesor también es 400.
+
+El alta crea el `Usuario` (identidad y auth, de la Fase 0) y su `Perfil` (datos de negocio) en una
+transacción, y devuelve una contraseña temporal en `passwordTemporal` **una sola vez**: no se puede
+volver a leer. `POST /usuarios/:id/reset-password` funciona igual.
+
+`Perfil.fichaMedica` es un dato de salud: nunca aparece en listados, y en el detalle solo la ven
+`ADMIN_SALON` o el propio usuario.
+
+### Turnos
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/turnos` | `ADMIN_OPERATIVO` |
+| GET | `/turnos?desde=&hasta=&salaId=&soloLibres=` | autenticado |
+| GET | `/turnos/:id` | autenticado |
+| PATCH | `/turnos/:id` | `ADMIN_OPERATIVO` — **409** si el cupo nuevo es menor que las reservas activas |
+| DELETE | `/turnos/:id` | `ADMIN_OPERATIVO` — borrado físico; **409** si tiene reservas activas |
+
+`fecha` entra y sale como `"YYYY-MM-DD"`, sin hora ni huso; `horaInicio` y `horaFin` son `"HH:MM"` en
+24 h, con `horaFin` estrictamente posterior. `lugaresLibres` cuenta solo reservas **sin cancelar**, y
+nunca es negativo.
+
+A diferencia de salas y packs, el borrado de un turno es **físico**: un turno sin reservas activas no
+es historia de nadie, y un calendario lleno de turnos "de baja" es peor que uno vacío. Sus reservas
+canceladas se van con él (`onDelete: Cascade`); la auditoría no se pierde, porque
+`historial_acciones` no tiene clave foránea a ninguna de las dos tablas.
+
+### Reservas
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/turnos/:turnoId/reservas` | `ADMIN_OPERATIVO` |
+| DELETE | `/reservas/:id?tipo=recuperable\|definitiva` | `ADMIN_OPERATIVO` |
+| PATCH | `/reservas/:id/reasignar` | `ADMIN_OPERATIVO` |
+
+El cuerpo de la creación lleva `perfilId`, no `usuarioId`: los listados de usuarios ya lo devuelven.
+
+**Una reserva nunca se borra, se cancela.** `RECUPERABLE` deja de contar contra el pack — ahí es
+donde "la clase vuelve al perfil" — y `DEFINITIVA` sigue contando. No hay ningún contador almacenado:
+las clases consumidas se **derivan** contando las reservas del perfil que siguen activas más las
+canceladas como definitivas. Un contador que se incrementa y decrementa a mano se desincroniza para
+siempre al primer bug.
+
+La creación y la reasignación van dentro de una transacción `Serializable` con reintento ante
+conflictos de serialización (`P2034` / `40001`), porque el cupo es un invariante que dos peticiones
+simultáneas pueden romper. Los errores de negocio **no** se reintentan: un turno lleno sigue lleno.
+Verificado con 10 peticiones simultáneas sobre un turno de cupo 1 — exactamente una `201` y nueve
+`409`.
+
+Reservar en una sala a la que el usuario no tiene acceso da **403**; reservar dos veces el mismo
+turno, **409**.
+
+### Advertencias
+
+Las respuestas de alta y de reserva llevan `advertencias: [{ codigo, mensaje }]`. No bloquean la
+operación: existen para que el admin se entere de algo que, guardado en silencio, produciría un
+usuario inservible sin que nadie lo notara hasta que intentara reservar.
+
+| Código | Cuándo |
+|---|---|
+| `SIN_SALAS` | Alta de alumno o profesor sin ninguna sala asignada |
+| `SIN_PACK` | Alta de alumno sin pack |
+| `PACK_AGOTADO` | La reserva deja al alumno por encima del tope de su pack |
+
+La asimetría con `PATCH /usuarios/:id/salas`, que rechaza la lista vacía con **400**, es deliberada:
+en un alta puede faltar información legítimamente, pero una petición cuyo único propósito es fijar
+las salas y que manda cero es siempre un error.
+
+El pack **no bloquea** reservas, solo avisa: la única regla dura es el cupo del turno. El admin manda
+y puede querer meter una clase de cortesía.
+
+### Auditoría
+
+Cada alta, baja, edición de salas con acceso, cancelación y reasignación escribe una fila en
+`historial_acciones` con la entidad, su id, la acción, el `usuarioId` de quien la ejecutó y un
+`detalle` en JSON. Se escribe **dentro** de la misma transacción que provocó el cambio, así que un
+rollback se lleva también el registro: nunca queda rastro de algo que no llegó a ocurrir.
+
+### Flujo completo de ejemplo
+
+```bash
+API=http://localhost:3000
+
+# 1. Bootstrap: tenant y primer admin (requieren x-bootstrap-key)
+curl -X POST $API/auth/tenants -H 'Content-Type: application/json' \
+  -H 'x-bootstrap-key: changeme_bootstrap_key' \
+  -d '{"nombre":"Box Central","slug":"box-central"}'
+
+curl -X POST $API/auth/register -H 'Content-Type: application/json' \
+  -H 'x-bootstrap-key: changeme_bootstrap_key' \
+  -d '{"tenantSlug":"box-central","nombreCompleto":"Admin","email":"admin@box.test","password":"Password123!"}'
+
+TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
+  -d '{"tenantSlug":"box-central","email":"admin@box.test","password":"Password123!"}' \
+  | python -c "import sys,json;print(json.load(sys.stdin)['accessToken'])")
+
+AUTH="Authorization: Bearer $TOKEN"
+
+# 2. Sala
+curl -X POST $API/salas -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"nombre":"Sala A","cupoBase":12,"minMinutosCancelar":120}'
+
+# 3. Pack en el catálogo
+curl -X POST $API/packs -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"nombre":"8 clases","tipo":"MENSUAL","clasesPorMes":8,"precio":"12500.00"}'
+
+# 4. Alumno con ese pack y acceso a la sala. La respuesta trae passwordTemporal
+#    UNA sola vez, y perfilId, que es lo que necesitas para reservar.
+curl -X POST $API/usuarios/alumnos -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"nombreCompleto":"Ana Perez","email":"ana@box.test","salaIds":["SALA_ID"],"packId":"PACK_ID"}'
+
+# 5. Profesor: mismo recurso, DTO distinto, sin campos de alumno
+curl -X POST $API/usuarios/profesores -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"nombreCompleto":"Luis Gomez","email":"luis@box.test","salaIds":["SALA_ID"]}'
+
+# 6. Turno
+curl -X POST $API/turnos -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"salaId":"SALA_ID","nombre":"Pilates","fecha":"2026-10-05","horaInicio":"18:00","horaFin":"19:00","cupo":10}'
+
+# 7. Reserva manual
+curl -X POST $API/turnos/TURNO_ID/reservas -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"perfilId":"PERFIL_ID"}'
+
+# 8. Cancelar devolviendo la clase, y reasignar a otro turno
+curl -X DELETE "$API/reservas/RESERVA_ID?tipo=recuperable" -H "$AUTH"
+
+curl -X PATCH $API/reservas/RESERVA_ID/reasignar -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"turnoId":"OTRO_TURNO_ID"}'
+```
+
 ## Tests
 
 Unitarios:

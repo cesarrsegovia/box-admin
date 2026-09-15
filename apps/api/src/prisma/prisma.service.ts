@@ -47,3 +47,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     await this.base.$disconnect();
   }
 }
+
+/**
+ * Cliente utilizable dentro de un `$transaction`: el cliente extendido menos las
+ * operaciones de conexion y la transaccion anidada, que Prisma no expone ahi.
+ *
+ * `this.prisma.db` tambien encaja en este tipo (tiene todo lo que pide y algo
+ * mas), asi que un servicio puede declarar `cliente: ClientePrismaTx = this.prisma.db`
+ * y funcionar tanto dentro como fuera de una transaccion.
+ */
+export type ClientePrismaTx = Omit<
+  ClientePrismaExtendido,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;

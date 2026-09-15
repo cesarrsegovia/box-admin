@@ -23,7 +23,13 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  usuarios Usuario[]
+  usuarios      Usuario[]
+  perfiles      Perfil[]
+  salas         Sala[]
+  usuariosSalas UsuarioSala[]
+  packs         Pack[]
+  turnos        Turno[]
+  reservas      Reserva[]
 
   @@map("tenants")
 }
@@ -41,9 +47,23 @@ model Usuario {
   updatedAt      DateTime   @updatedAt
 
   refreshTokens RefreshToken[]
+  perfil        Perfil?
 
   // Un email es único DENTRO de un tenant, no globalmente
   @@unique([tenantId, email])
+  // Este @@unique NO es decorativo ni redundante con el @id: es el destino que
+  // Postgres exige para poder crear claves foraneas CALIFICADAS POR TENANT
+  // (`FOREIGN KEY ("tenantId", "usuarioId") REFERENCES usuarios("tenantId", "id")`).
+  // Una FK necesita apuntar a una restriccion unica sobre EXACTAMENTE esas
+  // columnas; con solo el `@id` sobre `id` no existe tal restriccion.
+  //
+  // Por que importa: todo el aislamiento entre gimnasios se aplica en codigo,
+  // en la extension de Prisma (`common/tenant/tenant-scoped.extension.ts`), que
+  // inyecta `where: { tenantId }`. Estos @@unique + las FK compuestas son la red
+  // debajo: aunque un service se olvide de validar la pertenencia, la base
+  // rechaza fisicamente que una fila de un gimnasio apunte a otra de otro.
+  // Si se borra este @@unique, todas esas FK dejan de poder crearse.
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("usuarios")
 }
@@ -73,4 +93,242 @@ model HistorialAccion {
 
   @@index([tenantId, entidad, entidadId])
   @@map("historial_acciones")
+}
+
+enum TipoPack {
+  MENSUAL
+  TOTAL
+}
+
+enum OrigenReserva {
+  ADMIN
+  ALUMNO
+  RUTINA
+  PRUEBA
+  LISTA_ESPERA
+  EXTRA
+}
+
+// Desviacion respecto al PDF, que usaba `cancelacionTipo String?` con los
+// valores libres "recuperable" / "definitiva". Un typo en un string libre es un
+// bug silencioso; el enum lo convierte en un error de compilacion.
+enum TipoCancelacion {
+  RECUPERABLE
+  DEFINITIVA
+}
+
+model Sala {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  nombre             String
+  activa             Boolean @default(true)
+  visibleAlumnos     Boolean @default(true)
+  soloCuposLiberados Boolean @default(false)
+  exclusiva          Boolean @default(false)
+
+  // null = "hereda de la configuracion general del tenant". Esa configuracion
+  // no existe todavia (llega en Fase 2), asi que en Fase 1 null significa "sin
+  // efecto". Se almacenan ya para no migrar dos veces.
+  cupoBase              Int?
+  minMinutosCancelar    Int?
+  minMinutosAnotarse    Int?
+  listaEsperaHabilitada Boolean?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarios UsuarioSala[]
+  turnos   Turno[]
+  packs    Pack[]
+
+  // Destino de las FK compuestas de UsuarioSala, Pack y Turno. Ver Usuario.
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("salas")
+}
+
+model Perfil {
+  // Datos de negocio del alumno o profesor, separados de la tabla de auth.
+  // Esta separacion es la que evita que el alta de un profesor arrastre campos
+  // de alumno: el DTO de profesor ni siquiera los acepta.
+  id        String  @id @default(cuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  usuarioId String  @unique
+  // FK compuesta: el usuario debe vivir en el MISMO tenant que el perfil.
+  usuario   Usuario @relation(fields: [tenantId, usuarioId], references: [tenantId, id], onDelete: Cascade)
+
+  telefono    String?
+  // Dato sensible: nunca aparece en listados y en el detalle solo lo ve
+  // ADMIN_SALON o el propio usuario. La restriccion vive en el service.
+  fichaMedica String?
+
+  // Solo tienen sentido si el usuario es ALUMNO
+  packId              String?
+  // FK compuesta y OPCIONAL. En Postgres una FK multicolumna usa MATCH SIMPLE
+  // por defecto: si alguna de sus columnas es NULL, la comprobacion se omite.
+  // Como `packId` es nullable, "sin pack" sigue siendo valido; pero en cuanto
+  // hay pack, tiene que ser un pack de este mismo gimnasio.
+  pack                Pack?     @relation(fields: [tenantId, packId], references: [tenantId, id])
+  clasesExtra         Int       @default(0)
+  cancelacionesUsadas Int       @default(0)
+  pagoAlDia           Boolean   @default(false)
+  vigenciaDesde       DateTime?
+  vigenciaHasta       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  salas    UsuarioSala[]
+  reservas Reserva[]
+
+  // Destino de las FK compuestas de UsuarioSala y Reserva. Ver Usuario.
+  @@unique([tenantId, id])
+  // Exigido por Prisma: en una relacion 1-1 el lado que define la FK debe ser
+  // unico sobre EXACTAMENTE las columnas de la FK, y ahora la FK es compuesta.
+  // El `@unique` de `usuarioId` se mantiene igualmente porque es la garantia de
+  // verdad (un usuario tiene como mucho un perfil, en todo el sistema); este
+  // compuesto es mas debil y esta aqui solo para satisfacer al validador.
+  @@unique([tenantId, usuarioId])
+  @@index([tenantId])
+  // Postgres no indexa las claves foraneas por si solo, y esta se consulta
+  // siempre junto al tenant ("alumnos del pack X de este gimnasio").
+  @@index([tenantId, packId])
+  @@map("perfiles")
+}
+
+model UsuarioSala {
+  // Salas con acceso de un perfil (N:M).
+  //
+  // Desviacion respecto al PDF, que no le ponia tenantId: sin columna propia la
+  // extension de aislamiento lanza CreacionNoPermitidaError en cada alta, y la
+  // tabla solo seria escribible por nested writes desde Perfil. Ademas es
+  // defensa en profundidad: la fila queda atada a su gimnasio por si misma.
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  // FK compuestas: perfil y sala tienen que ser del mismo gimnasio que la fila.
+  // Es lo que impide fisicamente cruzar el perfil de un gimnasio con la sala de
+  // otro, aunque alguien escriba saltandose la extension de aislamiento.
+  perfilId String
+  perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id], onDelete: Cascade)
+  salaId   String
+  sala     Sala   @relation(fields: [tenantId, salaId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([perfilId, salaId])
+  @@index([tenantId])
+  @@index([salaId])
+  @@map("usuarios_salas")
+}
+
+model Pack {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  nombre String // ej. "8 clases"
+
+  salaId String? // null = vale para todas las salas
+  // FK compuesta y opcional, igual que Perfil.pack: con `salaId` NULL la
+  // comprobacion no se aplica (MATCH SIMPLE); con sala, tiene que ser de aqui.
+  sala   Sala?   @relation(fields: [tenantId, salaId], references: [tenantId, id])
+
+  tipo   TipoPack @default(MENSUAL)
+  // null = "a consultar". Decimal, no Float: esto es dinero.
+  precio Decimal? @db.Decimal(10, 2)
+
+  clasesPorMes            Int? // aplica si tipo = MENSUAL
+  clasesTotales           Int? // aplica si tipo = TOTAL
+  cancelacionesPermitidas Int? // null = el alumno mantiene su contador manual
+  activo                  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  perfiles Perfil[]
+
+  // Destino de la FK compuesta de Perfil.pack. Ver Usuario.
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  // Postgres no indexa las FK por si solo; esta se consulta junto al tenant
+  // ("packs de esta sala en este gimnasio").
+  @@index([tenantId, salaId])
+  @@map("packs")
+}
+
+model Turno {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  salaId   String
+  // FK compuesta: un turno no puede colgar de una sala de otro gimnasio.
+  sala     Sala   @relation(fields: [tenantId, salaId], references: [tenantId, id])
+
+  nombre String // ej. "Pilates". En Fase 4 se agrega profesorId.
+
+  fecha      DateTime @db.Date
+  // "HH:MM" en hora local del salon. String simple a proposito: no hay husos
+  // que resolver y ordenar lexicograficamente equivale a ordenar por hora.
+  horaInicio String
+  horaFin    String
+
+  cupo Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reservas Reserva[]
+
+  // Destino de la FK compuesta de Reserva.turno. Ver Usuario.
+  @@unique([tenantId, id])
+  @@index([tenantId, salaId, fecha])
+  @@map("turnos")
+}
+
+model Reserva {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  // Las dos FK son COMPUESTAS y reutilizan el mismo `tenantId` que la relacion
+  // con Tenant. Eso hace imposible, a nivel de base de datos, que una reserva
+  // cruce de gimnasio: turno y perfil tienen que compartir el tenantId de la
+  // propia reserva. Sin esto, nada impediria insertar una reserva del gimnasio
+  // A sobre un turno del gimnasio B si un service olvidara comprobarlo; la
+  // extension de aislamiento filtra lecturas y escrituras, pero es codigo y el
+  // codigo se olvida. Aqui se olvida Postgres, que no se olvida.
+  //
+  // `onDelete: Cascade` hacia el turno, y no el RESTRICT por defecto: un turno se
+  // borra fisicamente cuando ya no tiene reservas ACTIVAS, pero puede conservar
+  // canceladas, y con RESTRICT ese borrado reventaba con una violacion de clave
+  // foranea que nadie traduce -> 500 opaco. Verificado contra Postgres:
+  //   ERROR: update or delete on table "turnos" violates foreign key constraint
+  //   "reservas_tenantId_turnoId_fkey" on table "reservas"
+  // Una reserva cancelada de una clase que ya no existe no es historia que valga
+  // la pena conservar, y la auditoria de historial_acciones no se pierde: esa
+  // tabla no tiene clave foranea a ninguna de las dos.
+  turnoId  String
+  turno    Turno  @relation(fields: [tenantId, turnoId], references: [tenantId, id], onDelete: Cascade)
+  // Hacia el perfil se mantiene RESTRICT: un usuario nunca se borra fisicamente
+  // (su baja es logica), asi que este borrado en cascada no deberia ocurrir jamas
+  // y, si ocurre, queremos que falle ruidosamente en vez de llevarse su historial.
+  perfilId String
+  perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id])
+
+  origen        OrigenReserva
+  esPrueba      Boolean       @default(false)
+  pagoRealizado Boolean       @default(false)
+
+  // Una reserva nunca se borra: se cancela. RECUPERABLE deja de contar contra
+  // el pack ("la clase vuelve"); DEFINITIVA sigue contando.
+  canceladaEn     DateTime?
+  cancelacionTipo TipoCancelacion?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, turnoId])
+  @@index([tenantId, perfilId])
+  @@map("reservas")
 }

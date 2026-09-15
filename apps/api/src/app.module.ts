@@ -6,10 +6,16 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { HistorialModule } from './common/historial/historial.module';
 import { TenantContextMiddleware } from './common/tenant/tenant.middleware';
 import { validarEntorno } from './config/validar-entorno';
 import { JobsModule } from './jobs/jobs.module';
+import { PacksModule } from './packs/packs.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ReservasModule } from './reservas/reservas.module';
+import { SalasModule } from './salas/salas.module';
+import { TurnosModule } from './turnos/turnos.module';
+import { UsuariosModule } from './usuarios/usuarios.module';
 
 @Module({
   imports: [
@@ -60,7 +66,13 @@ import { PrismaModule } from './prisma/prisma.module';
       },
     }),
     PrismaModule,
+    HistorialModule,
     AuthModule,
+    SalasModule,
+    PacksModule,
+    UsuariosModule,
+    TurnosModule,
+    ReservasModule,
     JobsModule,
   ],
   providers: [

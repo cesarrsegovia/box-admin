@@ -2,7 +2,16 @@ import { Prisma } from '@prisma/client';
 import { getTenantContext } from './tenant-context';
 
 /** Modelos con columna `tenantId` propia. */
-export const MODELOS_CON_TENANT = ['Usuario', 'HistorialAccion'] as const;
+export const MODELOS_CON_TENANT = [
+  'Usuario',
+  'HistorialAccion',
+  'Sala',
+  'Perfil',
+  'UsuarioSala',
+  'Pack',
+  'Turno',
+  'Reserva',
+] as const;
 
 /** Modelos que se aíslan a través de una relación: modelo -> campo de relación. */
 export const MODELOS_POR_RELACION: Readonly<Record<string, string>> = {
