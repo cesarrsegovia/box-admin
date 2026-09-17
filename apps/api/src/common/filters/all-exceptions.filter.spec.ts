@@ -25,7 +25,16 @@ function crearHostFalso(url = '/ruta/de/prueba', method = 'GET') {
     }),
   } as unknown as ArgumentsHost;
 
-  return { host, status, json };
+  return { host, res, status, json };
+}
+
+/**
+ * Entorno completo de un caso: el filtro mas el doble de `ArgumentsHost`.
+ * Se apoya en `crearHostFalso` para no duplicar el doble que ya usan los
+ * tests de arriba.
+ */
+function crearEntorno(url = '/ruta/de/prueba', method = 'GET') {
+  return { filtro: new AllExceptionsFilter(), ...crearHostFalso(url, method) };
 }
 
 describe('AllExceptionsFilter', () => {
@@ -128,5 +137,101 @@ describe('AllExceptionsFilter', () => {
     });
     expect(JSON.stringify(cuerpo)).not.toContain('boom inesperado');
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  describe('errores de Prisma traducidos a HTTP', () => {
+    let warnSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      // El filtro registra estos casos con `warn`, no con `error`: son culpa
+      // del cliente, no un fallo nuestro.
+      warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    it('P2002 (unicidad violada) es 409, no 500', () => {
+      const { filtro, host, res } = crearEntorno();
+      const error = Object.assign(new Error('Unique constraint failed'), {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P2002',
+        meta: { target: ['tenantId', 'turnoId', 'perfilId'] },
+      });
+
+      filtro.catch(error, host);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+    });
+
+    it('P2003 (clave foranea) es 400', () => {
+      const { filtro, host, res } = crearEntorno();
+      const error = Object.assign(new Error('Foreign key constraint failed'), {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P2003',
+      });
+
+      filtro.catch(error, host);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it('P2025 (fila inexistente) es 404', () => {
+      const { filtro, host, res } = crearEntorno();
+      const error = Object.assign(new Error('Record to update not found'), {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P2025',
+      });
+
+      filtro.catch(error, host);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it('reconoce tambien la forma del driver adapter, que no trae code', () => {
+      // Leccion de la Fase 1: con el adapter `pg` de Prisma 7, algunos errores
+      // llegan como DriverAdapterError con `cause.kind` y SIN `code`. Comprobar
+      // solo `code` dejo el reintento de serializacion como codigo muerto durante
+      // toda una fase.
+      const { filtro, host, res } = crearEntorno();
+      const error = Object.assign(new Error('UniqueConstraintViolation'), {
+        name: 'DriverAdapterError',
+        cause: { kind: 'UniqueConstraintViolation', fields: ['turnoId'] },
+      });
+
+      filtro.catch(error, host);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+    });
+
+    it('un codigo de Prisma no contemplado sigue siendo 500 opaco', () => {
+      const { filtro, host, res } = crearEntorno();
+      const error = Object.assign(new Error('algo raro'), {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P1001',
+      });
+
+      filtro.catch(error, host);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it('la respuesta de un P2002 no filtra el mensaje interno de Prisma', () => {
+      const { filtro, host, json } = crearEntorno();
+      const error = Object.assign(
+        new Error('Unique constraint failed on the fields: (`tokenHash`)'),
+        {
+          name: 'PrismaClientKnownRequestError',
+          code: 'P2002',
+        },
+      );
+
+      filtro.catch(error, host);
+
+      // El cliente merece saber que choco con algo existente, no como se llaman
+      // nuestras columnas.
+      expect(JSON.stringify(json.mock.calls[0][0])).not.toContain('tokenHash');
+    });
   });
 });

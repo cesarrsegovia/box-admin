@@ -44,6 +44,65 @@ function esErrorDeAislamiento(exception: unknown): exception is Error {
   return ERRORES_DE_AISLAMIENTO.some((Clase) => exception instanceof Clase);
 }
 
+/**
+ * Codigos de Prisma que son culpa del cliente, no nuestra, y que por tanto
+ * merecen una respuesta util en vez de un 500 opaco.
+ *
+ * Deuda declarada en la Fase 1 y pagada aqui porque la Fase 2 anade dos indices
+ * unicos: un P2002 pasa a ser un desenlace normal.
+ */
+const ESTADO_POR_CODIGO_PRISMA: Readonly<Record<string, { status: HttpStatus; mensaje: string }>> =
+  {
+    P2002: {
+      status: HttpStatus.CONFLICT,
+      mensaje: 'Ya existe un registro con esos datos',
+    },
+    P2003: {
+      status: HttpStatus.BAD_REQUEST,
+      mensaje: 'La operacion referencia un registro que no existe',
+    },
+    P2025: {
+      status: HttpStatus.NOT_FOUND,
+      mensaje: 'El registro no existe',
+    },
+  };
+
+/**
+ * La misma condicion vista desde el driver adapter.
+ *
+ * Con el adapter `pg` de Prisma 7 algunos errores no llegan con `code`: el
+ * adapter los traduce a `{ kind: ... }` y los envuelve en un DriverAdapterError.
+ * En la Fase 1 comprobar solo `code` dejo el reintento de serializacion sin
+ * dispararse ni una vez.
+ */
+const ESTADO_POR_KIND_DEL_ADAPTER: Readonly<
+  Record<string, { status: HttpStatus; mensaje: string }>
+> = {
+  UniqueConstraintViolation: ESTADO_POR_CODIGO_PRISMA.P2002,
+  ForeignKeyConstraintViolation: ESTADO_POR_CODIGO_PRISMA.P2003,
+};
+
+function traducirErrorDePrisma(
+  exception: unknown,
+): { status: HttpStatus; mensaje: string } | undefined {
+  if (typeof exception !== 'object' || exception === null) return undefined;
+
+  const { code, name, cause } = exception as { code?: unknown; name?: unknown; cause?: unknown };
+
+  if (typeof code === 'string' && code in ESTADO_POR_CODIGO_PRISMA) {
+    return ESTADO_POR_CODIGO_PRISMA[code];
+  }
+
+  if (name === 'DriverAdapterError' && typeof cause === 'object' && cause !== null) {
+    const kind = (cause as { kind?: unknown }).kind;
+    if (typeof kind === 'string' && kind in ESTADO_POR_KIND_DEL_ADAPTER) {
+      return ESTADO_POR_KIND_DEL_ADAPTER[kind];
+    }
+  }
+
+  return undefined;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -62,6 +121,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
         path: req.url,
         timestamp: new Date().toISOString(),
         ...(typeof cuerpo === 'string' ? { message: cuerpo } : cuerpo),
+      });
+      return;
+    }
+
+    const traducido = traducirErrorDePrisma(exception);
+    if (traducido) {
+      // Se registra el error completo, pero al cliente solo le llega el mensaje
+      // generico: los nombres de nuestras columnas no son asunto suyo.
+      this.logger.warn(
+        `Error de base traducido a ${traducido.status} en ${req.method} ${req.url}: ` +
+          `${exception instanceof Error ? exception.message : String(exception)}`,
+      );
+
+      res.status(traducido.status).json({
+        statusCode: traducido.status,
+        path: req.url,
+        timestamp: new Date().toISOString(),
+        message: traducido.mensaje,
       });
       return;
     }

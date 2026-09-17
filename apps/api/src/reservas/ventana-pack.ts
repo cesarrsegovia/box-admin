@@ -1,4 +1,4 @@
-import type { TipoPack } from '@boxadmin/shared';
+import { primerDiaDelMesUtc, ultimoDiaDelMesUtc, type TipoPack } from '@boxadmin/shared';
 
 /** Lo que hace falta de un pack para calcular su tope. */
 export interface PackParaConteo {
@@ -20,15 +20,6 @@ export interface VentanaDeConteo {
   lte?: Date;
 }
 
-function primerDiaDelMes(fecha: Date): Date {
-  return new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), 1));
-}
-
-/** Dia 0 del mes siguiente = ultimo dia de este. Acierta febrero y los bisiestos. */
-function ultimoDiaDelMes(fecha: Date): Date {
-  return new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth() + 1, 0));
-}
-
 /**
  * Periodo sobre el que se cuentan las clases de un perfil.
  *
@@ -45,7 +36,9 @@ export function ventanaDeConteo(
   if (pack === null) return {};
 
   if (pack.tipo === 'MENSUAL') {
-    return { gte: primerDiaDelMes(fechaDelTurno), lte: ultimoDiaDelMes(fechaDelTurno) };
+    const anio = fechaDelTurno.getUTCFullYear();
+    const mes = fechaDelTurno.getUTCMonth() + 1;
+    return { gte: primerDiaDelMesUtc(anio, mes), lte: ultimoDiaDelMesUtc(anio, mes) };
   }
 
   return {

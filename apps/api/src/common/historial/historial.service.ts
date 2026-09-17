@@ -3,7 +3,16 @@ import type { JwtPayload } from '@boxadmin/shared';
 import { PrismaService, type ClientePrismaTx } from '../../prisma/prisma.service';
 
 /** Entidades de las que se guarda rastro. */
-export type EntidadAuditable = 'Sala' | 'Pack' | 'Usuario' | 'Turno' | 'Reserva';
+export type EntidadAuditable =
+  | 'Sala'
+  | 'Pack'
+  | 'Usuario'
+  | 'Turno'
+  | 'Reserva'
+  | 'RutinaFija'
+  | 'VacacionAlumno'
+  | 'Ausencia'
+  | 'MesCalendario';
 
 export type AccionAuditable =
   | 'CREADA'
@@ -13,7 +22,8 @@ export type AccionAuditable =
   | 'SALAS_ACTUALIZADAS'
   | 'PASSWORD_RESETEADA'
   | 'CANCELADA'
-  | 'REASIGNADA';
+  | 'REASIGNADA'
+  | 'PUBLICADA';
 
 export interface EntradaHistorial {
   /** Quien ejecuta. De el salen tanto el tenantId como el usuarioId. */

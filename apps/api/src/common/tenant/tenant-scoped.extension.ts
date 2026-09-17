@@ -11,6 +11,10 @@ export const MODELOS_CON_TENANT = [
   'Pack',
   'Turno',
   'Reserva',
+  'RutinaFija',
+  'MesCalendario',
+  'VacacionAlumno',
+  'Ausencia',
 ] as const;
 
 /** Modelos que se aíslan a través de una relación: modelo -> campo de relación. */

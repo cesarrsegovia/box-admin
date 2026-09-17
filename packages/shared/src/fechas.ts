@@ -6,9 +6,7 @@ export const PATRON_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export class FechaInvalidaError extends Error {
   constructor(recibido: string) {
-    super(
-      `Se esperaba una fecha con formato YYYY-MM-DD y se recibio ${JSON.stringify(recibido)}.`,
-    );
+    super(`Se esperaba una fecha con formato YYYY-MM-DD y se recibio ${JSON.stringify(recibido)}.`);
     this.name = 'FechaInvalidaError';
   }
 }

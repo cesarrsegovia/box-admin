@@ -170,3 +170,135 @@ ensuciar el diff de ésta. Merece un commit propio, solo de formato.
 Fase 1 completa. Nada commiteado: hay **16 mensajes de commit sugeridos** esperando
 a Cesar (uno por tarea, mas T1b, T5b, el arreglo de la FK de turnos y el del reintento
 de serializacion).
+
+
+---
+
+# Progreso Fase 2 — Motor de recurrencia
+
+Plan: `docs/superpowers/plans/2026-09-16-fase2-motor-recurrencia.md`
+Spec: `docs/superpowers/specs/2026-09-16-fase2-motor-recurrencia.md`
+
+- [x] T0 Spike: contexto de tenant dentro de un worker de BullMQ — **las tres
+      preguntas en verde, sin cambios en produccion**. Verificado contra Redis y
+      Postgres reales: (1) sin abrir contexto, Prisma FALLA en vez de devolver
+      datos sin filtrar, asi que el fail-closed aguanta tambien fuera de una
+      request; (2) `runWithTenant` dentro del `process()` del worker funciona;
+      (3) el contexto sobrevive a varios `await` encadenados. El spike se borro.
+- [x] T1 Schema, migracion, indices de idempotencia y clasificacion — 326
+      unitarios + 56 e2e, sin regresion. Los dos indices verificados por mi en
+      Postgres, con el WHERE parcial presente. Trampa nueva documentada en el
+      plan: `prisma migrate dev` no funciona sin TTY cuando la migracion trae un
+      aviso (una restriccion de unicidad, por ejemplo); la ruta buena es
+      `migrate diff --from-config-datasource --to-schema` + `migrate deploy`.
+- [x] T2 Traducir los errores de Prisma a HTTP (deuda de la Fase 1) — 332 tests.
+      P2002 es 409, P2003 es 400, P2025 es 404, y se reconoce tambien la forma
+      del DriverAdapterError sin `code`, que es la que en la Fase 1 dejo el
+      reintento de serializacion sin dispararse durante toda una fase. El
+      mensaje que llega al cliente es generico: el detalle va al log.
+- [x] T3 Utilidades de calendario y contratos compartidos — 37 tests en shared
+      (19 nuevos) + 332 en la API + 56 e2e. Elimino la duplicacion de la
+      aritmetica de meses que arrastraba ventana-pack.ts desde la Fase 1; sus 9
+      tests pasan sin tocarlos, que era el centinela del cambio.
+      Ademas: `packages/shared` no tenia config de Prettier, asi que sus archivos
+      se comprobaban con los valores por defecto. Subi el `.prettierrc` a la raiz
+      del monorepo y alinee los 3 archivos de la Fase 1 que quedaban (sin tocar
+      la Fase 0, que si esta commiteada).
+- [x] T4 Modulo rutinas — 347 tests. El patron semanal de un alumno, cargado una
+      vez. Valida acceso a la sala con la misma regla que una reserva manual.
+      Destapo una contradiccion de mi plan (un test esperaba un `where` que la
+      implementacion dictada nunca produce); se resolvio a favor de la semantica
+      documentada: sin filtro explicito se listan solo las activas.
+- [x] T5 Modulos vacaciones y ausencias — 371 tests + 56 e2e. Los dos puntos
+      delicados cubiertos de verdad: un cierre de todo el salon aparece al
+      filtrar por cualquier sala, y el filtro por fechas busca solape y no
+      contencion (un cierre del 28/09 al 03/10 sale al preguntar por octubre).
+- [x] T6 El planificador puro — 404 tests, 33 nuevos. Todo el algoritmo en una
+      funcion sin base de datos ni cola. El agente comprobo ademas, por su
+      cuenta, que los tests MUERDEN: muto el codigo (invirtio el desempate del
+      orden, cambio un >= por >) y verifico que la suite lo caza. Encontro un
+      campo muerto (`Franja.turnoPlanificado`) que elimine del codigo y del plan.
+- [x] T7 Carga de datos y previsualizacion — 414 tests + 56 e2e. Destapo un bug
+      real de mi plan: el `upsert` que dictaba es IMPOSIBLE (la extension de
+      aislamiento rechaza siempre esa operacion), y como el spec mockea Prisma,
+      el test habria pasado en verde y el 500 habria salido en la primera
+      publicacion real. Reescrito con findFirst + create/updateMany en
+      transaccion, y el test sustituido por dos mas estrictos.
+- [x] T8 Publicacion: worker de BullMQ y escritura — 424 tests. El subagente
+      murio por limite de sesion justo despues de escribir los tests y antes de
+      implementar (el estado rojo del TDD, el mejor sitio donde te pueden
+      interrumpir); lo termine yo inline. Anadio por su cuenta un test que el
+      plan no tenia: que un error que NO sea duplicado SI aborte la publicacion,
+      porque tragarse cualquier error convertiria la idempotencia en perdida
+      silenciosa de datos.
+      VERIFICADO CONTRA LA API REAL, no solo con mocks: previsualizar da 4/4 sin
+      escribir nada, publicar devuelve 202 y el worker deja 4 turnos con una
+      reserva cada uno, y publicar OTRA VEZ da 0/0. La idempotencia es real.
+- [x] T9 e2e del checklist — 79 e2e (23 nuevos), Jest sale con codigo 0 sin
+      --forceExit. Los tres clave en verde: publicar dos veces no cambia el
+      numero de reservas, un job de un gimnasio no crea nada en el otro, y
+      POST /publicar responde en menos de un segundo con 10 rutinas. Ningun bug
+      de produccion; el plan no tuvo un tercer error interno.
+- [x] T10 Verificacion final, README y cierre — hecha inline. Recorri a mano los
+      puntos del checklist contra la API corriendo y destape un bug REAL de
+      diseno mio: `encolarPublicacion` encolaba el job ANTES de escribir la fila
+      de MesCalendario, que es el cerrojo del worker. Un worker rapido no la
+      encontraba, su updateMany devolvia 0 y abortaba en silencio: la primera
+      publicacion se perdia. Arreglado generando el jobId antes de encolar, con
+      test de regresion que afirma el ORDEN de las dos operaciones.
+
+## Decisiones cerradas con Cesar antes de empezar
+
+1. `previsualizar` es sincrono; `publicar` va a un job de BullMQ.
+2. El cupo del turno generado sale de `Sala.cupoBase`; el nombre, de la rutina.
+3. `VacacionAlumno.devuelveClase` se almacena y queda inerte.
+4. Vacaciones y cierres son **exclusiones**, no conflictos.
+
+## Historico
+Hubo una pausa por limite de uso de la sesion tras la T7. Leccion aprendida: lanzar un subagente es
+la accion mas cara que hago (55k-125k tokens cada uno), asi que cerca del techo
+hay que trabajar inline.
+
+## Estado final de la Fase 2
+
+**426 tests unitarios + 37 en shared + 79 e2e en verde.** `tsc --noEmit` limpio,
+Prettier limpio sobre todo lo que escribe la fase, `prisma migrate status` sin
+deriva, Jest sale con codigo 0. Nada commiteado: indice de git vacio y los dos
+`.env` ignorados.
+
+### Checklist del PDF, verificado a mano contra la API real
+
+| # | Punto | Resultado |
+|---|---|---|
+| 1 | Cargar una rutina fija | OK 201; 403 si el alumno no tiene acceso a la sala |
+| 2 | `previsualizar` no escribe nada | OK 4 turnos / 4 reservas, base intacta |
+| 3 | Los conflictos no interrumpen el proceso | OK cupo 1 y dos alumnos: 4 reservas + 4 CUPO_LLENO |
+| 4 | `publicar` real e idempotente | OK 202, luego 4/4, y al repetir 0/0 |
+| 5 | Una ausencia excluye la fecha para todos | OK el 13 desaparece del plan, sin crear turno |
+| 6 | Una vacacion excluye solo a su alumno | OK el turno del 20 sigue, con el otro alumno |
+| 7 | El job corre en background | OK 202 en menos de 1 s con 10 rutinas |
+| 8 | Tests unitarios del algoritmo | OK 33 tests del planificador, mutaciones verificadas |
+
+### Lo que se encontro por el camino
+
+Tres errores en mi propio plan, ninguno visible en un test verde:
+
+1. **La Task 4 se contradecia**: un test esperaba un `where` que la implementacion
+   dictada nunca produce.
+2. **La Task 7 dictaba un `upsert` imposible**: la extension de aislamiento lo
+   rechaza siempre. Como el spec mockea Prisma, habria pasado en verde y el 500
+   habria salido en la primera publicacion real.
+3. **La carrera del cerrojo** (ver T10), que se perdia la primera publicacion.
+
+Y dos trampas de entorno:
+
+- **Docker Desktop se cerro solo cuatro veces.** Un `500` repentino en todo suele
+  ser eso; comprobar `docker info` antes de buscar el bug en el codigo.
+- **Los e2e y la API de desarrollo comparten Redis.** Si `start:dev` esta vivo, su
+  worker roba jobs a los tests y los resuelve contra la base equivocada. El sintoma
+  —"Sala inexistente" en un job recien encolado— no apunta a la causa.
+
+## Siguiente paso
+
+Fase 2 completa. Nada commiteado: los mensajes de commit sugeridos de las 11 tareas
+estan en el plan, uno por tarea.

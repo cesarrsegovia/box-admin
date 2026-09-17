@@ -131,13 +131,7 @@ export interface TurnoPublico {
 // Reservas
 // ---------------------------------------------------------------------------
 
-export type OrigenReserva =
-  | 'ADMIN'
-  | 'ALUMNO'
-  | 'RUTINA'
-  | 'PRUEBA'
-  | 'LISTA_ESPERA'
-  | 'EXTRA';
+export type OrigenReserva = 'ADMIN' | 'ALUMNO' | 'RUTINA' | 'PRUEBA' | 'LISTA_ESPERA' | 'EXTRA';
 
 export type TipoCancelacion = 'RECUPERABLE' | 'DEFINITIVA';
 

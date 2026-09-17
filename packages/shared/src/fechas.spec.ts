@@ -1,10 +1,4 @@
-import {
-  aFechaISO,
-  desdeFechaISO,
-  esHoraValida,
-  FechaInvalidaError,
-  comparaHoras,
-} from './fechas';
+import { aFechaISO, desdeFechaISO, esHoraValida, FechaInvalidaError, comparaHoras } from './fechas';
 
 describe('aFechaISO', () => {
   it('devuelve solo la parte de fecha, en UTC', () => {
@@ -41,12 +35,9 @@ describe('esHoraValida', () => {
     expect(esHoraValida(hora)).toBe(true);
   });
 
-  it.each(['24:00', '18:60', '8:00', '18:0', '1800', '', '18:00:00'])(
-    'rechaza %s',
-    (hora) => {
-      expect(esHoraValida(hora)).toBe(false);
-    },
-  );
+  it.each(['24:00', '18:60', '8:00', '18:0', '1800', '', '18:00:00'])('rechaza %s', (hora) => {
+    expect(esHoraValida(hora)).toBe(false);
+  });
 });
 
 describe('comparaHoras', () => {

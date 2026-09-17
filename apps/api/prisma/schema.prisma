@@ -23,13 +23,17 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  usuarios      Usuario[]
-  perfiles      Perfil[]
-  salas         Sala[]
-  usuariosSalas UsuarioSala[]
-  packs         Pack[]
-  turnos        Turno[]
-  reservas      Reserva[]
+  usuarios        Usuario[]
+  perfiles        Perfil[]
+  salas           Sala[]
+  usuariosSalas   UsuarioSala[]
+  packs           Pack[]
+  turnos          Turno[]
+  reservas        Reserva[]
+  rutinasFijas    RutinaFija[]
+  mesesCalendario MesCalendario[]
+  vacaciones      VacacionAlumno[]
+  ausencias       Ausencia[]
 
   @@map("tenants")
 }
@@ -139,9 +143,12 @@ model Sala {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  usuarios UsuarioSala[]
-  turnos   Turno[]
-  packs    Pack[]
+  usuarios        UsuarioSala[]
+  turnos          Turno[]
+  packs           Pack[]
+  rutinasFijas    RutinaFija[]
+  mesesCalendario MesCalendario[]
+  ausencias       Ausencia[]
 
   // Destino de las FK compuestas de UsuarioSala, Pack y Turno. Ver Usuario.
   @@unique([tenantId, id])
@@ -181,8 +188,10 @@ model Perfil {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  salas    UsuarioSala[]
-  reservas Reserva[]
+  salas        UsuarioSala[]
+  reservas     Reserva[]
+  rutinasFijas RutinaFija[]
+  vacaciones   VacacionAlumno[]
 
   // Destino de las FK compuestas de UsuarioSala y Reserva. Ver Usuario.
   @@unique([tenantId, id])
@@ -283,6 +292,13 @@ model Turno {
 
   // Destino de la FK compuesta de Reserva.turno. Ver Usuario.
   @@unique([tenantId, id])
+  // No hay dos clases a la vez en el mismo espacio. Ademas de ser cierto, el
+  // motor de generacion lo necesita: es lo que hace que publicar dos veces no
+  // duplique turnos.
+  //
+  // OJO: esto CAMBIA una regla de la Fase 1, donde si se podian crear dos turnos
+  // en la misma sala, fecha y hora. Ningun test existente lo ejercitaba.
+  @@unique([tenantId, salaId, fecha, horaInicio])
   @@index([tenantId, salaId, fecha])
   @@map("turnos")
 }
@@ -331,4 +347,135 @@ model Reserva {
   @@index([tenantId, turnoId])
   @@index([tenantId, perfilId])
   @@map("reservas")
+}
+
+enum EstadoMes {
+  BORRADOR
+  HABILITADO
+}
+
+model RutinaFija {
+  // El patron semanal fijo de un alumno: "martes y jueves a las 18:00 en Pilates".
+  //
+  // Las relaciones venian corruptas en el PDF de la fase (tres @relation sueltos
+  // sobre campos escalares). Aqui se reescriben con claves foraneas COMPUESTAS
+  // por tenant, como todo el schema desde la Fase 1: asi la base impide por si
+  // misma que una rutina cruce el perfil de un gimnasio con la sala de otro.
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  perfilId String
+  perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id], onDelete: Cascade)
+  salaId   String
+  sala     Sala   @relation(fields: [tenantId, salaId], references: [tenantId, id], onDelete: Cascade)
+
+  // Nombre del turno que generara esta rutina, p. ej. "Pilates". El PDF no lo
+  // incluia, pero Turno.nombre es obligatorio y tiene que salir de algun sitio.
+  nombre String
+
+  diaSemana  Int // 0 = domingo ... 6 = sabado
+  horaInicio String // "HH:MM", misma convencion que Turno
+  horaFin    String
+
+  activa Boolean   @default(true)
+  desde  DateTime  @db.Date
+  hasta  DateTime? @db.Date // null = indefinida
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, perfilId])
+  @@index([tenantId, salaId, diaSemana])
+  @@map("rutinas_fijas")
+}
+
+model MesCalendario {
+  // Estado de publicacion de una sala en un mes, como maquina de estados
+  // explicita. Su @@unique sirve ademas de cerrojo: la publicacion lo toma con
+  // un updateMany condicional, asi dos publicaciones simultaneas del mismo mes
+  // no se pisan.
+  //
+  // OJO: en la Fase 2, HABILITADO no habilita nada funcionalmente. No hay
+  // self-service todavia, asi que ningun alumno ve ni reserva nada. Registra que
+  // el mes se publico, cuando y quien, y es el enganche para la Fase 3. No
+  // construyas logica sobre una garantia que aun no existe.
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  salaId   String
+  sala     Sala   @relation(fields: [tenantId, salaId], references: [tenantId, id], onDelete: Cascade)
+
+  anio Int
+  mes  Int // 1-12
+
+  estado EstadoMes @default(BORRADOR)
+
+  publicadoEn  DateTime?
+  // Escalar sin FK, igual que HistorialAccion.usuarioId: es auditoria, no una
+  // relacion de negocio.
+  publicadoPor String?
+
+  // Id del ultimo job de publicacion encolado para este mes. Es lo que permite
+  // que GET /calendario/:sala/:anio/:mes informe del progreso sin que el cliente
+  // tenga que acordarse del jobId que le devolvio el POST.
+  ultimoJobId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, salaId, anio, mes])
+  @@map("meses_calendario")
+}
+
+model VacacionAlumno {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  perfilId String
+  perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id], onDelete: Cascade)
+
+  desde  DateTime @db.Date
+  hasta  DateTime @db.Date
+  motivo String?
+
+  // Se almacena y NO se aplica en esta fase. Con el conteo derivado de la Fase 1,
+  // no generar la reserva ya equivale a no gastar la clase, asi que no hay nada
+  // que devolver. Queda para cuando exista facturacion o creditos (Fase 5).
+  devuelveClase Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, perfilId])
+  @@map("vacaciones_alumnos")
+}
+
+model Ausencia {
+  // Cierre de una sala o de todo el salon: feriado, evento, reforma. salaId null
+  // = todo el salon. La Fase 6 la expondra completa en Mantenimiento; el motor
+  // ya la respeta desde aqui.
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  salaId String?
+  sala   Sala?   @relation(fields: [tenantId, salaId], references: [tenantId, id], onDelete: Cascade)
+
+  // El PDF usaba DateTime completo junto a un todoElDia. Aqui las fechas son
+  // @db.Date y el tramo horario va aparte en "HH:MM", la misma convencion que
+  // Turno: cubre "cerramos el sabado de 14 a 18" sin arrastrar husos horarios.
+  desde DateTime @db.Date
+  hasta DateTime @db.Date
+
+  todoElDia  Boolean @default(true)
+  horaInicio String? // solo si todoElDia = false
+  horaFin    String?
+
+  recuperable Boolean @default(true)
+  motivo      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, salaId])
+  @@map("ausencias")
 }

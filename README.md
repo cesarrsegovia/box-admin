@@ -338,6 +338,138 @@ curl -X PATCH $API/reservas/RESERVA_ID/reasignar -H "$AUTH" -H 'Content-Type: ap
   -d '{"turnoId":"OTRO_TURNO_ID"}'
 ```
 
+## Endpoints de la Fase 2 — motor de recurrencia
+
+El admin carga la rutina fija de un alumno **una sola vez** —"martes y jueves a las 18:00 en
+Pilates"— y el sistema genera los turnos y reservas de cada mes futuro, mostrando antes de confirmar
+todo lo que necesita una decisión humana.
+
+Todos exigen JWT. El rol indicado es el **mínimo**.
+
+### Rutinas fijas
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/rutinas` | `ADMIN_OPERATIVO` |
+| GET | `/rutinas?perfilId=&salaId=&activa=` | `ADMIN_OPERATIVO` |
+| PATCH | `/rutinas/:id` | `ADMIN_OPERATIVO` |
+| DELETE | `/rutinas/:id` | `ADMIN_OPERATIVO` — baja lógica |
+
+Crear una rutina valida que el alumno tenga **acceso a la sala**, con la misma regla que una reserva
+manual: sin acceso, la rutina generaría mes tras mes reservas que el motor acabaría rechazando.
+
+El `PATCH` no admite cambiar `perfilId` ni `salaId`: eso dejaría turnos ya generados colgando de un
+patrón que ya no existe. Para eso se da de baja y se crea otra.
+
+Sin filtro explícito, el listado devuelve **solo las activas** — son las que generan. El histórico se
+pide a propósito con `?activa=false`.
+
+### Calendario
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/calendario/:salaId/:anio/:mes/previsualizar` | `ADMIN_OPERATIVO` — **200** con el plan |
+| GET | `/calendario/:salaId/:anio/:mes/conflictos` | `ADMIN_OPERATIVO` |
+| POST | `/calendario/:salaId/:anio/:mes/publicar` | **`ADMIN_SALON`** — **202** con el `jobId` |
+| GET | `/calendario/:salaId/:anio/:mes` | `ADMIN_OPERATIVO` — estado del mes y del último job |
+
+**`previsualizar` es síncrono y no escribe nada.** No hay razón para mandar a una cola una operación
+de solo lectura que el admin está esperando en pantalla.
+
+**`publicar` devuelve 202 y el trabajo ocurre en un worker de BullMQ.** Publicar un mes crea reservas
+para todo el salón de golpe, por eso es `ADMIN_SALON` y no operación diaria.
+
+Regenerar un **mes que ya pasó** devuelve **400**: crearía reservas para clases que ya ocurrieron.
+
+### Vacaciones y ausencias
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/vacaciones-alumnos` | `ADMIN_OPERATIVO` |
+| GET | `/vacaciones-alumnos?perfilId=` | `ADMIN_OPERATIVO` |
+| DELETE | `/vacaciones-alumnos/:id` | `ADMIN_OPERATIVO` |
+| POST | `/ausencias` | **`ADMIN_SALON`** |
+| GET | `/ausencias?salaId=&desde=&hasta=` | autenticado |
+| DELETE | `/ausencias/:id` | **`ADMIN_SALON`** |
+
+Una `Ausencia` con `salaId: null` cierra **todo el salón**, y aparece igualmente al filtrar por
+cualquier sala concreta. El filtro por fechas busca **solape, no contención**: un cierre del 28 de
+septiembre al 3 de octubre sale al preguntar por octubre.
+
+### Conflictos y exclusiones: la distinción que importa
+
+El plan de un mes separa dos cosas que es tentador mezclar:
+
+| | Qué es | Tipos |
+|---|---|---|
+| **`conflictos`** | Requieren **decisión humana** | `CUPO_LLENO`, `FUERA_DE_PACK`, `SALA_SIN_CUPO_BASE` |
+| **`exclusiones`** | Informativas: pasaron porque alguien cargó ese dato a propósito | `AUSENCIA_SALA`, `VACACION_ALUMNO` |
+
+Mezclarlas haría que un mes con tres alumnos de vacaciones mostrara decenas de "conflictos" que nadie
+tiene que resolver, y que esconderían los dos que sí. `GET /conflictos` devuelve solo los primeros.
+
+**Un conflicto individual nunca aborta el resto del mes.** El objetivo es que el admin revise una
+lista acotada, no que un alumno con el pack vencido bloquee la generación entera.
+
+### Idempotencia
+
+**Publicar dos veces no duplica nada, y es el caso normal**: se da de alta un alumno a mitad de mes,
+se vuelve a publicar y solo se crea lo que falta. Tres capas lo sostienen:
+
+1. El plan se calcula contra lo que ya existe, así que la segunda corrida no encuentra nada que crear.
+2. La fila de `MesCalendario` es el **cerrojo**, tomado con un `updateMany` condicional: dos
+   publicaciones simultáneas del mismo mes no se pisan.
+3. Dos índices únicos en la base — uno de ellos **parcial**, sobre reservas activas — como red de
+   debajo. Un `P2002` al insertar significa "ya estaba", no "falló".
+
+De dónde salen el cupo y el nombre de un turno generado: el **cupo** de `Sala.cupoBase` y el
+**nombre** de la rutina. Si la sala no tiene `cupoBase`, el motor no inventa un valor por defecto:
+lo reporta como conflicto `SALA_SIN_CUPO_BASE`.
+
+⚠️ `MesCalendario.estado = HABILITADO` **no habilita nada funcionalmente todavía**. No hay
+self-service de alumno hasta la Fase 3, así que ningún alumno ve ni reserva nada. Registra que el mes
+se publicó, cuándo y quién.
+
+### Flujo completo de ejemplo
+
+```bash
+API=http://localhost:3000
+AUTH="Authorization: Bearer $TOKEN"   # ver el flujo de la Fase 1 para obtener el token
+
+# 1. Sala CON cupoBase: es de donde sale el cupo de los turnos generados
+curl -X POST $API/salas -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"nombre":"Sala A","cupoBase":5}'
+
+# 2. Rutina fija: martes (diaSemana 2) a las 18:00
+curl -X POST $API/rutinas -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"perfilId":"PERFIL_ID","salaId":"SALA_ID","nombre":"Pilates","diaSemana":2,
+       "horaInicio":"18:00","horaFin":"19:00","desde":"2099-01-01"}'
+
+# 3. Opcional: cerrar el salón un día, o marcar vacaciones de un alumno
+curl -X POST $API/ausencias -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"desde":"2099-10-13","hasta":"2099-10-13","motivo":"Feriado"}'
+
+curl -X POST $API/vacaciones-alumnos -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"perfilId":"PERFIL_ID","desde":"2099-10-20","hasta":"2099-10-20","motivo":"Viaje"}'
+
+# 4. Previsualizar: devuelve el plan completo SIN escribir nada
+curl -X POST $API/calendario/SALA_ID/2099/10/previsualizar -H "$AUTH"
+
+# 5. Publicar: 202 con el jobId; el worker hace el trabajo
+curl -X POST $API/calendario/SALA_ID/2099/10/publicar -H "$AUTH"
+
+# 6. Sondear hasta que la publicación termine
+curl $API/calendario/SALA_ID/2099/10 -H "$AUTH"
+# -> { "estado": "HABILITADO",
+#      "publicacion": { "estado": "terminado",
+#                       "resumen": { "turnos": 4, "reservas": 4, ... } } }
+```
+
+⚠️ **No corras los e2e con la API de desarrollo levantada.** Ambas comparten Redis, así que el worker
+del `start:dev` compite por los jobs de la cola y los resuelve contra la base de **desarrollo** (5434)
+en vez de la de test (5433). El síntoma es desconcertante: un job que acabas de encolar falla con
+"Sala inexistente" aunque la sala exista. Pára la API antes de `test:e2e`.
+
 ## Tests
 
 Unitarios:

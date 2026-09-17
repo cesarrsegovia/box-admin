@@ -28,6 +28,7 @@ export async function crearAppDeTest(): Promise<EntornoE2E> {
 export async function limpiarBaseDeDatos(prisma: PrismaService): Promise<void> {
   await prisma.base.$executeRawUnsafe(
     'TRUNCATE TABLE ' +
+      '"rutinas_fijas", "meses_calendario", "vacaciones_alumnos", "ausencias", ' +
       '"reservas", "usuarios_salas", "turnos", "perfiles", "packs", "salas", ' +
       '"refresh_tokens", "usuarios", "historial_acciones", "tenants" ' +
       'RESTART IDENTITY CASCADE',
@@ -80,3 +81,38 @@ export async function crearGimnasio(app: INestApplication, slug: string): Promis
 /** Atajo para no repetir el header en cada petición. */
 export const conToken = (token: string) => (peticion: request.Test) =>
   peticion.set('Authorization', `Bearer ${token}`);
+
+/**
+ * Espera a que la publicación de un mes termine, sondeando el endpoint de
+ * estado.
+ *
+ * Los e2e de la fase no pueden hacer `await` sobre el job: el endpoint responde
+ * 202 y el trabajo ocurre en el worker. Sondear el mismo endpoint que usaría un
+ * cliente real es además la forma honesta de probarlo.
+ */
+export async function esperarPublicacion(
+  servidor: Parameters<typeof request>[0],
+  token: string,
+  salaId: string,
+  anio: number,
+  mes: number,
+  intentos = 60,
+): Promise<Record<string, any>> {
+  for (let i = 0; i < intentos; i++) {
+    const { body } = await request(servidor)
+      .get(`/calendario/${salaId}/${anio}/${mes}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const estado = body.publicacion?.estado;
+    if (estado === 'terminado' || estado === 'fallido') return body;
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  throw new Error(
+    `La publicacion de ${anio}-${mes} no termino tras ${intentos} intentos. ` +
+      'Si el estado se quedo en "en_cola", lo mas probable es que el worker no este ' +
+      'registrado o que Redis no responda.',
+  );
+}

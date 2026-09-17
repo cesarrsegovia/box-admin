@@ -3,7 +3,9 @@ import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { AusenciasModule } from './ausencias/ausencias.module';
 import { AuthModule } from './auth/auth.module';
+import { CalendarioModule } from './calendario/calendario.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HistorialModule } from './common/historial/historial.module';
@@ -13,9 +15,11 @@ import { JobsModule } from './jobs/jobs.module';
 import { PacksModule } from './packs/packs.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReservasModule } from './reservas/reservas.module';
+import { RutinasModule } from './rutinas/rutinas.module';
 import { SalasModule } from './salas/salas.module';
 import { TurnosModule } from './turnos/turnos.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
+import { VacacionesModule } from './vacaciones/vacaciones.module';
 
 @Module({
   imports: [
@@ -73,6 +77,10 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     UsuariosModule,
     TurnosModule,
     ReservasModule,
+    RutinasModule,
+    VacacionesModule,
+    AusenciasModule,
+    CalendarioModule,
     JobsModule,
   ],
   providers: [
