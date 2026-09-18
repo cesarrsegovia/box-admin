@@ -15,14 +15,26 @@ import type {
 } from '@boxadmin/shared';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'node:crypto';
+import {
+  conReintentoSerializable,
+  esConflictoDeSerializacion,
+} from '../common/prisma/serializable';
 import { runUnscoped, runWithTenant } from '../common/tenant/tenant-context';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import type { AutoRegistroDto } from './dto/auto-registro.dto';
 import type { CreateTenantDto } from './dto/create-tenant.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
 
 /** Mismo mensaje para email inexistente y password incorrecta: no filtra que emails estan dados de alta. */
 const CREDENCIALES_INVALIDAS = 'Credenciales invalidas';
+
+/**
+ * Mismo mensaje para las cuatro formas de clave no utilizable —inexistente,
+ * desactivada, caducada y agotada—. Un endpoint publico no tiene por que
+ * decirle a quien prueba codigos cual de las cuatro acerto.
+ */
+const CLAVE_INVALIDA = 'Clave de invitacion invalida';
 
 interface RefreshPayload {
   sub: string;
@@ -95,6 +107,147 @@ export class AuthService {
     });
 
     return this.aUsuarioPublico(usuario);
+  }
+
+  /**
+   * Alta de un alumno por su cuenta, con una clave de invitacion.
+   *
+   * Tres cosas que no son evidentes:
+   *
+   * 1. **Corre en Serializable con reintento.** `usosMax` es un cupo y tiene
+   *    exactamente la misma carrera que el cupo de un turno: sin aislamiento,
+   *    dos registros simultaneos con una clave de un solo uso leen ambos
+   *    `usosActuales = 0` y ambos pasan. Ademas del aislamiento, el incremento
+   *    se hace con un updateMany CONDICIONAL (compare-and-swap), como la
+   *    rotacion de refresh tokens: cinturon y tirantes.
+   * 2. **Todo va dentro de `runWithTenant`.** Es un endpoint publico: no hay JWT,
+   *    asi que el middleware no abrio ningun contexto y la extension de Prisma
+   *    lanzaria `MissingTenantContextError` en la primera query. El tenant sale
+   *    del slug, igual que en `register` desde la Fase 0.
+   * 3. **El rol se fija aqui a ALUMNO.** El DTO no lo acepta y el ValidationPipe
+   *    rechazaria el campo, pero una sola linea de defensa en un endpoint
+   *    publico no basta.
+   */
+  async autoRegistro(dto: AutoRegistroDto): Promise<LoginRespuesta> {
+    const tenant = await runUnscoped(
+      async () => await this.prisma.db.tenant.findUnique({ where: { slug: dto.tenantSlug } }),
+    );
+    if (!tenant || !tenant.activo) throw new UnauthorizedException(CLAVE_INVALIDA);
+
+    const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
+    const email = dto.email.toLowerCase();
+
+    const usuario = await runWithTenant(tenant.id, () =>
+      this.conReintentoDeClave(() =>
+        this.prisma.db.$transaction(
+          async (tx) => {
+            const cliente = tx as ClientePrismaTx;
+
+            const clave = await cliente.claveInvitacion.findFirst({
+              where: { codigo: dto.codigo },
+              include: { salas: { select: { salaId: true } } },
+            });
+
+            if (!clave || !clave.activa) throw new UnauthorizedException(CLAVE_INVALIDA);
+            if (clave.expiraEn !== null && clave.expiraEn.getTime() <= Date.now()) {
+              throw new UnauthorizedException(CLAVE_INVALIDA);
+            }
+            if (clave.usosMax !== null && clave.usosActuales >= clave.usosMax) {
+              throw new UnauthorizedException(CLAVE_INVALIDA);
+            }
+
+            const yaExiste = await cliente.usuario.findFirst({ where: { email } });
+            if (yaExiste) {
+              throw new ConflictException('Ya hay una cuenta con ese email en este gimnasio');
+            }
+
+            const creado = await cliente.usuario.create({
+              data: {
+                tenantId: tenant.id,
+                nombreCompleto: dto.nombreCompleto,
+                email,
+                passwordHash,
+                // Fijo, nunca del cuerpo. Ver el punto 3 del comentario.
+                rol: 'ALUMNO',
+              },
+            });
+
+            const perfil = await cliente.perfil.create({
+              data: {
+                tenantId: tenant.id,
+                usuarioId: creado.id,
+                packId: clave.packId,
+                autoRegistrado: true,
+              },
+            });
+
+            // Sin estas filas el alumno no veria ni podria reservar NADA: toda
+            // reserva se valida contra UsuarioSala. Es el agujero que el PDF de
+            // la fase dejaba abierto.
+            if (clave.salas.length > 0) {
+              await cliente.usuarioSala.createMany({
+                data: clave.salas.map((union) => ({
+                  tenantId: tenant.id,
+                  perfilId: perfil.id,
+                  salaId: union.salaId,
+                })),
+              });
+            }
+
+            // CAS: solo una de dos peticiones simultaneas puede afectar una fila.
+            const consumida = await cliente.claveInvitacion.updateMany({
+              where: { id: clave.id, usosActuales: clave.usosActuales },
+              data: { usosActuales: clave.usosActuales + 1 },
+            });
+            if (consumida.count === 0) {
+              throw new ConflictException(
+                'Otra alta consumio esta clave al mismo tiempo; vuelve a intentarlo.',
+              );
+            }
+
+            await cliente.historialAccion.create({
+              data: {
+                tenantId: tenant.id,
+                usuarioId: creado.id,
+                entidad: 'Usuario',
+                entidadId: creado.id,
+                accion: 'AUTO_REGISTRADO',
+                detalle: { claveId: clave.id, salaIds: clave.salas.map((u) => u.salaId) },
+              },
+            });
+
+            return creado;
+          },
+          { isolationLevel: 'Serializable' },
+        ),
+      ),
+    );
+
+    const tokens = await this.emitirTokens({
+      id: usuario.id,
+      tenantId: usuario.tenantId,
+      rol: usuario.rol,
+    });
+
+    return { ...tokens, usuario: this.aUsuarioPublico(usuario) };
+  }
+
+  /**
+   * Como `conReintentoDeCupo` en ReservasService: si los reintentos se agotan,
+   * sale un 409 y no un 500. Que la base aborte por solape no es un fallo del
+   * servidor, es un conflicto.
+   */
+  private async conReintentoDeClave<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await conReintentoSerializable(fn, { intentos: 5 });
+    } catch (error) {
+      if (esConflictoDeSerializacion(error)) {
+        throw new ConflictException(
+          'Varias altas estan usando esta clave ahora mismo; reintenta en unos segundos.',
+        );
+      }
+      throw error;
+    }
   }
 
   async login(dto: LoginDto): Promise<LoginRespuesta> {

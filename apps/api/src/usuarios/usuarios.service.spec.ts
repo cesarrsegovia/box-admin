@@ -485,3 +485,46 @@ describe('UsuariosService.darDeBaja', () => {
     });
   });
 });
+
+describe('UsuariosService.listar con filtro autoRegistrado', () => {
+  it('filtra a traves de la relacion perfil, no por un campo de Usuario', async () => {
+    const { servicio, usuario } = crearServicio();
+
+    await servicio.listar(ADMIN, { autoRegistrado: true });
+
+    // El flag vive en Perfil. Un `where: { autoRegistrado: true }` a secas ni
+    // siquiera compilaria contra el tipo generado de Prisma.
+    expect(usuario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ perfil: { autoRegistrado: true } }),
+      }),
+    );
+  });
+
+  it('sin el filtro no toca el where de perfil', async () => {
+    const { servicio, usuario } = crearServicio();
+
+    await servicio.listar(ADMIN, {});
+
+    expect(usuario.findMany.mock.calls[0][0].where.perfil).toBeUndefined();
+  });
+
+  it('se combina con el filtro de sala en vez de pisarlo', async () => {
+    const { servicio, usuario } = crearServicio();
+
+    await servicio.listar(ADMIN, { autoRegistrado: true, salaId: 'sala-1' });
+
+    expect(usuario.findMany.mock.calls[0][0].where.perfil).toEqual({
+      autoRegistrado: true,
+      salas: { some: { salaId: 'sala-1' } },
+    });
+  });
+
+  it('autoRegistrado: false lista las altas hechas por el admin', async () => {
+    const { servicio, usuario } = crearServicio();
+
+    await servicio.listar(ADMIN, { autoRegistrado: false });
+
+    expect(usuario.findMany.mock.calls[0][0].where.perfil).toEqual({ autoRegistrado: false });
+  });
+});

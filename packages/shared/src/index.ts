@@ -2,5 +2,8 @@ export * from './roles';
 export * from './auth.contracts';
 export * from './fechas';
 export * from './calendario';
+export * from './configuracion';
+export * from './disponibilidad';
 export * from './nucleo.contracts';
 export * from './recurrencia.contracts';
+export * from './selfservice.contracts';

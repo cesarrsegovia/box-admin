@@ -12,7 +12,10 @@ export type EntidadAuditable =
   | 'RutinaFija'
   | 'VacacionAlumno'
   | 'Ausencia'
-  | 'MesCalendario';
+  | 'MesCalendario'
+  | 'ClaveInvitacion'
+  | 'Comprobante'
+  | 'ListaEspera';
 
 export type AccionAuditable =
   | 'CREADA'
@@ -23,7 +26,13 @@ export type AccionAuditable =
   | 'PASSWORD_RESETEADA'
   | 'CANCELADA'
   | 'REASIGNADA'
-  | 'PUBLICADA';
+  | 'PUBLICADA'
+  | 'APROBADO'
+  | 'RECHAZADO'
+  | 'ANOTADO'
+  | 'SALIDO'
+  | 'ASIGNADA_DESDE_LISTA'
+  | 'AUTO_REGISTRADO';
 
 export interface EntradaHistorial {
   /** Quien ejecuta. De el salen tanto el tenantId como el usuarioId. */

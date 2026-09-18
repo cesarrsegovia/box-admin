@@ -1,4 +1,11 @@
-import { aFechaISO, desdeFechaISO, esHoraValida, FechaInvalidaError, comparaHoras } from './fechas';
+import {
+  aFechaISO,
+  desdeFechaISO,
+  esHoraValida,
+  FechaInvalidaError,
+  comparaHoras,
+  instanteDelTurno,
+} from './fechas';
 
 describe('aFechaISO', () => {
   it('devuelve solo la parte de fecha, en UTC', () => {
@@ -45,5 +52,34 @@ describe('comparaHoras', () => {
     expect(comparaHoras('09:00', '18:00')).toBeLessThan(0);
     expect(comparaHoras('18:00', '09:00')).toBeGreaterThan(0);
     expect(comparaHoras('18:00', '18:00')).toBe(0);
+  });
+});
+
+describe('instanteDelTurno', () => {
+  it('combina la fecha del turno con su hora de inicio', () => {
+    const fecha = new Date('2099-10-13T00:00:00.000Z');
+
+    expect(instanteDelTurno(fecha, '18:30').toISOString()).toBe('2099-10-13T18:30:00.000Z');
+  });
+
+  it('acepta la medianoche', () => {
+    const fecha = new Date('2099-10-13T00:00:00.000Z');
+
+    expect(instanteDelTurno(fecha, '00:00').toISOString()).toBe('2099-10-13T00:00:00.000Z');
+  });
+
+  it('ignora la hora que traiga el Date de la fecha', () => {
+    // Prisma devuelve las columnas @db.Date a medianoche UTC, pero si alguna vez
+    // llegara con hora, la hora del turno manda.
+    const fecha = new Date('2099-10-13T09:45:00.000Z');
+
+    expect(instanteDelTurno(fecha, '18:00').toISOString()).toBe('2099-10-13T18:00:00.000Z');
+  });
+
+  it('rechaza una hora con formato invalido', () => {
+    const fecha = new Date('2099-10-13T00:00:00.000Z');
+
+    expect(() => instanteDelTurno(fecha, '25:00')).toThrow(FechaInvalidaError);
+    expect(() => instanteDelTurno(fecha, '8:00')).toThrow(FechaInvalidaError);
   });
 });

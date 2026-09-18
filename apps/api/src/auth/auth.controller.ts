@@ -1,4 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { LIMITE_AUTH, TTL_AUTH } from '../common/throttling';
 import type {
   JwtPayload,
   LoginRespuesta,
@@ -12,6 +14,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { BootstrapKeyGuard } from '../common/guards/bootstrap-key.guard';
 import { AuthService } from './auth.service';
+import { AutoRegistroDto } from './dto/auto-registro.dto';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -35,7 +38,18 @@ export class AuthController {
     return this.auth.register(dto);
   }
 
+  // Publico y SIN BootstrapKeyGuard, a diferencia de /auth/register: quien se
+  // registra aqui es un alumno con una clave que le dio su gimnasio, no alguien
+  // montando un tenant. El freno contra fuerza bruta lo pone el throttler.
   @Public()
+  @Throttle({ default: { ttl: TTL_AUTH, limit: LIMITE_AUTH } })
+  @Post('auto-registro')
+  autoRegistro(@Body() dto: AutoRegistroDto): Promise<LoginRespuesta> {
+    return this.auth.autoRegistro(dto);
+  }
+
+  @Public()
+  @Throttle({ default: { ttl: TTL_AUTH, limit: LIMITE_AUTH } })
   @HttpCode(200)
   @Post('login')
   login(@Body() dto: LoginDto): Promise<LoginRespuesta> {
@@ -43,6 +57,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { ttl: TTL_AUTH, limit: LIMITE_AUTH } })
   @HttpCode(200)
   @Post('refresh')
   refresh(@Body() dto: RefreshDto): Promise<TokensRespuesta> {

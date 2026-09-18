@@ -55,8 +55,9 @@ export class UsuariosController {
     @Query('tipo') tipo?: TipoUsuarioNegocio,
     @Query('salaId') salaId?: string,
     @Query('activo', new ParseBoolPipe({ optional: true })) activo?: boolean,
+    @Query('autoRegistrado', new ParseBoolPipe({ optional: true })) autoRegistrado?: boolean,
   ): Promise<UsuarioResumen[]> {
-    return this.usuarios.listar(actor, { tipo, salaId, activo });
+    return this.usuarios.listar(actor, { tipo, salaId, activo, autoRegistrado });
   }
 
   // Sin @Roles: el propio service decide, porque un alumno puede pedir su

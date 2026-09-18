@@ -18,8 +18,25 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
+  // Sin esto, detras de un reverse proxy TODAS las peticiones comparten la IP
+  // del proxy y el throttler las cuenta como un solo cliente: o no frena a
+  // nadie, o los frena a todos a la vez. Express lee X-Forwarded-For solo si se
+  // le dice que confie, y solo en el primer salto (1), que es el proxy propio:
+  // confiar en toda la cadena dejaria falsificar la IP con una cabecera.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.use(helmet());
   app.use(compression());
+
+  // El PUT del almacen local consume el cuerpo como stream. Marcar el request
+  // como "ya parseado" antes de los parsers evita que alguno se lo lea primero
+  // y deje el stream vacio, que se manifestaria como un archivo de 0 bytes
+  // subido con exito. Solo aplica al adaptador local: en produccion el PUT va
+  // directo a S3 y ni siquiera pasa por aqui.
+  app.use('/archivos-locales', (req: { _body?: boolean }, _res: unknown, next: () => void) => {
+    req._body = true;
+    next();
+  });
 
   // Sin este pipe los decoradores de class-validator en los DTOs (auth/dto/*)
   // no se ejecutan nunca: Nest pasaria el body crudo tal cual llega.

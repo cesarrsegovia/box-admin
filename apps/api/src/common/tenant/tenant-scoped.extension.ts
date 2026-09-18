@@ -15,6 +15,10 @@ export const MODELOS_CON_TENANT = [
   'MesCalendario',
   'VacacionAlumno',
   'Ausencia',
+  'ClaveInvitacion',
+  'ClaveInvitacionSala',
+  'ListaEspera',
+  'Comprobante',
 ] as const;
 
 /** Modelos que se aíslan a través de una relación: modelo -> campo de relación. */

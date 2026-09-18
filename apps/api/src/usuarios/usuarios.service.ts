@@ -38,6 +38,8 @@ export interface FiltroUsuarios {
   tipo?: TipoUsuarioNegocio;
   salaId?: string;
   activo?: boolean;
+  /** Altas entradas por auto-registro, pendientes de revision del admin. */
+  autoRegistrado?: boolean;
 }
 
 /** Campos que solo tienen sentido en un alumno. */
@@ -99,7 +101,22 @@ export class UsuariosService {
     };
 
     if (filtro.activo !== undefined) where.activo = filtro.activo;
-    if (filtro.salaId) where.perfil = { salas: { some: { salaId: filtro.salaId } } };
+
+    // Los dos filtros que tocan el perfil se combinan en un solo objeto en vez
+    // de pisarse el uno al otro. `autoRegistrado` vive en Perfil y no en
+    // Usuario, asi que el filtro va por la relacion: un
+    // `where: { autoRegistrado }` a secas ni siquiera compilaria contra el tipo
+    // generado de Prisma.
+    const filtroDePerfil: Record<string, unknown> = {};
+    if (filtro.autoRegistrado !== undefined) {
+      filtroDePerfil.autoRegistrado = filtro.autoRegistrado;
+    }
+    if (filtro.salaId) {
+      filtroDePerfil.salas = { some: { salaId: filtro.salaId } };
+    }
+    if (Object.keys(filtroDePerfil).length > 0) {
+      where.perfil = filtroDePerfil;
+    }
 
     const filas = await this.prisma.db.usuario.findMany({
       where,

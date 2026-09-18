@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, NotFoundException } from '@nestj
 import type { JwtPayload } from '@boxadmin/shared';
 import { ReservasService } from './reservas.service';
 import type { HistorialService } from '../common/historial/historial.service';
+import type { ListaEsperaService } from '../lista-espera/lista-espera.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 const ADMIN: JwtPayload = { sub: 'usr-admin', tenantId: 'gym-1', rol: 'ADMIN_OPERATIVO' };
@@ -73,13 +74,20 @@ function crearServicio() {
   };
   const prisma = { db } as unknown as PrismaService;
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
+  // Desde la Fase 3A, cancelar reparte el cupo liberado al primero de la cola.
+  const listaEspera = { asignarPrimero: jest.fn().mockResolvedValue(null) };
 
   return {
-    servicio: new ReservasService(prisma, historial as unknown as HistorialService),
+    servicio: new ReservasService(
+      prisma,
+      historial as unknown as HistorialService,
+      listaEspera as unknown as ListaEsperaService,
+    ),
     turno,
     perfil,
     reserva,
     historial,
+    listaEspera,
     db,
   };
 }
@@ -439,5 +447,57 @@ describe('ReservasService.reasignar', () => {
       }),
       expect.anything(),
     );
+  });
+});
+
+describe('ReservasService.cancelar dispara la lista de espera', () => {
+  it('corre en Serializable: al asignar el cupo pasa a competir por el', async () => {
+    const { servicio, db } = crearServicio();
+
+    await servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE');
+
+    // Antes de la Fase 3A esta transaccion no llevaba isolationLevel, porque
+    // cancelar no competia por ningun cupo. Ahora si: dos cancelaciones
+    // simultaneas sobre el mismo turno podrian dar el mismo lugar a dos
+    // personas de la cola.
+    expect(db.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: 'Serializable' }),
+    );
+  });
+
+  it('llama a asignarPrimero con el MISMO cliente de la transaccion', async () => {
+    const { servicio, listaEspera, db } = crearServicio();
+
+    await servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE');
+
+    // Mismo cliente = misma transaccion. Si se pasara `this.prisma.db`, una
+    // cancelacion que fallara despues dejaria una reserva de la cola que nadie
+    // pidio.
+    expect(listaEspera.asignarPrimero).toHaveBeenCalledWith(ADMIN, 'turno-1', db);
+  });
+
+  it('asigna DESPUES de marcar la cancelacion, no antes', async () => {
+    const { servicio, reserva, listaEspera } = crearServicio();
+
+    await servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE');
+
+    // Al reves, el cupo seguiria ocupado y la asignacion encontraria el turno
+    // lleno.
+    expect(reserva.update.mock.invocationCallOrder[0]).toBeLessThan(
+      listaEspera.asignarPrimero.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('no asigna nada si la reserva ya estaba cancelada', async () => {
+    const { servicio, listaEspera, reserva } = crearServicio();
+    reserva.findFirst.mockImplementation((args: { include?: unknown }) =>
+      args?.include ? { ...RESERVA, canceladaEn: new Date(), perfil: PERFIL } : null,
+    );
+
+    await expect(servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(listaEspera.asignarPrimero).not.toHaveBeenCalled();
   });
 });

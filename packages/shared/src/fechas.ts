@@ -64,3 +64,26 @@ export function comparaHoras(a: string, b: string): number {
 export function comienzoDeHoyUtc(ahora: Date = new Date()): Date {
   return desdeFechaISO(aFechaISO(ahora));
 }
+
+/**
+ * El instante exacto en que empieza un turno, combinando su fecha (columna
+ * `@db.Date`, que Prisma devuelve a medianoche UTC) con su `horaInicio` "HH:MM".
+ *
+ * LIMITACION CONOCIDA, deliberada: `horaInicio` es "hora local del salon" segun
+ * el comentario del schema, pero el sistema no almacena la zona horaria de
+ * ningun gimnasio. Aqui se interpreta como UTC, que es la misma convencion que
+ * usa todo el resto del sistema desde la Fase 1 (fechas de turno, ventanas de
+ * pack, generacion de meses). Cambiarlo solo aqui rompería la coherencia; si
+ * algun dia se soportan husos, se cambia en todos los sitios a la vez.
+ */
+export function instanteDelTurno(fecha: Date, hora: string): Date {
+  if (!esHoraValida(hora)) {
+    throw new FechaInvalidaError(`Hora invalida: ${hora}. Se espera HH:MM en 24 h.`);
+  }
+
+  const [horas, minutos] = hora.split(':').map(Number);
+
+  return new Date(
+    Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate(), horas, minutos, 0, 0),
+  );
+}

@@ -470,6 +470,298 @@ del `start:dev` compite por los jobs de la cola y los resuelve contra la base de
 en vez de la de test (5433). El síntoma es desconcertante: un job que acabas de encolar falla con
 "Sala inexistente" aunque la sala exista. Pára la API antes de `test:e2e`.
 
+## Endpoints de la Fase 3A — self-service del alumno
+
+Un alumno entra con una clave de invitación, ve su calendario, reserva y cancela clases sueltas
+dentro de las reglas, se anota en lista de espera y sube un comprobante de pago. Sin que el admin
+intervenga en el momento.
+
+⚠️ La **PWA no entra aquí**: la Fase 3 del PDF se partió en dos. Esta es la API; `apps/web` llega en
+la Fase 3B, construida contra este contrato ya probado.
+
+### Invitaciones
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/invitaciones` | `ADMIN_OPERATIVO` |
+| GET | `/invitaciones` | `ADMIN_OPERATIVO` |
+| PATCH | `/invitaciones/:id` | `ADMIN_OPERATIVO` |
+
+**Una clave lleva consigo las salas y el pack** que recibirá el alumno, y exige al menos una sala.
+Eso no es un adorno: las reservas se validan contra `UsuarioSala`, así que un alumno auto-registrado
+sin salas no podría ver ni reservar nada. La intervención del admin ocurre **antes** del alta, al
+preparar la clave, no después.
+
+El `codigo` lo genera el servidor (32 caracteres hexadecimales de `randomBytes`), nunca lo propone el
+cliente, y **no aparece en el historial**: es una credencial. Tampoco se puede cambiar — para rotarlo
+se desactiva la clave y se crea otra.
+
+### Auto-registro
+
+| Método | Ruta | Acceso |
+|---|---|---|
+| POST | `/auth/auto-registro` | público, con throttle estricto |
+| GET | `/usuarios?autoRegistrado=true` | `ADMIN_OPERATIVO` |
+
+El cuerpo trae `tenantSlug`, `codigo`, `nombreCompleto`, `email` y `password`, y devuelve el mismo
+par de tokens que el login: el alumno queda logueado.
+
+**Corre en una transacción Serializable con reintento.** `usosMax` es un cupo y tiene exactamente la
+misma carrera que el cupo de un turno: sin aislamiento, dos registros simultáneos con una clave de un
+solo uso leen ambos `usosActuales = 0` y ambos pasan. Encima del aislamiento, el incremento va con un
+`updateMany` condicional, el mismo compare-and-swap que protege la rotación de refresh tokens.
+
+El rol se fija a `ALUMNO` **en el servicio**, no solo en el DTO: una sola línea de defensa en un
+endpoint público no basta.
+
+Las cuatro formas de clave inutilizable —inexistente, desactivada, caducada y agotada— devuelven el
+**mismo 401 con el mismo mensaje**. A quien esté probando códigos no se le dice cuál acertó.
+
+### Calendario del alumno
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| GET | `/mi-calendario?desde=&hasta=&salaId=` | `ALUMNO` |
+| GET | `/turnos-disponibles?desde=&hasta=&salaId=` | `ALUMNO` |
+| POST | `/turnos/:id/mi-reserva` | `ALUMNO` |
+| DELETE | `/mis-reservas/:id` | `ALUMNO` |
+| POST | `/turnos/:id/lista-espera` | `ALUMNO` |
+| DELETE | `/lista-espera/:id` | `ALUMNO` |
+
+Todas operan sobre el perfil **del actor**, nunca sobre un `perfilId` del cuerpo. Un usuario sin
+perfil —un admin, por ejemplo— recibe 404, y es correcto: no tiene calendario propio.
+
+⚠️ **`MesCalendario.estado = HABILITADO` ya no es decorativo.** Desde esta fase, un turno solo
+aparece en `turnos-disponibles` si su mes está publicado. Es el enganche que la Fase 2 dejó escrito.
+
+Pero el gate aplica a **descubrir** turnos, no a ver los propios: `mi-calendario` devuelve siempre
+las reservas del alumno. Si el admin despublicara un mes, hacer desaparecer de su pantalla una clase
+que tiene reservada sería peor que mostrarla.
+
+Pedir una sala a la que no se tiene acceso devuelve **lista vacía, no 403**: contestar "no tienes
+acceso" confirmaría que esa sala existe.
+
+### Disponibilidad: un solo concepto
+
+`DisponibilidadService` unifica lo que en TurnoFit son dos features separadas y confusas —"lista de
+espera" y "solo cupos liberados"— en un estado consolidado. El contrato tiene **dos ejes separados a
+propósito**:
+
+| Campo | Qué describe |
+|---|---|
+| `estado` | El **turno**, independiente de quién pregunte |
+| `puedeReservar` + `motivo` | A **este alumno, ahora** |
+
+| Estado | Cuándo |
+|---|---|
+| `LIBRE` | hay cupo |
+| `SOLO_ADMIN` | hay cupo, pero la sala es `soloCuposLiberados` y nadie canceló todavía |
+| `LISTA_ESPERA` | sin cupo, con lista de espera habilitada |
+| `LLENO` | sin cupo y sin lista de espera |
+
+Mezclar los dos ejes —hacer que el estado cambiara según quién consulta— haría el contrato inservible
+para el frontend, que necesita pintar el turno y el botón por separado.
+
+Los `motivo` posibles, resueltos **en este orden** (gana el primero que se cumpla): `SIN_ACCESO_A_SALA`,
+`SALA_NO_VISIBLE`, `MES_NO_PUBLICADO`, `YA_RESERVADO`, `VENTANA_CERRADA`, `SOLO_CUPOS_LIBERADOS`. Va
+de lo más general a lo más específico a propósito: a un alumno que ni siquiera tiene la sala asignada
+no le sirve que le digan "la ventana cerró".
+
+**Un cupo "liberado" es derivable**: existe alguna reserva cancelada en ese turno. No hizo falta
+ninguna columna nueva.
+
+### Configuración heredable
+
+`minMinutosCancelar`, `minMinutosAnotarse` y `listaEsperaHabilitada` se resuelven en cascada:
+**`Sala ?? Tenant ?? sistema`**, campo por campo. El valor del sistema es 0 minutos y lista de espera
+apagada.
+
+⚠️ Es `??` y no `||`, y la diferencia es un bug de negocio: `0` y `false` son valores configurados a
+propósito ("en esta sala no hay ventana"), no ausencias. Hay dos tests que fallan si se cambia.
+
+**`Tenant` no tiene `cupoBase`** aunque `Sala` sí. Es deliberado: el planificador de la Fase 2
+reporta `SALA_SIN_CUPO_BASE` como conflicto cuando la sala no lo define, y un fallback en el tenant
+cambiaría ese detector en silencio.
+
+### Lista de espera
+
+La posición **se deriva** del orden por `(createdAt, id)`. No hay columna `posicion`, a diferencia del
+PDF: un entero guardado hay que renumerarlo en cada baja y es una carrera en cada alta. Mismo
+razonamiento que el conteo de clases derivado de la Fase 1.
+
+Al cancelarse una reserva, **dentro de la misma transacción**, el primero de la cola entra
+automáticamente con `origen: 'LISTA_ESPERA'`. No se notifica a nadie todavía: el hook está preparado
+e inerte hasta la Fase 5.
+
+⚠️ **`ReservasService.cancelar` pasó a Serializable con reintento** en esta fase. Hasta ahora no
+competía por ningún cupo; desde que reparte el liberado, dos cancelaciones simultáneas sobre el mismo
+turno podrían dar el mismo lugar a dos personas.
+
+La asignación **no re-valida** el pack ni la ventana del beneficiario: el lugar es suyo por posición
+en la cola. Y salta a quien ya tenga reserva activa en ese turno, limpiando igualmente su fila.
+
+### Comprobantes
+
+| Método | Ruta | Rol mínimo |
+|---|---|---|
+| POST | `/comprobantes` | `ALUMNO` |
+| PATCH | `/comprobantes/:id/confirmar` | `ALUMNO` |
+| GET | `/comprobantes?estado=` | `ALUMNO` (los suyos) / `ADMIN_OPERATIVO` (todos) |
+| PATCH | `/comprobantes/:id/aprobar` | `ADMIN_OPERATIVO` |
+| PATCH | `/comprobantes/:id/rechazar` | `ADMIN_OPERATIVO` |
+
+**El flujo es de tres pasos**, que es el patrón estándar de subida presignada:
+
+1. `POST /comprobantes` crea la fila en `PENDIENTE` con `subidoEn: null` y devuelve la URL firmada.
+2. El cliente hace `PUT` del archivo a esa URL. **No pasa por la API.**
+3. `PATCH /comprobantes/:id/confirmar` marca `subidoEn`.
+
+El tercer paso existe porque **ni S3 ni el adaptador local pueden avisar a la API** de que el `PUT`
+terminó. Sin él, saber si un comprobante tiene archivo obligaría a consultar el almacén en cada
+listado. Una fila sin confirmar no aparece en el listado del admin —así no ve enlaces rotos—, pero sí
+en el del alumno, que es quien tiene que terminar de subirla.
+
+La **clave del archivo la genera el servidor** (UUID + extensión sacada del *mime*, con lista blanca:
+PDF, JPEG, PNG y WebP). Usar el nombre del cliente sería path traversal servido en bandeja. La clave
+nunca sale en el contrato público: solo viaja la URL firmada, de 5 minutos de vida.
+
+**Aprobar un comprobante pone `Perfil.pagoAlDia = true`.** Ese campo existía desde la Fase 1 sin que
+nada lo escribiera. Rechazar no lo toca: un rechazo no invalida un pago anterior que sí estaba bien.
+
+### Almacenamiento de archivos
+
+Un puerto `AlmacenDeArchivos` con dos adaptadores, elegidos por `ALMACEN_TIPO` **en el arranque** —así
+un error de configuración sale al levantar la aplicación, no en la primera subida—:
+
+| Valor | Qué hace | Variables que exige |
+|---|---|---|
+| `local` | Guarda en disco y expone `PUT`/`GET /archivos-locales/:clave` firmadas con HMAC | `ALMACEN_LOCAL_DIR`, `API_BASE_URL` |
+| `s3` | Presignado contra cualquier almacén compatible con S3 (Backblaze B2, DigitalOcean Spaces) | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
+
+Las variables de S3 **solo se exigen con `ALMACEN_TIPO=s3`**: pedirlas siempre obligaría a inventar
+credenciales falsas en desarrollo, que es justo como acaban commiteadas.
+
+**El adaptador local no es un mock.** Firma URLs y sirve archivos de verdad, así que los e2e
+ejercitan el flujo completo de tres pasos sin credenciales ni red — incluido descargar el archivo y
+comparar el buffer con lo que se subió. Sus rutas **solo se registran cuando `ALMACEN_TIPO=local`**:
+en producción no existen.
+
+La firma es HMAC-SHA256 sobre **clave y caducidad juntas**: si solo entrara la clave, cualquiera
+podría estirar la caducidad editando el query param; si solo la caducidad, una firma valdría para
+cualquier archivo. Se compara en tiempo constante.
+
+### Throttling
+
+`ThrottlerGuard` es el **primer** `APP_GUARD` de los tres: los guards corren en el orden en que se
+declaran, y el freno tiene que aplicarse antes de que `JwtAuthGuard` gaste tiempo validando el token
+de quien está probando credenciales.
+
+Cinco intentos por minuto y por IP en `/auth/login`, `/auth/refresh` y `/auth/auto-registro`. Los
+límites son configurables (`THROTTLE_AUTH_LIMIT`, `THROTTLE_AUTH_TTL`), **con los valores estrictos
+como defecto**, de modo que olvidarse de definir la variable deja el sistema en el lado seguro.
+
+⚠️ `.env.test` los sube a 100000 a propósito: `crearGimnasio` hace un login por cada `beforeEach` y un
+solo archivo encadena más de treinta contra la misma IP. Con el límite de producción, los e2e
+empezarían a dar 429 a partir del sexto test. El throttler se ejercita aparte en
+`throttling.e2e-spec.ts`, que se baja el límite **antes de importar la aplicación** — tiene que ser
+así porque `@Throttle` es metadata estática que se evalúa al definir la clase del controller.
+
+`main.ts` hace `trust proxy` en **1**, no `true`: confiar en toda la cadena de `X-Forwarded-For`
+dejaría falsificar la IP con una cabecera y saltarse el límite entero.
+
+### Flujo completo de ejemplo
+
+```bash
+API=http://localhost:3000
+AUTH="Authorization: Bearer $TOKEN_ADMIN"
+
+# 1. Sala con cupoBase y lista de espera encendida
+curl -X POST $API/salas -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"nombre":"Sala A","cupoBase":1,"listaEsperaHabilitada":true}'
+
+# 2. Clave de invitacion CON salas: sin ellas el alumno no podria reservar nada
+curl -X POST $API/invitaciones -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"nombre":"Alumnos de Pilates","salaIds":["SALA_ID"],"usosMax":20}'
+# -> { "codigo": "a1b2c3...", ... }   <- esto es lo que se reparte
+
+# 3. El alumno se da de alta solo, y queda logueado
+curl -X POST $API/auth/auto-registro -H 'Content-Type: application/json' \
+  -d '{"tenantSlug":"mi-gym","codigo":"a1b2c3...","nombreCompleto":"Ana Perez",
+       "email":"ana@ejemplo.com","password":"Password123!"}'
+# -> { "accessToken": "...", "usuario": { "rol": "ALUMNO" } }
+
+# 4. El admin publica el mes: hasta aqui el alumno no ve NINGUN turno
+curl -X POST $API/calendario/SALA_ID/2099/10/publicar -H "$AUTH"
+
+# 5. Ya puede descubrir turnos, con su disponibilidad calculada
+curl "$API/turnos-disponibles?desde=2099-10-01&hasta=2099-10-31" \
+  -H "Authorization: Bearer $TOKEN_ALUMNO"
+# -> [{ "turnoId": "...", "disponibilidad": { "estado": "LIBRE", "puedeReservar": true } }]
+
+# 6. Reserva, y la clase aparece en su calendario
+curl -X POST $API/turnos/TURNO_ID/mi-reserva -H "Authorization: Bearer $TOKEN_ALUMNO"
+curl "$API/mi-calendario?desde=2099-10-01&hasta=2099-10-31" \
+  -H "Authorization: Bearer $TOKEN_ALUMNO"
+
+# 7. Si el turno esta lleno, el error OFRECE la cola en vez de ser generico
+curl -X POST $API/turnos/TURNO_ID/mi-reserva -H "Authorization: Bearer $TOKEN_OTRO"
+# -> 409 "Este turno esta completo (1/1), pero puedes anotarte en la lista de espera..."
+curl -X POST $API/turnos/TURNO_ID/lista-espera -H "Authorization: Bearer $TOKEN_OTRO"
+# -> { "posicion": 1 }
+
+# 8. Al cancelar el primero, el de la cola entra SOLO
+curl -X DELETE $API/mis-reservas/RESERVA_ID -H "Authorization: Bearer $TOKEN_ALUMNO"
+curl "$API/mi-calendario?desde=2099-10-01&hasta=2099-10-31" \
+  -H "Authorization: Bearer $TOKEN_OTRO"
+# -> [{ "origen": "LISTA_ESPERA", ... }]
+
+# 9. Comprobante de pago, en tres pasos
+curl -X POST $API/comprobantes -H "Authorization: Bearer $TOKEN_ALUMNO" \
+  -H 'Content-Type: application/json' \
+  -d '{"nombreOriginal":"transferencia.pdf","tipoMime":"application/pdf"}'
+# -> { "comprobante": {...}, "urlDeSubida": "http://localhost:3000/archivos-locales/..." }
+
+curl -X PUT "URL_DE_SUBIDA" --data-binary @transferencia.pdf
+curl -X PATCH $API/comprobantes/COMP_ID/confirmar -H "Authorization: Bearer $TOKEN_ALUMNO"
+
+# 10. El admin lo aprueba, y el alumno queda al dia
+curl -X PATCH $API/comprobantes/COMP_ID/aprobar -H "$AUTH" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+### Trampas del entorno
+
+⚠️ **No corras los e2e con otra API viva contra el mismo Redis.** Ya estaba documentado para
+`start:dev`, pero `docker compose up` sin argumentos levanta también un contenedor `api` que usa el
+**mismo Redis** que alcanzan los tests desde el host: su worker les roba los jobs y los resuelve
+contra la base de desarrollo. Levanta solo lo que hace falta:
+
+```bash
+docker compose up -d postgres postgres-test redis
+```
+
+⚠️ **Que el puerto 3000 esté libre NO significa que no haya una API viva.** Matar el proceso que
+escucha en el puerto puede dejar en pie el de `nest start --watch` y su hijo `dist/main`, y **el
+worker de BullMQ sigue robando jobs sin escuchar en ningún puerto**. El síntoma vuelve a ser
+"Sala inexistente" en un job recién encolado. Para comprobarlo de verdad:
+
+```bash
+# Windows: lista los procesos node de ESTE repo, con su PID
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" |
+  Where-Object { \$_.CommandLine -like '*box-admin*' } |
+  Select-Object ProcessId, CommandLine"
+```
+
+Y mátalos **por PID concreto**, nunca por nombre de proceso.
+
+⚠️ **Si todo empieza a dar 500 de golpe, comprueba `docker info` antes de buscar el bug en el
+código.** Docker Desktop se cerró solo seis veces entre la Fase 2 y la 3A.
+
+⚠️ **`Sala.exclusiva` sigue sin efecto.** Está en el schema desde la Fase 1 y nunca se definió qué
+hace: se buscó en los tres PDFs, en los specs y en el código. Mejor un campo almacenado sin usar que
+una semántica inventada. `soloCuposLiberados` estaba igual y **sí** se resolvió en esta fase.
+
+
 ## Tests
 
 Unitarios:

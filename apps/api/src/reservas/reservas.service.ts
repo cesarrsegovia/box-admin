@@ -17,6 +17,7 @@ import {
   esConflictoDeSerializacion,
 } from '../common/prisma/serializable';
 import { HistorialService } from '../common/historial/historial.service';
+import { ListaEsperaService } from '../lista-espera/lista-espera.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 import type { CrearReservaDto } from './dto/crear-reserva.dto';
 import type { ReasignarReservaDto } from './dto/reasignar-reserva.dto';
@@ -44,6 +45,7 @@ export class ReservasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly listaEspera: ListaEsperaService,
   ) {}
 
   /**
@@ -161,49 +163,65 @@ export class ReservasService {
    * RECUPERABLE deja de contar contra el pack; DEFINITIVA sigue contando. El
    * efecto es automatico porque el consumo se deriva de las reservas — no hay
    * ningun contador que ajustar aqui.
+   *
+   * CAMBIO DE LA FASE 3A: pasa a Serializable con reintento. Hasta ahora
+   * cancelar no competia por ningun cupo, asi que no hacia falta; desde que
+   * libera un lugar y se lo da al primero de la lista de espera, dos
+   * cancelaciones simultaneas sobre el mismo turno podrian asignar el mismo
+   * lugar a dos personas distintas.
    */
   async cancelar(actor: JwtPayload, id: string, tipo: TipoCancelacion): Promise<ReservaPublica> {
-    return this.prisma.db.$transaction(async (tx) => {
-      const cliente = tx as ClientePrismaTx;
+    return this.conReintentoDeCupo(() =>
+      this.prisma.db.$transaction(
+        async (tx) => {
+          const cliente = tx as ClientePrismaTx;
 
-      const reserva = await cliente.reserva.findFirst({
-        where: { id },
-        include: { perfil: true },
-      });
-      if (!reserva) throw new NotFoundException('Reserva inexistente');
-      if (reserva.canceladaEn !== null) {
-        throw new ConflictException('La reserva ya estaba cancelada');
-      }
+          const reserva = await cliente.reserva.findFirst({
+            where: { id },
+            include: { perfil: true },
+          });
+          if (!reserva) throw new NotFoundException('Reserva inexistente');
+          if (reserva.canceladaEn !== null) {
+            throw new ConflictException('La reserva ya estaba cancelada');
+          }
 
-      const cancelada = await cliente.reserva.update({
-        where: { id },
-        data: { canceladaEn: new Date(), cancelacionTipo: tipo },
-      });
+          const cancelada = await cliente.reserva.update({
+            where: { id },
+            data: { canceladaEn: new Date(), cancelacionTipo: tipo },
+          });
 
-      // cancelacionesUsadas mide las cancelaciones DEL ALUMNO, no las
-      // correcciones del salon. En la Fase 1 este endpoint solo lo alcanza el
-      // personal, asi que la rama del alumno no se ejercita en produccion
-      // todavia — pero la regla queda escrita y probada para la Fase 3.
-      if (actor.sub === reserva.perfil.usuarioId) {
-        await cliente.perfil.update({
-          where: { id: reserva.perfilId },
-          data: { cancelacionesUsadas: { increment: 1 } },
-        });
-      }
+          // cancelacionesUsadas mide las cancelaciones DEL ALUMNO, no las
+          // correcciones del salon. La rama se escribio en la Fase 1 pensando en
+          // la Fase 3; desde DELETE /mis-reservas/:id ya se ejercita de verdad.
+          if (actor.sub === reserva.perfil.usuarioId) {
+            await cliente.perfil.update({
+              where: { id: reserva.perfilId },
+              data: { cancelacionesUsadas: { increment: 1 } },
+            });
+          }
 
-      await this.historial.registrar(
-        {
-          actor,
-          entidad: 'Reserva',
-          entidadId: id,
-          accion: 'CANCELADA',
-          detalle: { tipo, turnoId: reserva.turnoId, perfilId: reserva.perfilId },
+          await this.historial.registrar(
+            {
+              actor,
+              entidad: 'Reserva',
+              entidadId: id,
+              accion: 'CANCELADA',
+              detalle: { tipo, turnoId: reserva.turnoId, perfilId: reserva.perfilId },
+            },
+            cliente,
+          );
+
+          // DESPUES de marcar la cancelacion: al reves, el cupo seguiria
+          // ocupado y la asignacion encontraria el turno lleno. Y con el MISMO
+          // cliente, para que la reserva asignada se revierta junto con la
+          // cancelacion si algo falla mas abajo.
+          await this.listaEspera.asignarPrimero(actor, reserva.turnoId, cliente);
+
+          return aReservaPublica(cancelada);
         },
-        cliente,
-      );
-
-      return aReservaPublica(cancelada);
-    });
+        { isolationLevel: 'Serializable' },
+      ),
+    );
   }
 
   /**

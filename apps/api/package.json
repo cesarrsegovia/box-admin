@@ -21,6 +21,8 @@
     "db:studio": "dotenv -e ../../.env -- prisma studio"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1134.0",
+    "@aws-sdk/s3-request-presigner": "^3.1134.0",
     "@boxadmin/shared": "workspace:^",
     "@nestjs/bullmq": "^10.2.3",
     "@nestjs/common": "^10.0.0",
@@ -29,6 +31,7 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/throttler": "^5",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "7.10.0",
     "argon2": "0.44.0",

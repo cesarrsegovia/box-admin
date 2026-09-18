@@ -523,3 +523,28 @@ describe('centinela de clasificacion', () => {
     expect(sinClasificar).toEqual([]);
   });
 });
+
+describe('modelos de la Fase 3A', () => {
+  const MODELOS_NUEVOS = [
+    'ClaveInvitacion',
+    'ClaveInvitacionSala',
+    'ListaEspera',
+    'Comprobante',
+  ] as const;
+
+  it.each(MODELOS_NUEVOS)('a %s se le inyecta el tenantId en el where', (modelo) => {
+    const args = runWithTenant('gym-1', () =>
+      aplicarScopeDeTenant(modelo, 'findMany', { where: { activa: true } }),
+    );
+
+    expect(args).toEqual({ where: { activa: true, tenantId: 'gym-1' } });
+  });
+
+  it.each(MODELOS_NUEVOS)('a %s se le rellena el tenantId al crear', (modelo) => {
+    const args = runWithTenant('gym-1', () =>
+      aplicarScopeDeTenant(modelo, 'create', { data: { nombre: 'x' } }),
+    );
+
+    expect(args).toEqual({ data: { nombre: 'x', tenantId: 'gym-1' } });
+  });
+});

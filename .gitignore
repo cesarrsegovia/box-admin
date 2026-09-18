@@ -17,3 +17,7 @@ Thumbs.db
 
 .idea/
 .vscode/
+# Archivos del almacen local (ALMACEN_TIPO=local). El patron lleva ** porque
+# el cwd de los tests es apps/api, asi que el directorio se crea ahi y no en la
+# raiz; un `var/almacen/` a secas queda anclado a la raiz y no lo cubre.
+**/var/almacen/

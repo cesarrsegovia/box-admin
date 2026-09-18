@@ -302,3 +302,129 @@ Y dos trampas de entorno:
 
 Fase 2 completa. Nada commiteado: los mensajes de commit sugeridos de las 11 tareas
 estan en el plan, uno por tarea.
+
+# Progreso Fase 3A — Self-service del alumno (backend)
+
+**Spec:** `docs/superpowers/specs/2026-09-17-fase3a-self-service-alumno.md`
+**Plan:** `docs/superpowers/plans/2026-09-17-fase3a-self-service-alumno.md` (18 tareas, T0–T17)
+
+La Fase 3 del PDF se **partió en dos**. Esta es la API completa; la PWA (`apps/web`, Next.js) va en
+la Fase 3B, contra este contrato ya implementado y cubierto por e2e. El motivo no es cosmético: un
+frontend escrito a la vez que su API termina corrigiendo el contrato desde la pantalla, que es la
+forma más cara de descubrir que un endpoint estaba mal pensado.
+
+- [x] T0 — Spike de riesgo (throttler, orden de guards, firma de S3)
+- [x] T1 — Contratos compartidos e `instanteDelTurno`
+- [x] T2 — Esquema y migración `20260917121204_fase3a_self_service`
+- [x] T3 — Resolución en cascada de la configuración
+- [x] T4 — `calcularDisponibilidad`, la tabla de decisión
+- [x] T5 — `DisponibilidadService`
+- [x] T6 — CRUD de claves de invitación
+- [x] T7 — Auto-registro
+- [x] T8 — Throttling de las rutas públicas
+- [x] T9 — Filtro de altas pendientes
+- [x] T10 — Calendario del alumno (lectura)
+- [x] T11 — Hook inerte de notificaciones
+- [x] T12 — Lista de espera y asignación automática
+- [x] T13 — Reserva y cancelación propias
+- [x] T14 — Puerto `AlmacenDeArchivos` con adaptadores local y S3
+- [x] T15 — Comprobantes de pago
+- [x] T16 — Tests end-to-end
+- [x] T17 — Verificación final, README y tracker
+
+## Decisiones cerradas con Cesar antes de empezar
+
+1. El alumno solo **descubre** turnos de meses `HABILITADO`; sus reservas las ve siempre.
+2. El cupo liberado se **asigna automáticamente** al primero de la cola (notificar no notifica a
+   nadie hasta la Fase 5).
+3. Almacenamiento como **puerto con dos adaptadores**; el local no es un mock.
+4. Configuración heredable en **campos directos de `Tenant`**, cascada `Sala ?? Tenant ?? sistema`.
+5. **La clave de invitación lleva las salas y el pack** — tapa un agujero del PDF.
+6. La **rutina inicial no entra**; la carga el admin con el `POST /rutinas` de la Fase 2.
+7. **`Sala.exclusiva` sigue inerte**: nunca se definió qué hace, en ningún documento.
+8. **Throttling por IP** en las rutas públicas de auth.
+
+## Estado final de la Fase 3A
+
+**75 tests en `shared` + 591 unitarios + 127 e2e.** `tsc --noEmit` limpio, Prettier limpio sobre todo
+lo que escribe la fase, `prisma migrate status` sin deriva. Los e2e corridos **tres veces seguidas**
+con resultado idéntico: los de lista de espera y concurrencia tocan carreras reales, así que un
+fallo intermitente ahí sería un bug, no un test frágil.
+
+Nada commiteado: índice de git vacío, `.env` y `.env.test` ignorados, y el directorio del almacén
+local también.
+
+### Checklist de aceptación, verificado a mano contra la API real
+
+| # | Punto | Resultado |
+|---|---|---|
+| 1 | Auto-registro con clave válida | OK rol `ALUMNO`, con la sala de la clave |
+| 2 | El alta aparece en la bandeja de pendientes | OK `?autoRegistrado=true` la lista |
+| 3 | El alumno ve su calendario y reserva | OK `LIBRE` → reserva con `origen: ALUMNO` |
+| 4 | Un turno lleno **ofrece** la lista de espera | OK 409 con el mensaje; posición 1 |
+| 5 | Cancelar dispara la asignación del primero | OK B entra solo, `origen: LISTA_ESPERA` |
+| 6 | Comprobante: subir, ver, aprobar | OK PUT 200, **descarga byte a byte igual**, `pagoAlDia: true` |
+| 7 | Los turnos de un mes sin publicar no aparecen | OK `[]` antes de publicar |
+| 8 | Las rutas públicas tienen límite | OK `401 401 401 429 429` |
+
+### Lo que se encontró por el camino
+
+**Tres errores en mi propio plan**, ninguno visible en un test verde:
+
+1. **El orden de `prisma generate`.** El plan corría los tests de la extensión de aislamiento antes
+   de regenerar el cliente. El spec de la Fase 0 trae meta-tests que comparan la clasificación de
+   modelos contra el **DMMF real de Prisma**, y ese DMMF todavía no conocía los cuatro modelos
+   nuevos. Los tests de la Fase 0 hicieron exactamente su trabajo.
+2. **Un doble de test que mentía.** El mock de `sala.findMany` devolvía siempre las dos salas
+   ignorando el filtro `in`, así que cualquier alta de una sola sala fallaba. No era un bug del
+   servicio: era el doble comportándose distinto de Prisma.
+3. **El límite del throttler habría roto los 79 e2e existentes.** `crearGimnasio` hace un login por
+   cada `beforeEach` y un solo archivo encadena más de treinta contra la misma IP: a partir del sexto
+   test, todo 429. Resuelto haciendo los límites configurables **con los valores estrictos como
+   defecto**, y probando el throttler en un archivo aparte que se baja el límite antes de importar la
+   aplicación.
+
+**Un error mío de ejecución:** edité `app.module.ts` con un script de Python en modo texto y convirtió
+el archivo entero de LF a CRLF. Con `core.autocrlf=true`, `git diff` mostraba solo las líneas nuevas
+y ocultaba el resto — pero Prettier lo veía. Lección: editar archivos del repo con las herramientas
+de edición, no con scripts en modo texto.
+
+**Un `.gitignore` que no cubría lo que creía cubrir.** El patrón `var/almacen/` lleva una barra
+intermedia, así que git lo ancla a la raíz del repositorio; pero el cwd de los tests es `apps/api`, y
+ahí es donde se crea el directorio. Diez PDFs de prueba quedaron sin ignorar. Corregido a
+`**/var/almacen/`.
+
+### Trampas de entorno
+
+- **`docker compose up` sin argumentos levanta también el contenedor `api`**, que usa el **mismo
+  Redis** que alcanzan los tests desde el host: su worker les roba los jobs. Es la trampa de la Fase
+  2 en versión Docker. Levantar solo `postgres postgres-test redis`.
+- **Que el puerto 3000 esté libre no significa que no haya una API viva.** Volvió a morder al final
+  de la fase: tras el checklist manual maté el proceso que escuchaba en el 3000, `netstat` confirmó
+  el puerto libre, y aun así 24 e2e fallaron con "Sala inexistente". Seguían en pie el
+  `nest start --watch` y su hijo `dist/main`, y **el worker de BullMQ roba jobs sin escuchar en
+  ningún puerto**. Hay que listar los procesos node del repo y matarlos por PID; el comando está en
+  el README.
+- **Docker Desktop se cerró solo otras dos veces** durante esta fase (seis en total desde la Fase 2).
+  Un `P1001` o un 500 repentino en todo suele ser eso: comprobar `docker info` antes de buscar el bug
+  en el código.
+- El SDK de AWS avisa de que **sus versiones publicadas desde enero de 2027 exigirán Node ≥ 22**, y
+  el monorepo está clavado en `">=20 <21"`. No bloquea nada hoy.
+
+### Deuda declarada
+
+- **13 archivos de las Fases 0–2 no pasan `prettier --check`.** Se verificó cada uno contra su
+  versión commiteada: ya venían así. No se tocaron, para no mezclar un reformateo masivo con el
+  código de esta fase. Sigue pendiente ese commit de solo formato.
+- **`Sala.exclusiva`** sigue almacenado sin efecto, a la espera de que alguien defina qué significa.
+- **El hook de notificaciones es inerte**: solo escribe en el log. La Fase 5 lo llena.
+- **Los husos horarios** siguen sin existir: `horaInicio` se interpreta como UTC en todo el sistema.
+  Documentado en `instanteDelTurno`, y si algún día se soportan hay que cambiarlo en todos los sitios
+  a la vez.
+
+## Siguiente paso
+
+Fase 3A completa. **Fase 3B: la PWA** (`apps/web`, Next.js, manifest, service worker, offline de "mi
+calendario", React Query y las cinco pantallas), contra el contrato que esta fase deja probado.
+
+Nada commiteado: los mensajes de commit sugeridos de las 18 tareas están en el plan, uno por tarea.

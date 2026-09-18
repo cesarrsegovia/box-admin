@@ -3,15 +3,24 @@ import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { LIMITE_GENERAL, TTL_GENERAL } from './common/throttling';
+import { AlmacenModule } from './almacen/almacen.module';
 import { AusenciasModule } from './ausencias/ausencias.module';
 import { AuthModule } from './auth/auth.module';
 import { CalendarioModule } from './calendario/calendario.module';
+import { ComprobantesModule } from './comprobantes/comprobantes.module';
+import { DisponibilidadModule } from './disponibilidad/disponibilidad.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HistorialModule } from './common/historial/historial.module';
+import { InvitacionesModule } from './invitaciones/invitaciones.module';
 import { TenantContextMiddleware } from './common/tenant/tenant.middleware';
 import { validarEntorno } from './config/validar-entorno';
 import { JobsModule } from './jobs/jobs.module';
+import { ListaEsperaModule } from './lista-espera/lista-espera.module';
+import { MiCalendarioModule } from './mi-calendario/mi-calendario.module';
+import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { PacksModule } from './packs/packs.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReservasModule } from './reservas/reservas.module';
@@ -39,6 +48,10 @@ import { VacacionesModule } from './vacaciones/vacaciones.module';
       validate: validarEntorno,
     }),
     JwtModule.register({ global: true }),
+    // Limite permisivo global: no esta para moderar el uso normal, sino para
+    // que ningun endpoint quede completamente sin freno. Las rutas publicas de
+    // auth llevan ademas su propio limite estricto (@Throttle en el controller).
+    ThrottlerModule.forRoot([{ name: 'default', ttl: TTL_GENERAL, limit: LIMITE_GENERAL }]),
     // Conexion a Redis para BullMQ.
     //
     // Desviacion respecto al documento original de la Fase 0, que escribia
@@ -71,19 +84,31 @@ import { VacacionesModule } from './vacaciones/vacaciones.module';
     }),
     PrismaModule,
     HistorialModule,
+    AlmacenModule.forRoot(),
+    DisponibilidadModule,
+    NotificacionesModule,
+    ListaEsperaModule,
     AuthModule,
     SalasModule,
     PacksModule,
     UsuariosModule,
+    InvitacionesModule,
     TurnosModule,
     ReservasModule,
     RutinasModule,
     VacacionesModule,
     AusenciasModule,
     CalendarioModule,
+    MiCalendarioModule,
+    ComprobantesModule,
     JobsModule,
   ],
   providers: [
+    // Primero de los tres a proposito: los guards corren en el orden en que se
+    // declaran (verificado empiricamente con un spike antes de escribir esto),
+    // y el freno tiene que aplicarse ANTES de que JwtAuthGuard gaste tiempo
+    // validando el token de quien esta probando credenciales.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

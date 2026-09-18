@@ -28,6 +28,7 @@ export async function crearAppDeTest(): Promise<EntornoE2E> {
 export async function limpiarBaseDeDatos(prisma: PrismaService): Promise<void> {
   await prisma.base.$executeRawUnsafe(
     'TRUNCATE TABLE ' +
+      '"comprobantes", "listas_espera", "claves_invitacion_salas", "claves_invitacion", ' +
       '"rutinas_fijas", "meses_calendario", "vacaciones_alumnos", "ausencias", ' +
       '"reservas", "usuarios_salas", "turnos", "perfiles", "packs", "salas", ' +
       '"refresh_tokens", "usuarios", "historial_acciones", "tenants" ' +
@@ -115,4 +116,88 @@ export async function esperarPublicacion(
       'Si el estado se quedo en "en_cola", lo mas probable es que el worker no este ' +
       'registrado o que Redis no responda.',
   );
+}
+
+export interface AlumnoDeTest {
+  usuarioId: string;
+  perfilId: string;
+  token: string;
+  email: string;
+}
+
+/**
+ * Crea una clave de invitacion y da de alta un alumno con ella.
+ *
+ * Es el camino corto para los tests que necesitan un alumno operativo sin
+ * ejercitar el auto-registro en si. Un alumno creado asi queda con sus salas
+ * desde el primer momento, que es justo lo que la clave de invitacion resuelve.
+ */
+export async function crearAlumnoPorInvitacion(
+  app: INestApplication,
+  gimnasio: GimnasioDeTest,
+  salaIds: string[],
+  opciones: { email?: string; packId?: string } = {},
+): Promise<AlumnoDeTest> {
+  const servidor = app.getHttpServer();
+  const email =
+    opciones.email ?? `alumno-${Date.now()}-${Math.random().toString(36).slice(2)}@test.io`;
+
+  const clave = await request(servidor)
+    .post('/invitaciones')
+    .set('Authorization', `Bearer ${gimnasio.adminToken}`)
+    .send({
+      nombre: 'Clave de test',
+      salaIds,
+      ...(opciones.packId ? { packId: opciones.packId } : {}),
+    })
+    .expect(201);
+
+  const alta = await request(servidor)
+    .post('/auth/auto-registro')
+    .send({
+      tenantSlug: gimnasio.slug,
+      codigo: clave.body.codigo,
+      nombreCompleto: 'Alumno de Test',
+      email,
+      password: 'Password123!',
+    })
+    .expect(201);
+
+  const detalle = await request(servidor)
+    .get(`/usuarios/${alta.body.usuario.id}`)
+    .set('Authorization', `Bearer ${gimnasio.adminToken}`)
+    .expect(200);
+
+  return {
+    usuarioId: alta.body.usuario.id,
+    perfilId: detalle.body.perfilId,
+    token: alta.body.accessToken,
+    email,
+  };
+}
+
+/**
+ * Publica un mes y espera a que el worker termine.
+ *
+ * Sin esto, el alumno no ve ningun turno: desde la Fase 3A el descubrimiento
+ * exige que el mes este HABILITADO.
+ */
+export async function publicarMes(
+  app: INestApplication,
+  token: string,
+  salaId: string,
+  anio: number,
+  mes: number,
+): Promise<void> {
+  const servidor = app.getHttpServer();
+
+  await request(servidor)
+    .post(`/calendario/${salaId}/${anio}/${mes}/publicar`)
+    .set('Authorization', `Bearer ${token}`)
+    .expect(202);
+
+  const estado = await esperarPublicacion(servidor, token, salaId, anio, mes);
+  if (estado.publicacion?.estado !== 'terminado') {
+    throw new Error(`La publicacion fallo: ${JSON.stringify(estado.publicacion)}`);
+  }
 }

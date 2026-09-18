@@ -23,6 +23,17 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Configuracion heredable: la Sala manda, y donde la Sala dice null, manda
+  // esto. Donde esto tambien dice null, manda el valor del sistema (0 minutos,
+  // lista de espera apagada). Ver `resolverConfiguracion` en @boxadmin/shared.
+  //
+  // NO se agrega `cupoBase` aqui aunque Sala lo tenga: el planificador de la
+  // Fase 2 reporta SALA_SIN_CUPO_BASE como conflicto cuando la sala no lo
+  // define, y un fallback en el tenant cambiaria ese detector en silencio.
+  minMinutosCancelar    Int?
+  minMinutosAnotarse    Int?
+  listaEsperaHabilitada Boolean?
+
   usuarios        Usuario[]
   perfiles        Perfil[]
   salas           Sala[]
@@ -34,6 +45,11 @@ model Tenant {
   mesesCalendario MesCalendario[]
   vacaciones      VacacionAlumno[]
   ausencias       Ausencia[]
+
+  clavesInvitacion     ClaveInvitacion[]
+  clavesInvitacionSala ClaveInvitacionSala[]
+  comprobantes         Comprobante[]
+  listasEspera         ListaEspera[]
 
   @@map("tenants")
 }
@@ -143,12 +159,13 @@ model Sala {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  usuarios        UsuarioSala[]
-  turnos          Turno[]
-  packs           Pack[]
-  rutinasFijas    RutinaFija[]
-  mesesCalendario MesCalendario[]
-  ausencias       Ausencia[]
+  usuarios         UsuarioSala[]
+  turnos           Turno[]
+  packs            Pack[]
+  rutinasFijas     RutinaFija[]
+  mesesCalendario  MesCalendario[]
+  ausencias        Ausencia[]
+  clavesInvitacion ClaveInvitacionSala[]
 
   // Destino de las FK compuestas de UsuarioSala, Pack y Turno. Ver Usuario.
   @@unique([tenantId, id])
@@ -185,6 +202,12 @@ model Perfil {
   vigenciaDesde       DateTime?
   vigenciaHasta       DateTime?
 
+  // Marca las altas que entraron por auto-registro, para que el admin las
+  // revise. Es una bandeja de auditoria, NO un bloqueo: el alumno queda
+  // operativo desde el primer momento, con el pack y las salas que traia su
+  // clave de invitacion.
+  autoRegistrado Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -192,6 +215,8 @@ model Perfil {
   reservas     Reserva[]
   rutinasFijas RutinaFija[]
   vacaciones   VacacionAlumno[]
+  comprobantes Comprobante[]
+  listasEspera ListaEspera[]
 
   // Destino de las FK compuestas de UsuarioSala y Reserva. Ver Usuario.
   @@unique([tenantId, id])
@@ -256,7 +281,8 @@ model Pack {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  perfiles Perfil[]
+  perfiles         Perfil[]
+  clavesInvitacion ClaveInvitacion[]
 
   // Destino de la FK compuesta de Perfil.pack. Ver Usuario.
   @@unique([tenantId, id])
@@ -288,7 +314,8 @@ model Turno {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  reservas Reserva[]
+  reservas     Reserva[]
+  listasEspera ListaEspera[]
 
   // Destino de la FK compuesta de Reserva.turno. Ver Usuario.
   @@unique([tenantId, id])
@@ -478,4 +505,133 @@ model Ausencia {
 
   @@index([tenantId, salaId])
   @@map("ausencias")
+}
+
+model ClaveInvitacion {
+  // Codigo que un alumno usa para darse de alta solo. Lleva consigo las salas y
+  // el pack que recibira, y eso es lo que tapa un agujero del PDF de la fase: un
+  // alumno auto-registrado SIN filas en UsuarioSala no podria ver ni reservar
+  // nada, porque toda reserva se valida contra esa tabla.
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  // 32 caracteres aleatorios generados por el servidor. El cliente nunca lo
+  // propone.
+  codigo String
+  // Para que el admin reconozca la clave en su listado: "Alumnos de Pilates".
+  nombre String
+  activa Boolean @default(true)
+
+  usosMax      Int? // null = ilimitada
+  usosActuales Int  @default(0)
+  expiraEn     DateTime?
+
+  // El pack que recibe el alumno. FK compuesta y OPCIONAL: en Postgres una FK
+  // multicolumna usa MATCH SIMPLE, asi que con packId null la comprobacion se
+  // omite, igual que en Perfil.pack.
+  packId String?
+  pack   Pack?   @relation(fields: [tenantId, packId], references: [tenantId, id])
+
+  salas ClaveInvitacionSala[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Desviacion respecto al PDF, que pedia `codigo String @unique` GLOBAL. Un
+  // espacio de nombres global deja que un gimnasio descubra por sondeo si un
+  // codigo existe en otro, que es justo lo que todo el aislamiento del schema
+  // evita. El auto-registro pide tenantSlug igual que el login, asi que el
+  // tenant ya se conoce antes de buscar el codigo.
+  @@unique([tenantId, codigo])
+  // Destino de la FK compuesta de ClaveInvitacionSala. Ver Usuario.
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("claves_invitacion")
+}
+
+model ClaveInvitacionSala {
+  // Salas que otorga una clave (N:M). Mismo patron que UsuarioSala: tenantId
+  // propio —sin el, la extension de aislamiento lanzaria CreacionNoPermitidaError
+  // en cada alta— y FK compuestas, para que la fila quede atada a su gimnasio
+  // por si misma.
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  claveId String
+  clave   ClaveInvitacion @relation(fields: [tenantId, claveId], references: [tenantId, id], onDelete: Cascade)
+  salaId  String
+  sala    Sala            @relation(fields: [tenantId, salaId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([claveId, salaId])
+  @@index([tenantId])
+  @@index([salaId])
+  @@map("claves_invitacion_salas")
+}
+
+model ListaEspera {
+  // Cola de un turno lleno. NO tiene campo `posicion`, a diferencia del PDF: un
+  // entero guardado hay que renumerarlo en cada baja y es una carrera en cada
+  // alta. La posicion se deriva del orden por (createdAt, id), igual que la
+  // Fase 1 derivo el conteo de clases del pack en vez de guardar un contador.
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  turnoId  String
+  turno    Turno  @relation(fields: [tenantId, turnoId], references: [tenantId, id], onDelete: Cascade)
+  perfilId String
+  perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id], onDelete: Cascade)
+
+  // Lo escribira el modulo de notificaciones de la Fase 5. Hoy siempre false.
+  notificado Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, turnoId, perfilId])
+  @@index([tenantId, turnoId])
+  @@map("listas_espera")
+}
+
+enum EstadoComprobante {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+}
+
+model Comprobante {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  perfilId String
+  perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id], onDelete: Cascade)
+
+  // Desviacion respecto al PDF, que guardaba `urlArchivo String`. Guardar una
+  // URL es un error: una URL firmada CADUCA, y una permanente obligaria a que
+  // el bucket fuera publico. Se guarda la clave dentro del almacen y se firma
+  // en el momento de leer.
+  claveArchivo   String
+  nombreOriginal String
+  tipoMime       String
+  // Null hasta que el alumno confirma la subida. Ni S3 ni el adaptador local
+  // pueden avisar a la API de que el PUT termino, asi que hace falta un paso
+  // explicito de confirmacion. Una fila sin confirmar no aparece en el listado
+  // del admin: es lo que evita que vea enlaces rotos.
+  subidoEn DateTime?
+
+  // Enum y no `String @default("pendiente")` como el PDF: un typo en un string
+  // libre es un bug silencioso, y el enum lo convierte en error de compilacion.
+  // Mismo criterio que TipoCancelacion en la Fase 1.
+  estado EstadoComprobante @default(PENDIENTE)
+  // Escalar sin FK, igual que HistorialAccion.usuarioId: es auditoria.
+  revisadoPor String?
+  revisadoEn  DateTime?
+  nota        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, perfilId])
+  @@index([tenantId, estado])
+  @@map("comprobantes")
 }
