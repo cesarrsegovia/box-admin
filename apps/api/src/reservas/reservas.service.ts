@@ -34,6 +34,7 @@ export function aReservaPublica(reserva: Reserva): ReservaPublica {
     pagoRealizado: reserva.pagoRealizado,
     canceladaEn: reserva.canceladaEn === null ? null : reserva.canceladaEn.toISOString(),
     cancelacionTipo: reserva.cancelacionTipo,
+    asistio: reserva.asistio,
   };
 }
 

@@ -87,3 +87,26 @@ export function instanteDelTurno(fecha: Date, hora: string): Date {
     Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate(), horas, minutos, 0, 0),
   );
 }
+
+/**
+ * Minutos entre dos horas "HH:MM" del mismo dia.
+ *
+ * No contempla cruzar la medianoche —devuelve un negativo y quien llame
+ * decide—, porque en este sistema un turno nunca lo hace: `exigirHorasCoherentes`
+ * rechaza un horaFin que no sea posterior al horaInicio desde la Fase 1.
+ */
+export function minutosEntreHoras(inicio: string, fin: string): number {
+  if (!esHoraValida(inicio)) {
+    throw new FechaInvalidaError(`Hora invalida: ${inicio}. Se espera HH:MM en 24 h.`);
+  }
+  if (!esHoraValida(fin)) {
+    throw new FechaInvalidaError(`Hora invalida: ${fin}. Se espera HH:MM en 24 h.`);
+  }
+
+  const aMinutos = (hora: string): number => {
+    const [hh, mm] = hora.split(':');
+    return Number(hh) * 60 + Number(mm);
+  };
+
+  return aMinutos(fin) - aMinutos(inicio);
+}

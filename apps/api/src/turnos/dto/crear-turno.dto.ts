@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsString, Matches, MaxLength, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 import { PATRON_FECHA, PATRON_HORA } from '@boxadmin/shared';
 
 export class CrearTurnoDto {
@@ -23,4 +23,13 @@ export class CrearTurnoDto {
   @IsInt()
   @Min(1)
   cupo!: number;
+
+  /**
+   * Ausente = se resuelve del patron semanal. Presente = manda el admin, y el
+   * motor no lo pisara nunca: solo rellena huecos.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  profesorId?: string;
 }

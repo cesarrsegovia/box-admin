@@ -41,6 +41,17 @@ export class CalendarioDatos {
       },
     });
 
+    // Horarios de profesora vigentes en esta sala durante el mes. Mismo patron
+    // de vigencia que las rutinas: activos y con el rango tocando el mes.
+    const horarios = await cliente.horarioProfesorAsignado.findMany({
+      where: {
+        salaId,
+        activo: true,
+        desde: { lte: fin },
+        OR: [{ hasta: null }, { hasta: { gte: inicio } }],
+      },
+    });
+
     const perfilIds = [...new Set(rutinas.map((rutina) => rutina.perfilId))];
 
     // Cierres de esta sala y del salon entero que tocan el mes.
@@ -98,9 +109,20 @@ export class CalendarioDatos {
         horaInicio: turno.horaInicio,
         cupo: turno.cupo,
         reservasActivas: (turno as unknown as { _count: { reservas: number } })._count.reservas,
+        profesorId: turno.profesorId,
       })),
       reservasActivas: reservas.map((r) => ({ turnoId: r.turnoId, perfilId: r.perfilId })),
       perfiles,
+      horarios: horarios.map((h) => ({
+        id: h.id,
+        profesorId: h.profesorId,
+        salaId: h.salaId,
+        diaSemana: h.diaSemana,
+        horaInicio: h.horaInicio,
+        horaFin: h.horaFin,
+        desde: h.desde,
+        hasta: h.hasta,
+      })),
     };
   }
 

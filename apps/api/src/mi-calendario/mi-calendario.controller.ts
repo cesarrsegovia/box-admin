@@ -13,6 +13,7 @@ import {
   type EntradaListaEspera,
   type JwtPayload,
   type MiClase,
+  type MiPackPublico,
   type ReservaCreada,
   type ReservaPublica,
   type TurnoDisponible,
@@ -21,6 +22,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ListaEsperaService } from '../lista-espera/lista-espera.service';
 import { MiCalendarioService } from './mi-calendario.service';
+import { MiPackService } from './mi-pack.service';
 
 /**
  * Sin prefijo de ruta: las rutas del alumno viven en la raiz porque hablan de
@@ -32,7 +34,14 @@ export class MiCalendarioController {
   constructor(
     private readonly miCalendario: MiCalendarioService,
     private readonly listaEspera: ListaEsperaService,
+    private readonly miPack: MiPackService,
   ) {}
+
+  @Roles('ALUMNO')
+  @Get('mi-pack')
+  verMiPack(@CurrentUser() actor: JwtPayload): Promise<MiPackPublico> {
+    return this.miPack.deActor(actor);
+  }
 
   @Roles('ALUMNO')
   @Get('mi-calendario')

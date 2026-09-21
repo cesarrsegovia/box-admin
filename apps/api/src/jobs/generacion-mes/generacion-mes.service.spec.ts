@@ -37,6 +37,7 @@ function entrada(parcial: Partial<EntradaPlanificacion> = {}): EntradaPlanificac
     turnosExistentes: [],
     reservasActivas: [],
     perfiles: [PERFIL_SIN_TOPE],
+    horarios: [],
     ...parcial,
   };
 }
@@ -73,6 +74,7 @@ describe('planificarMes — caso sin conflictos', () => {
       horaInicio: '18:00',
       horaFin: '19:00',
       cupo: 2,
+      profesorId: null,
     });
   });
 
@@ -171,6 +173,7 @@ describe('planificarMes — cupo lleno', () => {
             horaInicio: '18:00',
             cupo: 1,
             reservasActivas: 1,
+            profesorId: null,
           },
         ],
       }),
@@ -206,6 +209,7 @@ describe('planificarMes — sala sin cupo base', () => {
             horaInicio: '18:00',
             cupo: 5,
             reservasActivas: 0,
+            profesorId: null,
           },
         ],
       }),
@@ -284,6 +288,7 @@ describe('planificarMes — pack', () => {
             horaInicio: '18:00',
             cupo: 1,
             reservasActivas: 1,
+            profesorId: null,
           },
         ],
         perfiles: [{ ...PERFIL_SIN_TOPE, vigenciaHasta: d('2026-01-01') }],
@@ -382,6 +387,7 @@ describe('planificarMes — idempotencia', () => {
       horaInicio: '18:00',
       cupo: 2,
       reservasActivas: 1,
+      profesorId: null,
     }));
 
     const plan = planificarMes(
@@ -406,6 +412,7 @@ describe('planificarMes — idempotencia', () => {
             horaInicio: '18:00',
             cupo: 1,
             reservasActivas: 1,
+            profesorId: null,
           },
         ],
         reservasActivas: [{ turnoId: 'turno-1', perfilId: 'perf-1' }],
@@ -427,6 +434,7 @@ describe('planificarMes — idempotencia', () => {
             horaInicio: '18:00',
             cupo: 2,
             reservasActivas: 1,
+            profesorId: null,
           },
         ],
         reservasActivas: [{ turnoId: 'turno-1', perfilId: 'perf-1' }],
@@ -504,5 +512,118 @@ describe('planificarMes — rutinas de otras salas', () => {
 
     expect(plan.turnosACrear).toEqual([]);
     expect(plan.reservasACrear).toEqual([]);
+  });
+});
+
+describe('planificarMes — la profesora', () => {
+  /** Los martes de octubre de 2026: 6, 13, 20 y 27. */
+  const HORARIO_MARTES = {
+    id: 'h1',
+    profesorId: 'fati',
+    salaId: 'sala-1',
+    diaSemana: 2,
+    horaInicio: '18:00',
+    horaFin: '19:00',
+    desde: d('2020-01-01'),
+    hasta: null,
+  };
+
+  it('los turnos nuevos nacen etiquetados', () => {
+    const plan = planificarMes(entrada({ horarios: [HORARIO_MARTES] }));
+
+    expect(plan.turnosACrear).toHaveLength(4);
+    expect(plan.turnosACrear.every((t) => t.profesorId === 'fati')).toBe(true);
+  });
+
+  it('sin horario que cubra la franja, nacen sin profesora', () => {
+    const plan = planificarMes(entrada());
+
+    expect(plan.turnosACrear.every((t) => t.profesorId === null)).toBe(true);
+  });
+
+  it('un turno que YA existe SIN profesora se etiqueta', () => {
+    const plan = planificarMes(
+      entrada({
+        horarios: [HORARIO_MARTES],
+        turnosExistentes: [
+          {
+            id: 'turno-viejo',
+            fecha: d('2026-10-06'),
+            horaInicio: '18:00',
+            cupo: 5,
+            reservasActivas: 0,
+            profesorId: null,
+          },
+        ],
+      }),
+    );
+
+    expect(plan.etiquetasDeProfesor).toEqual([{ turnoId: 'turno-viejo', profesorId: 'fati' }]);
+  });
+
+  it('un turno que YA TIENE profesora no se toca: la suplencia sobrevive', () => {
+    // Segundo punto del checklist del PDF. Si el motor re-resolviera siempre, la
+    // suplencia duraria hasta la proxima publicacion del mes.
+    const plan = planificarMes(
+      entrada({
+        horarios: [HORARIO_MARTES],
+        turnosExistentes: [
+          {
+            id: 'turno-viejo',
+            fecha: d('2026-10-06'),
+            horaInicio: '18:00',
+            cupo: 5,
+            reservasActivas: 0,
+            profesorId: 'ana',
+          },
+        ],
+      }),
+    );
+
+    expect(plan.etiquetasDeProfesor).toEqual([]);
+  });
+
+  it('etiqueta turnos existentes aunque ninguna rutina los cubra este mes', () => {
+    // El admin dio de alta el horario DESPUES de publicar el mes.
+    const plan = planificarMes(
+      entrada({
+        rutinas: [],
+        perfiles: [],
+        horarios: [HORARIO_MARTES],
+        turnosExistentes: [
+          {
+            id: 'turno-huerfano',
+            fecha: d('2026-10-13'),
+            horaInicio: '18:00',
+            cupo: 5,
+            reservasActivas: 3,
+            profesorId: null,
+          },
+        ],
+      }),
+    );
+
+    expect(plan.turnosACrear).toHaveLength(0);
+    expect(plan.etiquetasDeProfesor).toEqual([{ turnoId: 'turno-huerfano', profesorId: 'fati' }]);
+  });
+
+  it('no etiqueta un turno existente que ningun horario cubre', () => {
+    const plan = planificarMes(
+      entrada({
+        horarios: [HORARIO_MARTES],
+        turnosExistentes: [
+          {
+            id: 'turno-otro',
+            fecha: d('2026-10-07'), // miercoles
+            horaInicio: '18:00',
+            cupo: 5,
+            reservasActivas: 0,
+            profesorId: null,
+          },
+        ],
+      }),
+    );
+
+    expect(plan.etiquetasDeProfesor).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import { FechaInvalidaError } from './fechas';
+import { comparaHoras, FechaInvalidaError } from './fechas';
 
 /** Medianoche UTC del dia 1 del mes. */
 export function primerDiaDelMesUtc(anio: number, mes: number): Date {
@@ -43,6 +43,17 @@ export function fechasDelMesEnDiaSemana(anio: number, mes: number, diaSemana: nu
 }
 
 /**
+ * ¿Cae esta fecha dentro del rango, con los dos extremos incluidos?
+ *
+ * Un `hasta` nulo significa "sin limite por ese lado", que es como se modelan
+ * tanto las rutinas indefinidas como los horarios de profesora sin fecha de fin.
+ */
+export function fechaEnRango(fecha: Date, desde: Date, hasta: Date | null): boolean {
+  if (fecha.getTime() < desde.getTime()) return false;
+  return hasta === null || fecha.getTime() <= hasta.getTime();
+}
+
+/**
  * ¿Se solapan dos rangos de fechas, con los extremos incluidos?
  *
  * Un `hasta` nulo significa "sin limite por ese lado", que es como se modelan
@@ -58,6 +69,22 @@ export function rangosSeSolapan(
   const finB = hastaB?.getTime() ?? Number.POSITIVE_INFINITY;
 
   return desdeA.getTime() <= finB && desdeB.getTime() <= finA;
+}
+
+/**
+ * ¿Se pisan dos tramos horarios del mismo dia?
+ *
+ * Los extremos NO cuentan: un tramo que termina a las 19:00 y otro que empieza
+ * a las 19:00 son consecutivos, no simultaneos. Sin esa exclusion, dos clases
+ * seguidas en la misma sala se rechazarian como solape.
+ */
+export function horasSeSolapan(
+  inicioA: string,
+  finA: string,
+  inicioB: string,
+  finB: string,
+): boolean {
+  return comparaHoras(inicioA, finB) < 0 && comparaHoras(inicioB, finA) < 0;
 }
 
 function exigirMesValido(mes: number): void {

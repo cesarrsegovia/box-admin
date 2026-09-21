@@ -10,6 +10,7 @@ function planVacio(): PlanDeMes {
   return {
     turnosACrear: [],
     reservasACrear: [],
+    etiquetasDeProfesor: [],
     conflictos: [],
     exclusiones: [],
     resumen: { turnos: 0, reservas: 0, conflictos: 0, exclusiones: 0 },
@@ -25,6 +26,7 @@ function turnoPlanificado(fecha: string, horaInicio: string) {
     horaInicio,
     horaFin: '11:00',
     cupo: 4,
+    profesorId: null,
   };
 }
 
@@ -40,6 +42,7 @@ function crearServicio() {
         }),
       ),
     findFirst: jest.fn().mockResolvedValue(null),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
   };
   const reserva = {
     create: jest.fn().mockResolvedValue({ id: 'res-1' }),
@@ -103,6 +106,7 @@ describe('PublicacionService.aplicar', () => {
         horaInicio: '10:00',
         horaFin: '11:00',
         cupo: 4,
+        profesorId: null,
       },
     });
     expect(reserva.create).toHaveBeenCalledWith({
@@ -315,10 +319,41 @@ describe('PublicacionService.aplicar', () => {
           reservas: 0,
           conflictos: 0,
           exclusiones: 0,
+          etiquetadas: 0,
         },
       },
       // La auditoria va en la misma transaccion que el cambio que la origino.
       db,
     );
+  });
+});
+
+describe('PublicacionService y las etiquetas de profesora', () => {
+  it('aplica cada etiqueta con un updateMany condicionado a que siga sin profesora', async () => {
+    const { servicio, turno } = crearServicio();
+
+    await servicio.aplicar(ADMIN, 'sala-1', 2099, 10, {
+      ...planVacio(),
+      etiquetasDeProfesor: [{ turnoId: 'turno-1', profesorId: 'fati' }],
+    });
+
+    // El `profesorId: null` del where no es decoracion: entre planificar y
+    // aplicar, el admin puede haber puesto una suplencia a mano. Sin esa
+    // condicion, el plan la pisaria.
+    expect(turno.updateMany).toHaveBeenCalledWith({
+      where: { id: 'turno-1', profesorId: null },
+      data: { profesorId: 'fati' },
+    });
+  });
+
+  it('el turno recien creado lleva la profesora que trae el plan', async () => {
+    const { servicio, turno } = crearServicio();
+
+    await servicio.aplicar(ADMIN, 'sala-1', 2099, 10, {
+      ...planVacio(),
+      turnosACrear: [{ ...turnoPlanificado('2099-10-06', '10:00'), profesorId: 'fati' }],
+    });
+
+    expect(turno.create.mock.calls[0]![0].data.profesorId).toBe('fati');
   });
 });

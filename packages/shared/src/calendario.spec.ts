@@ -1,6 +1,8 @@
 import {
   diasDelMes,
+  fechaEnRango,
   fechasDelMesEnDiaSemana,
+  horasSeSolapan,
   primerDiaDelMesUtc,
   rangosSeSolapan,
   ultimoDiaDelMesUtc,
@@ -97,5 +99,41 @@ describe('rangosSeSolapan', () => {
 
   it('un fin nulo significa "sin limite"', () => {
     expect(rangosSeSolapan(d('2026-01-01'), null, d('2030-05-05'), d('2030-06-06'))).toBe(true);
+  });
+});
+
+describe('fechaEnRango', () => {
+  const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+
+  it('incluye los dos extremos', () => {
+    expect(fechaEnRango(dia('2026-09-01'), dia('2026-09-01'), dia('2026-09-30'))).toBe(true);
+    expect(fechaEnRango(dia('2026-09-30'), dia('2026-09-01'), dia('2026-09-30'))).toBe(true);
+  });
+
+  it('excluye lo que queda fuera', () => {
+    expect(fechaEnRango(dia('2026-08-31'), dia('2026-09-01'), dia('2026-09-30'))).toBe(false);
+    expect(fechaEnRango(dia('2026-10-01'), dia('2026-09-01'), dia('2026-09-30'))).toBe(false);
+  });
+
+  it('un hasta nulo no tiene limite por la derecha', () => {
+    expect(fechaEnRango(dia('2099-01-01'), dia('2026-09-01'), null)).toBe(true);
+  });
+});
+
+describe('horasSeSolapan', () => {
+  it('dos tramos que se pisan', () => {
+    expect(horasSeSolapan('18:00', '19:00', '18:30', '19:30')).toBe(true);
+  });
+
+  it('uno dentro del otro', () => {
+    expect(horasSeSolapan('18:00', '20:00', '18:30', '19:00')).toBe(true);
+  });
+
+  it('pegados NO se solapan: el que termina a las 19:00 deja libre las 19:00', () => {
+    expect(horasSeSolapan('18:00', '19:00', '19:00', '20:00')).toBe(false);
+  });
+
+  it('separados', () => {
+    expect(horasSeSolapan('18:00', '19:00', '20:00', '21:00')).toBe(false);
   });
 });

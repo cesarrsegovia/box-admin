@@ -12,8 +12,10 @@ import {
   type TurnoPublico,
 } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
+import { HorariosProfesorService } from '../horarios-profesor/horarios-profesor.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 import type { ActualizarTurnoDto } from './dto/actualizar-turno.dto';
+import type { AsignarProfesorDto } from './dto/asignar-profesor.dto';
 import type { CrearTurnoDto } from './dto/crear-turno.dto';
 
 export interface FiltroTurnos {
@@ -21,6 +23,8 @@ export interface FiltroTurnos {
   hasta?: string;
   salaId?: string;
   soloLibres?: boolean;
+  /** El punto 4 del PDF: la carga horaria de una profesora, de un vistazo. */
+  profesorId?: string;
 }
 
 /** Fila de turno con el recuento de reservas activas ya resuelto por Prisma. */
@@ -33,15 +37,21 @@ interface TurnoConRecuento {
   horaInicio: string;
   horaFin: string;
   cupo: number;
+  profesorId: string | null;
+  profesor?: { usuario: { nombreCompleto: string } } | null;
   _count: { reservas: number };
 }
 
 /**
  * Solo cuenta reservas con `canceladaEn: null`. Contarlas todas dejaria turnos
  * eternamente "llenos" de gente que ya cancelo.
+ *
+ * El nombre de la profesora viene resuelto en la misma query: un calendario que
+ * devuelve ids obliga a quien lo pinta a hacer N consultas mas.
  */
-const RECUENTO_ACTIVAS = {
+const RECUENTO_Y_PROFESORA = {
   _count: { select: { reservas: { where: { canceladaEn: null } } } },
+  profesor: { include: { usuario: { select: { nombreCompleto: true } } } },
 } as const;
 
 export function aTurnoPublico(turno: TurnoConRecuento): TurnoPublico {
@@ -60,6 +70,10 @@ export function aTurnoPublico(turno: TurnoConRecuento): TurnoPublico {
     // Nunca negativo: si el admin bajo el cupo por debajo de las reservas ya
     // hechas, "menos dos lugares libres" no significa nada para el cliente.
     lugaresLibres: Math.max(0, turno.cupo - reservasActivas),
+    profesor:
+      turno.profesorId === null || !turno.profesor
+        ? null
+        : { id: turno.profesorId, nombreCompleto: turno.profesor.usuario.nombreCompleto },
   };
 }
 
@@ -68,6 +82,7 @@ export class TurnosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly horarios: HorariosProfesorService,
   ) {}
 
   async crear(actor: JwtPayload, dto: CrearTurnoDto): Promise<TurnoPublico> {
@@ -82,15 +97,33 @@ export class TurnosService {
     const turno = await this.prisma.db.$transaction(async (tx) => {
       const cliente = tx as ClientePrismaTx;
 
+      const fecha = desdeFechaISO(dto.fecha);
+
+      // La del admin manda; si no viene, se mira el patron. Nunca al reves: un
+      // alta manual es una decision humana y el patron no la discute.
+      let profesorId: string | null = null;
+      if (dto.profesorId !== undefined) {
+        await this.horarios.exigirProfesoraConAccesoALaSala(cliente, dto.profesorId, dto.salaId);
+        profesorId = dto.profesorId;
+      } else {
+        profesorId = await this.horarios.resolverParaFranja(
+          cliente,
+          dto.salaId,
+          fecha,
+          dto.horaInicio,
+        );
+      }
+
       const creado = await cliente.turno.create({
         data: {
           tenantId: actor.tenantId,
           salaId: dto.salaId,
           nombre: dto.nombre,
-          fecha: desdeFechaISO(dto.fecha),
+          fecha,
           horaInicio: dto.horaInicio,
           horaFin: dto.horaFin,
           cupo: dto.cupo,
+          profesorId,
         },
       });
 
@@ -100,7 +133,7 @@ export class TurnosService {
           entidad: 'Turno',
           entidadId: creado.id,
           accion: 'CREADA',
-          detalle: { salaId: dto.salaId, fecha: dto.fecha, horaInicio: dto.horaInicio },
+          detalle: { salaId: dto.salaId, fecha: dto.fecha, horaInicio: dto.horaInicio, profesorId },
         },
         cliente,
       );
@@ -108,13 +141,16 @@ export class TurnosService {
       return creado;
     });
 
-    return aTurnoPublico({ ...turno, _count: { reservas: 0 } });
+    // Se relee en vez de componer la respuesta a mano: la fila recien creada no
+    // trae la relacion con la profesora, y `profesor` es parte del contrato.
+    return await this.obtener(turno.id);
   }
 
   async listar(actor: JwtPayload, filtro: FiltroTurnos): Promise<TurnoPublico[]> {
     const where: Record<string, unknown> = {};
 
     if (filtro.salaId) where.salaId = filtro.salaId;
+    if (filtro.profesorId) where.profesorId = filtro.profesorId;
 
     if (filtro.desde || filtro.hasta) {
       where.fecha = {
@@ -125,7 +161,7 @@ export class TurnosService {
 
     const turnos = await this.prisma.db.turno.findMany({
       where,
-      include: RECUENTO_ACTIVAS,
+      include: RECUENTO_Y_PROFESORA,
       orderBy: [{ fecha: 'asc' }, { horaInicio: 'asc' }],
     });
 
@@ -139,7 +175,7 @@ export class TurnosService {
   async obtener(id: string): Promise<TurnoPublico> {
     const turno = await this.prisma.db.turno.findFirst({
       where: { id },
-      include: RECUENTO_ACTIVAS,
+      include: RECUENTO_Y_PROFESORA,
     });
     if (!turno) throw new NotFoundException('Turno inexistente');
 
@@ -189,6 +225,48 @@ export class TurnosService {
     });
 
     return this.obtener(id);
+  }
+
+  /**
+   * La suplencia: cambia la profesora de UN turno sin tocar el patron semanal.
+   *
+   * No hay que hacer nada especial para que sobreviva a una republicacion del
+   * mes: el motor solo rellena huecos, y un turno con profesora ya no es un
+   * hueco.
+   */
+  async asignarProfesor(
+    actor: JwtPayload,
+    id: string,
+    dto: AsignarProfesorDto,
+  ): Promise<TurnoPublico> {
+    await this.prisma.db.$transaction(async (tx) => {
+      const cliente = tx as ClientePrismaTx;
+
+      const turno = await cliente.turno.findFirst({ where: { id } });
+      if (!turno) throw new NotFoundException('Turno inexistente');
+
+      if (dto.profesorId !== null) {
+        await this.horarios.exigirProfesoraConAccesoALaSala(cliente, dto.profesorId, turno.salaId);
+      }
+
+      await cliente.turno.update({
+        where: { id },
+        data: { profesorId: dto.profesorId },
+      });
+
+      await this.historial.registrar(
+        {
+          actor,
+          entidad: 'Turno',
+          entidadId: id,
+          accion: 'PROFESOR_ASIGNADO',
+          detalle: { profesorId: dto.profesorId },
+        },
+        cliente,
+      );
+    });
+
+    return await this.obtener(id);
   }
 
   async eliminar(actor: JwtPayload, id: string): Promise<void> {

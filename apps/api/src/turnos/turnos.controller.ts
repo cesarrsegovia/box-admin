@@ -14,6 +14,7 @@ import type { JwtPayload, TurnoPublico } from '@boxadmin/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ActualizarTurnoDto } from './dto/actualizar-turno.dto';
+import { AsignarProfesorDto } from './dto/asignar-profesor.dto';
 import { CrearTurnoDto } from './dto/crear-turno.dto';
 import { TurnosService } from './turnos.service';
 
@@ -36,13 +37,26 @@ export class TurnosController {
     @Query('hasta') hasta?: string,
     @Query('salaId') salaId?: string,
     @Query('soloLibres', new ParseBoolPipe({ optional: true })) soloLibres?: boolean,
+    @Query('profesorId') profesorId?: string,
   ): Promise<TurnoPublico[]> {
-    return this.turnos.listar(actor, { desde, hasta, salaId, soloLibres });
+    return this.turnos.listar(actor, { desde, hasta, salaId, soloLibres, profesorId });
   }
 
   @Get(':id')
   obtener(@Param('id') id: string): Promise<TurnoPublico> {
     return this.turnos.obtener(id);
+  }
+
+  // La suplencia. Declarada ANTES de @Patch(':id') a proposito: Nest resuelve
+  // las rutas por orden, y la generica se comeria ':id/profesor'.
+  @Roles('ADMIN_OPERATIVO')
+  @Patch(':id/profesor')
+  asignarProfesor(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: AsignarProfesorDto,
+  ): Promise<TurnoPublico> {
+    return this.turnos.asignarProfesor(actor, id, dto);
   }
 
   @Roles('ADMIN_OPERATIVO')

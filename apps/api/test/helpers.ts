@@ -28,7 +28,8 @@ export async function crearAppDeTest(): Promise<EntornoE2E> {
 export async function limpiarBaseDeDatos(prisma: PrismaService): Promise<void> {
   await prisma.base.$executeRawUnsafe(
     'TRUNCATE TABLE ' +
-      '"comprobantes", "listas_espera", "claves_invitacion_salas", "claves_invitacion", ' +
+      '"horarios_profesor_asignados", "comprobantes", "listas_espera", ' +
+      '"claves_invitacion_salas", "claves_invitacion", ' +
       '"rutinas_fijas", "meses_calendario", "vacaciones_alumnos", "ausencias", ' +
       '"reservas", "usuarios_salas", "turnos", "perfiles", "packs", "salas", ' +
       '"refresh_tokens", "usuarios", "historial_acciones", "tenants" ' +
@@ -200,4 +201,46 @@ export async function publicarMes(
   if (estado.publicacion?.estado !== 'terminado') {
     throw new Error(`La publicacion fallo: ${JSON.stringify(estado.publicacion)}`);
   }
+}
+
+export interface ProfesorDeTest {
+  usuarioId: string;
+  perfilId: string;
+  token: string;
+  email: string;
+}
+
+/**
+ * Da de alta una profesora con sus salas y devuelve su token.
+ *
+ * El alta devuelve la contraseña temporal UNA sola vez, así que el login va
+ * aquí mismo: releerla después es imposible por diseño.
+ */
+export async function crearProfesor(
+  app: INestApplication,
+  gimnasio: GimnasioDeTest,
+  salaIds: string[],
+  opciones: { email?: string; nombre?: string } = {},
+): Promise<ProfesorDeTest> {
+  const servidor = app.getHttpServer();
+  const email =
+    opciones.email ?? `profe-${Date.now()}-${Math.random().toString(36).slice(2)}@test.io`;
+
+  const alta = await request(servidor)
+    .post('/usuarios/profesores')
+    .set('Authorization', `Bearer ${gimnasio.adminToken}`)
+    .send({ nombreCompleto: opciones.nombre ?? 'Fati Gomez', email, salaIds })
+    .expect(201);
+
+  const login = await request(servidor)
+    .post('/auth/login')
+    .send({ tenantSlug: gimnasio.slug, email, password: alta.body.passwordTemporal })
+    .expect(200);
+
+  return {
+    usuarioId: alta.body.id,
+    perfilId: alta.body.perfilId,
+    token: login.body.accessToken,
+    email,
+  };
 }

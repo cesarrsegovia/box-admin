@@ -84,6 +84,21 @@ export interface TurnoPlanificado {
   horaInicio: string;
   horaFin: string;
   cupo: number;
+  /** `null` = ningun horario de profesora cubre esa franja. */
+  profesorId: string | null;
+}
+
+/**
+ * Un turno que YA EXISTE y al que hay que ponerle profesora.
+ *
+ * Solo se emiten para turnos SIN profesora: el motor rellena huecos y nunca
+ * pisa lo que un humano decidio. Sin esa regla, la suplencia que el admin puso
+ * a mano duraria hasta la proxima publicacion del mes y desapareceria sin que
+ * nadie se entere.
+ */
+export interface EtiquetaDeProfesor {
+  turnoId: string;
+  profesorId: string;
 }
 
 export interface ReservaPlanificada {
@@ -110,6 +125,7 @@ export interface ResumenDelPlan {
 export interface PlanDeMes {
   turnosACrear: TurnoPlanificado[];
   reservasACrear: ReservaPlanificada[];
+  etiquetasDeProfesor: EtiquetaDeProfesor[];
   conflictos: Conflicto[];
   exclusiones: Exclusion[];
   resumen: ResumenDelPlan;

@@ -1,13 +1,19 @@
 import {
   aFechaISO,
+  fechaEnRango,
   fechasDelMesEnDiaSemana,
   type Conflicto,
+  type EtiquetaDeProfesor,
   type Exclusion,
   type PlanDeMes,
   type ReservaPlanificada,
   type TipoPack,
   type TurnoPlanificado,
 } from '@boxadmin/shared';
+import {
+  resolverProfesorDeFranja,
+  type HorarioParaResolver,
+} from '../../horarios-profesor/resolver-profesor';
 import { topeDelPack } from '../../reservas/ventana-pack';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +58,8 @@ export interface TurnoExistenteParaPlan {
   horaInicio: string;
   cupo: number;
   reservasActivas: number;
+  /** `null` = nadie le ha puesto profesora todavia. Es lo que lo hace un hueco. */
+  profesorId: string | null;
 }
 
 export interface ReservaExistenteParaPlan {
@@ -83,6 +91,8 @@ export interface EntradaPlanificacion {
   turnosExistentes: TurnoExistenteParaPlan[];
   reservasActivas: ReservaExistenteParaPlan[];
   perfiles: PerfilParaPlan[];
+  /** Los horarios de profesora vigentes en esta sala durante el mes. */
+  horarios: HorarioParaResolver[];
 }
 
 /** Una rutina aplicada a una fecha concreta del mes. */
@@ -102,11 +112,6 @@ interface Franja {
 
 const clave = (fechaISO: string, horaInicio: string): string => `${fechaISO}|${horaInicio}`;
 
-function cubreFecha(fecha: Date, desde: Date, hasta: Date | null): boolean {
-  if (fecha.getTime() < desde.getTime()) return false;
-  return hasta === null || fecha.getTime() <= hasta.getTime();
-}
-
 /**
  * Convierte las rutinas de una sala en el plan de un mes.
  *
@@ -125,6 +130,7 @@ export function planificarMes(entrada: EntradaPlanificacion): PlanDeMes {
 
   const turnosACrear: TurnoPlanificado[] = [];
   const reservasACrear: ReservaPlanificada[] = [];
+  const etiquetasDeProfesor: EtiquetaDeProfesor[] = [];
   const conflictos: Conflicto[] = [];
   const exclusiones: Exclusion[] = [];
 
@@ -149,13 +155,35 @@ export function planificarMes(entrada: EntradaPlanificacion): PlanDeMes {
     }
   }
 
+  // --- Turnos que ya existen y estan SIN profesora --------------------------
+  //
+  // Se recorren todos, no solo los de las franjas con rutina: el admin puede
+  // haber dado de alta el horario DESPUES de publicar el mes, y esos turnos no
+  // tienen por que coincidir con ningun candidato de esta vuelta.
+  //
+  // Los que YA tienen profesora no se tocan: tener profesora significa que
+  // alguien lo decidio, y republicar el mes no puede deshacerlo.
+  for (const turno of entrada.turnosExistentes) {
+    if (turno.profesorId !== null) continue;
+
+    const profesorId = resolverProfesorDeFranja(
+      entrada.horarios,
+      sala.id,
+      turno.fecha,
+      turno.horaInicio,
+    );
+    if (profesorId !== null) {
+      etiquetasDeProfesor.push({ turnoId: turno.id, profesorId });
+    }
+  }
+
   // --- Candidatos: cada rutina de esta sala, en cada fecha que le toca ------
   const candidatos: Candidato[] = [];
   for (const rutina of entrada.rutinas) {
     if (rutina.salaId !== sala.id) continue;
 
     for (const fecha of fechasDelMesEnDiaSemana(anio, mes, rutina.diaSemana)) {
-      if (!cubreFecha(fecha, rutina.desde, rutina.hasta)) continue;
+      if (!fechaEnRango(fecha, rutina.desde, rutina.hasta)) continue;
       candidatos.push({ rutina, fecha, fechaISO: aFechaISO(fecha) });
     }
   }
@@ -172,7 +200,7 @@ export function planificarMes(entrada: EntradaPlanificacion): PlanDeMes {
   for (const { rutina, fecha, fechaISO } of candidatos) {
     // 1. Ausencias de la sala o del salon entero.
     const ausencia = entrada.ausencias.find(
-      (a) => (a.salaId === null || a.salaId === sala.id) && cubreFecha(fecha, a.desde, a.hasta),
+      (a) => (a.salaId === null || a.salaId === sala.id) && fechaEnRango(fecha, a.desde, a.hasta),
     );
     if (ausencia) {
       exclusiones.push({
@@ -194,7 +222,7 @@ export function planificarMes(entrada: EntradaPlanificacion): PlanDeMes {
     // 2. Vacaciones del alumno. Excluyen SOLO a ese alumno: el turno sigue
     //    existiendo para los demas.
     const vacacion = entrada.vacaciones.find(
-      (v) => v.perfilId === rutina.perfilId && cubreFecha(fecha, v.desde, v.hasta),
+      (v) => v.perfilId === rutina.perfilId && fechaEnRango(fecha, v.desde, v.hasta),
     );
     if (vacacion) {
       exclusiones.push({
@@ -244,6 +272,7 @@ export function planificarMes(entrada: EntradaPlanificacion): PlanDeMes {
         horaInicio: rutina.horaInicio,
         horaFin: rutina.horaFin,
         cupo: sala.cupoBase,
+        profesorId: resolverProfesorDeFranja(entrada.horarios, sala.id, fecha, rutina.horaInicio),
       });
     }
 
@@ -298,6 +327,7 @@ export function planificarMes(entrada: EntradaPlanificacion): PlanDeMes {
   return {
     turnosACrear,
     reservasACrear,
+    etiquetasDeProfesor,
     conflictos,
     exclusiones,
     resumen: {

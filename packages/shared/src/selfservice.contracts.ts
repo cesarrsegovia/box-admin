@@ -1,4 +1,4 @@
-import type { OrigenReserva } from './nucleo.contracts';
+import type { OrigenReserva, PackPublico } from './nucleo.contracts';
 
 // ---------------------------------------------------------------------------
 // Disponibilidad
@@ -143,4 +143,33 @@ export interface TurnoDisponible {
   horaInicio: string;
   horaFin: string;
   disponibilidad: Disponibilidad;
+}
+
+// ---------------------------------------------------------------------------
+// Mi pack
+// ---------------------------------------------------------------------------
+
+/**
+ * El estado del pack de un alumno, tal como lo ve el.
+ *
+ * `consumidas` NO se puede calcular en el cliente: cuenta tambien las reservas
+ * canceladas como DEFINITIVA y se mide sobre la ventana del pack, no sobre el
+ * rango que el alumno tenga abierto en pantalla.
+ */
+export interface MiPackPublico {
+  pack: PackPublico | null;
+  /** Tope de clases del periodo. null = sin pack, o pack sin tope. */
+  tope: number | null;
+  consumidas: number;
+  /** null cuando no hay tope. Nunca negativo. */
+  restantes: number | null;
+  /** La ventana sobre la que se cuenta, en YYYY-MM-DD. null = sin limite por ese lado. */
+  ventanaDesde: string | null;
+  ventanaHasta: string | null;
+  clasesExtra: number;
+  cancelacionesUsadas: number;
+  cancelacionesPermitidas: number | null;
+  pagoAlDia: boolean;
+  vigenciaDesde: string | null;
+  vigenciaHasta: string | null;
 }

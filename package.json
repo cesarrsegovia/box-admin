@@ -10,6 +10,10 @@
     "api:dev": "pnpm --filter @boxadmin/api start:dev",
     "api:test": "pnpm --filter @boxadmin/api test",
     "api:test:e2e": "pnpm --filter @boxadmin/api test:e2e",
-    "shared:build": "pnpm --filter @boxadmin/shared build"
+    "shared:build": "pnpm --filter @boxadmin/shared build",
+    "web:dev": "pnpm --filter @boxadmin/web dev",
+    "web:build": "pnpm --filter @boxadmin/web build",
+    "web:test": "pnpm --filter @boxadmin/web test",
+    "web:test:e2e": "pnpm --filter @boxadmin/web test:e2e"
   }
 }

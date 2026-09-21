@@ -88,6 +88,7 @@ export class PublicacionService {
             horaInicio: turno.horaInicio,
             horaFin: turno.horaFin,
             cupo: turno.cupo,
+            profesorId: turno.profesorId,
           },
         });
 
@@ -142,6 +143,22 @@ export class PublicacionService {
         }
       }
 
+      // 4. Las etiquetas de profesora sobre turnos que ya existian.
+      //
+      // El `profesorId: null` del where es una segunda red: el plan ya solo trae
+      // huecos, pero entre planificar y aplicar puede haber pasado un rato, y en
+      // ese rato el admin puede haber puesto una suplencia a mano. Con la
+      // condicion, la escritura simplemente no afecta a ninguna fila.
+      let etiquetadas = 0;
+
+      for (const etiqueta of plan.etiquetasDeProfesor) {
+        const { count } = await cliente.turno.updateMany({
+          where: { id: etiqueta.turnoId, profesorId: null },
+          data: { profesorId: etiqueta.profesorId },
+        });
+        etiquetadas += count;
+      }
+
       const resumen: ResumenDelPlan = {
         turnos: plan.turnosACrear.length,
         reservas: reservasCreadas,
@@ -157,7 +174,10 @@ export class PublicacionService {
           entidad: 'MesCalendario',
           entidadId: fila?.id ?? `${salaId}-${anio}-${mes}`,
           accion: 'PUBLICADA',
-          detalle: { salaId, anio, mes, ...resumen },
+          // `etiquetadas` va aqui y no en el resumen: anadir un contador al
+          // contrato de ResumenDelPlan cambiaria la respuesta de publicar y
+          // obligaria a retocar e2e de la Fase 2 que no tienen nada que ver.
+          detalle: { salaId, anio, mes, ...resumen, etiquetadas },
         },
         cliente,
       );

@@ -428,3 +428,321 @@ Fase 3A completa. **Fase 3B: la PWA** (`apps/web`, Next.js, manifest, service wo
 calendario", React Query y las cinco pantallas), contra el contrato que esta fase deja probado.
 
 Nada commiteado: los mensajes de commit sugeridos de las 18 tareas están en el plan, uno por tarea.
+
+# Progreso Fase 3B — La PWA del alumno
+
+**Spec:** `docs/superpowers/specs/2026-09-18-fase3b-pwa-alumno.md`
+**Plan:** `docs/superpowers/plans/2026-09-18-fase3b-pwa-alumno.md` (17 tareas, T0–T16)
+
+La segunda mitad de la Fase 3 del PDF: `apps/web`, un Next.js 15 instalable, contra la API que dejó
+la 3A.
+
+- [x] T0 — Spike: ¿Serwist genera un service worker de verdad?
+- [x] T1 — `GET /mi-pack` en la API
+- [x] T2 — CORS para el almacén local
+- [x] T3 — Montar `apps/web`
+- [x] T4 — El proxy del BFF
+- [x] T5 — Las rutas de sesión
+- [x] T6 — El cliente de datos
+- [x] T7 — El área de alumno
+- [x] T8 — Login y registro
+- [x] T9 — El calendario (lectura)
+- [x] T10 — Reservar, cancelar y hacer cola
+- [x] T11 — La pantalla del pack
+- [x] T12 — Comprobantes
+- [x] T13 — Perfil y cierre de sesión
+- [x] T14 — Convertirla en PWA
+- [x] T15 — Playwright
+- [x] T16 — Verificación final, README y tracker
+
+## Decisiones cerradas con Cesar antes de empezar
+
+1. **Serwist en lugar de `next-pwa`**, que se publicó por última vez en agosto de 2022 — antes de que
+   existiera el App Router que el propio PDF pide.
+2. **Next 15**, no 16: es donde Serwist está rodado.
+3. **Tokens en cookies `httpOnly`**, con Next de intermediario.
+4. **El gimnasio va en la ruta**: `/[slug]/...`.
+5. **Se añade `GET /mi-pack`** a la API — tapa el agujero del consumo.
+6. **Offline: leer el calendario sí, escribir no.**
+7. **Tailwind y componentes propios.**
+
+## Estado final de la Fase 3B
+
+**75 tests en `shared` + 606 unitarios de la API + 133 e2e de la API + 106 de Vitest + 5 de
+Playwright.** `tsc --noEmit` limpio en los tres paquetes, Prettier limpio sobre todo lo que escribe
+la fase, y Playwright corrido **tres veces seguidas** con resultado idéntico.
+
+Nada commiteado.
+
+### Lo que se encontró por el camino
+
+**El spike de la T0 evitó dos trampas antes de construir nada encima:**
+
+1. **`create-next-app@15` se cuelga esperando entrada.** Abre un prompt interactivo preguntando por
+   Turbopack; en un entorno no interactivo espera para siempre. La bandera es `--no-turbopack`.
+2. **El service worker no compila sin `/// <reference lib="webworker" />`.** Serwist empaqueta el
+   bundle perfectamente, pero el chequeo de tipos del build falla con
+   `Cannot find name 'ServiceWorkerGlobalScope'`: el tsconfig que genera Next no incluye `WebWorker`
+   en su `lib`. Descubrirlo en un proyecto desechable costó cinco minutos; en la T14, con seis
+   pantallas encima, habría costado bastante más.
+
+**Tres errores de mi propio plan:**
+
+1. **El e2e de `mi-pack` no podía funcionar.** `mi-pack` cuenta sobre el **mes en curso**, y los
+   fixtures del backend usan turnos en **2099** porque la API rechaza generar meses pasados: la
+   reserva caía fuera de la ventana. El código estaba bien; el equivocado era el test. Reescrito con
+   un pack `TOTAL` sin vigencia, cuya ventana no tiene límites.
+2. **El plan mapeaba el pack a mano con `toString()`**, cuando `aPackPublico` ya existía exportado y
+   usa `toFixed(2)` — con un comentario explicando que convertir a `number` reintroduciría el error
+   de coma flotante que el `Decimal` existe para evitar.
+3. **`vitest.setup.ts` solo importaba `jest-dom`**, y eso no basta: la limpieza del DOM entre tests
+   no es automática con Vitest salvo en modo `globals: true`. Sin ella los tests fallan con "Found
+   multiple elements with the role ...", y el que falla es el segundo mientras el culpable es el
+   primero.
+
+**Y dos errores míos de ejecución**, ambos con mutaciones de prueba mal hechas que hubo que repetir:
+una comentó de más y tumbó también los tests de casos válidos, con lo que no probaba nada.
+
+### El checklist del §8, recorrido a mano en Chrome
+
+Contra el **build de producción** (el service worker no existe en desarrollo), con un gimnasio recién
+creado por la API y las herramientas de desarrollo abiertas.
+
+| # | Punto | Resultado |
+|---|---|---|
+| 1 | Auto-registro con clave de invitación | ✅ con un matiz: **el pack no se elige, viene en la clave** |
+| 2 | Ve el calendario y reserva o cancela | ✅ reservó, canceló, y el cupo se movió en el momento |
+| 3 | Un turno lleno ofrece la lista de espera | ✅ **con `listaEsperaHabilitada` encendida**; apagada dice "Completo (5/5)" y no ofrece nada |
+| 4 | Sube un comprobante y lo ve "pendiente" | ✅ el archivo llegó al almacén con sus 69 bytes reales |
+| 5 | `mi-pack` muestra el consumo real | ✅ 1 de 8 tras reservar, 0 de 8 y "1 de 2 cancelaciones" tras cancelar |
+| 6 | Instalable y offline para "mi calendario" | ✅ un service worker activo, manifest sin errores, iconos de 192 y 512 reales |
+| 7 | Cambiar el slug no muestra datos de otro | ✅ redirige al login del slug nuevo |
+| 8 | Vitest y Playwright | ✅ 106 + 5 |
+
+Y **`document.cookie` devuelve la cadena vacía** estando la sesión abierta: la decisión D3 se cumple,
+el JavaScript de la página no ve el token. Tras cerrar sesión, `/api/bx/mi-pack` responde 401.
+
+**Lo que solo se vio recorriéndolo a mano:**
+
+- **El punto 1 del PDF dice "eligiendo pack" y el formulario no ofrece elegir.** No es un olvido: el
+  pack va **en la clave de invitación** (`clave.packId`), y `AutoRegistroDto` no acepta un `packId`
+  —corre con `forbidNonWhitelisted`, así que mandarlo sería un 400—. Es el gimnasio quien decide qué
+  pack entrega con cada clave, no el alumno. Verificado de punta a punta: clave con pack → el alumno
+  ve "8 clases al mes" en `mi-pack` sin haber elegido nada.
+- **La lista de espera está apagada por defecto.** Con la sala tal como la crea la API, un turno lleno
+  dice "Completo (5/5)" y **"Sin acciones"**, que es exactamente lo que debe decir. El punto 3 del
+  checklist da por hecho que la cola está encendida; hay que encenderla para verlo.
+- **La promoción de la cola funciona de verdad**: al cancelar la alumna con reserva, el que estaba
+  primero en la lista entró solo y el turno volvió a 5/5 en la misma recarga. Es lógica de la Fase 3A,
+  pero es la primera vez que se la ve completa desde la pantalla.
+- **La subida del comprobante falla con CORS si `WEB_ORIGIN` no es el puerto exacto** desde el que se
+  mira, y el alumno lee **"Sin conexion"** — es todo lo que el navegador le cuenta al JavaScript de
+  una petición bloqueada. **Playwright no cubre este camino** (el test del ciclo no sube nada), así
+  que el recorrido a mano era el único sitio donde podía aparecer. Documentado en el README.
+- **Un comprobante creado pero no confirmado se distingue en pantalla**: sale como "Pendiente de
+  revision · sin terminar de subir". No estaba planeado mirarlo y es justo lo que hay que ver.
+- **La pantalla de perfil es fina**: muestra el gimnasio y el botón de salir, nada más. La API no
+  expone un `mi-perfil`, así que el nombre y el email tendrían que venir de un endpoint que no
+  existe.
+
+### Trampas de entorno nuevas
+
+- **Instalar paquetes en `apps/web` borra el cliente generado de Prisma.** pnpm reescribe
+  `node_modules` y se lleva `.prisma/client`; la API deja de compilar con decenas de
+  `Parameter 'tx' implicitly has an 'any' type`, que no mencionan Prisma por ningún lado.
+- **Tres paquetes de test ya no soportan Node 20** y hubo que fijarlos: `vitest@3` (la 5 exige Node
+  22.12), `jsdom@26` (la 30 arrastra `undici@8` y revienta al cargar) y `@vitejs/plugin-react@5`. El
+  patrón: si un paquete de test falla con una traza incomprensible dentro de `node_modules`, mirar
+  sus `engines` antes de depurar nada. Sumado al aviso del SDK de AWS de la Fase 3A, **el ecosistema
+  está dejando atrás Node 20**.
+- **Playwright necesita la API con el throttler aflojado**, o falla con 429 a mitad de suite: cada
+  test crea su gimnasio con un login y un auto-registro.
+- **Los fixtures de Playwright no pueden usar 2099**, a diferencia de los del backend: el calendario
+  abre en la semana de hoy y un turno en 2099 sencillamente no se ve.
+- **"El puerto está libre" volvió a no significar "no hay proceso vivo"**, ahora con Next: maté el que
+  escuchaba en el 3001 y sobrevivió otro que bloqueaba archivos de `.next`.
+- **Docker Desktop se cerró solo otra vez** (séptima desde la Fase 2).
+- **Cortar la red desde las DevTools no cambia `navigator.onLine`.** El service worker sirve la
+  copia cacheada igual, pero el cartel de "Sin conexion" no aparece: depende de la propiedad y del
+  evento, no de que las peticiones fallen. `setOffline` de Playwright sí los cambia, así que el test
+  automático lo ve y la comprobación a mano puede no verlo.
+
+### Deuda declarada
+
+- **La pantalla no ofrece salirse de la lista de espera.** `TurnoDisponible` expone `enListaEspera` y
+  `posicionEnLista` pero **no el id de la entrada en la cola**, que es lo que pide el endpoint. El
+  hook `salirme` está escrito y probado para cuando el contrato lo incluya.
+- **Siguen los 13 archivos de las Fases 0–2 que no pasan `prettier --check`**, verificados contra su
+  versión commiteada. Pendiente el commit de solo formato.
+- **La pantalla de perfil muestra el gimnasio y poco más**: la API no expone un `mi-perfil`, así
+  que el nombre y el email tendrían que venir de un endpoint que todavía no existe.
+- **`Sala.exclusiva`** sigue almacenado sin efecto.
+- **El hook de notificaciones sigue inerte**; lo llena la Fase 5.
+- **Los husos horarios** siguen sin existir: `horaInicio` se interpreta como UTC en todo el sistema,
+  ahora también en la aritmética de semanas del frontend.
+
+## Siguiente paso
+
+La Fase 3 está completa, API y PWA. Quedan las Fases 4 a 7: profesor vinculado al turno, pagos y
+comunicación —donde se llena el hook de notificaciones y se decide qué hacer con
+`VacacionAlumno.devuelveClase`, inerte desde la Fase 2—, analítica con web pública y check-in, y el
+stretch.
+
+Nada commiteado: los mensajes de commit sugeridos de las 16 tareas que dejan código están en el plan.
+
+# Progreso Fase 4 — El profesor como entidad real
+
+**Spec:** `docs/superpowers/specs/2026-09-21-fase4-profesor-real.md`
+**Plan:** `docs/superpowers/plans/2026-09-21-fase4-profesor-real.md` (15 tareas, T0–T14)
+
+La fase que resuelve el hallazgo central del relevamiento de TurnoFit: el vínculo profesora↔horario
+era **una parte del nombre de la actividad** ("Circuito (Fati)"), y pasa a ser una FK de verdad.
+
+- [x] T0 — El schema, la migración y la clasificación
+- [x] T1 — Los contratos compartidos
+- [x] T2 — `resolverProfesorDeFranja`, la función pura del etiquetado
+- [x] T3 — El módulo de horarios de profesora
+- [x] T4 — `PATCH /turnos/:id/profesor`, la suplencia
+- [x] T5 — El calendario admin ve a la profesora
+- [x] T6 — El alta manual de un turno resuelve profesora
+- [x] T7 — El planificador etiqueta
+- [x] T8 — Cargar los horarios y aplicar las etiquetas
+- [x] T9 — `/mis-clases`, la vista de la profesora
+- [x] T10 — Pasar lista
+- [x] T11 — `calcularLiquidacion`, la función pura de las horas
+- [x] T12 — El endpoint de liquidación
+- [x] T13 — Los e2e del checklist
+- [x] T14 — Verificación final, README y tracker
+
+## Decisiones cerradas con Cesar antes de empezar
+
+El PDF de esta fase traía **dos contradicciones y un eslabón que no existía**, y las tres había que
+resolverlas antes de escribir código.
+
+1. **El horario solo etiqueta; nunca crea turnos.** El PDF decía las dos cosas en párrafos seguidos.
+   Si creara, toda hora contratada sería automáticamente una hora dictada y la métrica que el propio
+   PDF pide mediría siempre cero.
+2. **La asistencia es `Reserva.asistio`**, y pasar lista es una foto del turno entero. El PDF pedía
+   el endpoint pero no modelaba el dato en ningún sitio.
+3. **La liquidación devuelve horas y la tarifa resuelta, sin multiplicar.** El §6 deja el cálculo en
+   pesos para la Fase 6; guardar `tarifaPorHora` sin exponerla repetiría el error de
+   `Sala.exclusiva`. Hizo falta añadir `Tenant.tarifaPorHoraProfesor`, el eslabón que el PDF daba
+   por supuesto.
+4. **Al regenerar, el motor solo rellena huecos.** Tener profesora ya significa que alguien lo
+   decidió; no hace falta una columna que lo marque.
+5. **El alta rechaza los dos solapes**: dos profesoras en la misma sala, día y hora, y la misma
+   profesora en dos salas a la vez.
+6. **Un día cerrado no cuenta como hora contratada**: sale aparte, en `horasCerradas`.
+
+Y una refinación que salió al escribir el plan: **la pertenencia es por contención, no por hora
+exacta**. El PDF dice "sala+día+hora", pero comparar `horaInicio` por igualdad dejaría fuera el caso
+corriente —contratada de 18:00 a 19:00 y una rutina que empieza a las 18:30—. Es además la misma
+noción de solape que usa la regla 5, y las dos no pueden discrepar.
+
+## Estado final de la Fase 4
+
+**86 tests en `shared` + 675 unitarios de la API + 149 e2e de la API**, más los 106 de Vitest de la
+PWA, que sigue verde sin tocar una línea: usa `TurnoDisponible` y `MiClase`, no `TurnoPublico`.
+`tsc --noEmit` limpio en los tres paquetes y Prettier limpio sobre todo lo que escribe la fase.
+
+Y los siete puntos del checklist, recorridos **a mano** contra la API levantada.
+
+Nada commiteado.
+
+### El checklist del PDF, verificado a mano
+
+| # | Punto | Resultado |
+|---|---|---|
+| 1 | El turno generado trae `profesorId` automáticamente | ✅ y **el nombre de la actividad no se toca** |
+| 2 | Reasignar un turno puntual sin afectar el patrón | ✅ sobrevive a republicar el mes |
+| 3 | Un `PROFESOR` ve únicamente sus clases | ✅ 3 de 4 tras darle una a otra |
+| 4 | La lista no expone datos de otros | ✅ solo `perfilId`, `nombreCompleto` y `asistio` |
+| 5 | Horas contratadas vs. dictadas | ✅ 240 min contratados, 180 dictados |
+| 6 | El filtro `?profesorId=` | ✅ |
+| 7 | Tests | ✅ 16 e2e nuevos, 5 mutaciones que muerden |
+
+Más dos que añadió esta fase: pasar lista es idempotente y no toca las canceladas, y el feriado
+descuenta de contratadas.
+
+**Y el caso del primer día de uso real**: la liquidación de una profesora **sin ningún horario**
+devuelve ceros y una lista vacía, no un 500.
+
+### Las cinco mutaciones, todas muerden
+
+| Qué se mutó | Test que rompió |
+|---|---|
+| `< 0` → `<= 0` en la contención horaria | `el final de la franja NO le pertenece` |
+| Ignorar el rango de fechas del solape | `deja pasar el relevo` |
+| **Quitar `if (turno.profesorId !== null) continue`** | `un turno que YA TIENE profesora no se toca` |
+| Ignorar el solape de horas | `deja pasar dos clases seguidas` |
+| Quitar `profesorId: null` del `where` del aplicador | el test del `updateMany` condicionado |
+| `contratada && !cerrada` → `contratada` | `un feriado no suma a contratadas` |
+| Quitar `profesorId` del `where` de `/mis-clases` | `devuelve solo las clases propias` (y 2 más) |
+
+La tercera es la que protege la suplencia: si pasara, se perdería en silencio cada vez que alguien
+republicase el mes.
+
+### Lo que se encontró al ejecutar el plan
+
+**Un error mío de bulto, del tipo que la Fase 3A ya había enseñado:** mi doble de Prisma en la T3
+**mezclaba "la sala existe" con "la profesora tiene acceso"**. El test del acceso pasaba, pero por el
+motivo equivocado: fallaba con "Sala inexistente". Separado, el test prueba lo que dice probar.
+
+**Tres tests de fases anteriores que fijaban formas exactas** y que esta fase rompió sin romper nada
+real:
+
+1. Un test de la Fase 1 comparaba el `include` **entero** de `GET /turnos`. Ahora comprueba solo el
+   recuento, que es lo que su nombre dice que prueba.
+2. Dos asserts de la Fase 2 fijaban la forma exacta de `turno.create` y del detalle de auditoría.
+   Ampliados con `profesorId` y `etiquetadas`.
+
+Es el mismo patrón las tres veces: **un test que fija la forma completa de una escritura falla cada
+vez que alguien añade un campo**, sin tener nada que ver con lo que dice probar.
+
+**Tres erratas del propio plan:**
+
+1. El comando de los e2e **no llevaba `dotenv`**, así que corría con los límites estrictos de
+   producción y la suite entera moría con **429 Too Many Requests**: cada test crea su gimnasio con
+   seis llamadas de auth. El comando bueno es
+   `pnpm exec dotenv -e ../../.env.test -- jest --config ./test/jest-e2e.json`, o directamente
+   `pnpm test:e2e`, que ya lo lleva.
+2. La mutación del rango de fechas rompe **2** tests, no 3: solo hay dos casos de borde.
+3. El plan proponía dobles sueltos para los tests de turnos cuando el archivo ya tenía una fábrica
+   `crearServicio()`. Se extendió la que había.
+
+### Deuda declarada
+
+- **No se puede expresar "esta franja tiene patrón pero quiero que quede sin profesora".** Límite
+  aceptado de la decisión 4; resolverlo costaba una columna y una rama más en cada endpoint que
+  escribe un turno.
+- **La liquidación no multiplica**: importes, ajustes y el "50% base + horarios sin profesora" son de
+  la Fase 6. La tarifa llega allí ya resuelta.
+- **No hay pantalla de profesora.** La PWA de la 3B es solo del alumno y ninguna fase pide otra; las
+  tres rutas de `/mis-clases` quedan listas para cuando se pida.
+- **Siguen los 13 archivos de las Fases 0–2 que no pasan `prettier --check`**, y ahora también el
+  README y este mismo tracker, que ya fallaban en su versión commiteada: Prettier quiere repaginar
+  todas las tablas de markdown. Pendiente el commit de solo formato.
+- **`Sala.exclusiva`** sigue almacenado sin efecto.
+- **El hook de notificaciones sigue inerte**; lo llena la Fase 5. Avisar a una profesora de una
+  suplencia es justo uno de sus casos.
+- **Los husos horarios** siguen sin existir: `horaInicio` se interpreta como UTC en todo el sistema.
+
+### Trampas de entorno
+
+- **Docker Desktop se cerró solo otra vez** (octava desde la Fase 2). Ya es lo normal, no la
+  excepción: comprobar `docker info` antes de nada.
+- **El orden de la T0 no era negociable y se cumplió**: `prisma generate` **antes** de correr los
+  meta-tests de la extensión de aislamiento, que comparan la clasificación contra el DMMF real. Al
+  revés, el error apunta a la clasificación cuando el problema es el cliente sin regenerar.
+- **`§` no cabe en un literal de bytes de Python.** Un script con `b"""..."""` que contenía el
+  símbolo de sección reventó con `SyntaxError: bytes can only contain ASCII literal characters`
+  antes de escribir nada. Para editar archivos con acentos desde Python hay que trabajar en `str` y
+  escribir con `encoding='utf-8'`.
+
+## Siguiente paso
+
+Fase 4 completa. Quedan la 5 (pagos y comunicación, donde se llena el hook de notificaciones y se
+decide qué hacer con `VacacionAlumno.devuelveClase`, inerte desde la Fase 2), la 6 (analítica, web
+pública y check-in, que es donde la liquidación aprende a multiplicar) y la 7 (stretch).
+
+Nada commiteado: los mensajes de commit sugeridos de las 15 tareas están en el plan, uno por tarea.

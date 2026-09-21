@@ -125,6 +125,11 @@ export interface TurnoPublico {
   cupo: number;
   reservasActivas: number;
   lugaresLibres: number;
+  /**
+   * `null` = sin profesora asignada. Desde la Fase 4 esto es una relacion real,
+   * no una parte del `nombre`.
+   */
+  profesor: { id: string; nombreCompleto: string } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +151,8 @@ export interface ReservaPublica {
   /** ISO 8601 completo, o `null` si sigue activa. */
   canceladaEn: string | null;
   cancelacionTipo: TipoCancelacion | null;
+  /** `null` = todavia no se paso lista en esa clase. */
+  asistio: boolean | null;
 }
 
 export interface ReservaCreada extends ReservaPublica, ConAdvertencias {}

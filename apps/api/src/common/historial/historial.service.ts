@@ -15,7 +15,8 @@ export type EntidadAuditable =
   | 'MesCalendario'
   | 'ClaveInvitacion'
   | 'Comprobante'
-  | 'ListaEspera';
+  | 'ListaEspera'
+  | 'HorarioProfesorAsignado';
 
 export type AccionAuditable =
   | 'CREADA'
@@ -32,7 +33,9 @@ export type AccionAuditable =
   | 'ANOTADO'
   | 'SALIDO'
   | 'ASIGNADA_DESDE_LISTA'
-  | 'AUTO_REGISTRADO';
+  | 'AUTO_REGISTRADO'
+  | 'PROFESOR_ASIGNADO'
+  | 'ASISTENCIA_REGISTRADA';
 
 export interface EntradaHistorial {
   /** Quien ejecuta. De el salen tanto el tenantId como el usuarioId. */

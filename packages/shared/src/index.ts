@@ -7,3 +7,4 @@ export * from './disponibilidad';
 export * from './nucleo.contracts';
 export * from './recurrencia.contracts';
 export * from './selfservice.contracts';
+export * from './profesor.contracts';

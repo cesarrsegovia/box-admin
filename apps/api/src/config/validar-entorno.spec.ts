@@ -93,3 +93,36 @@ describe('validarEntorno — almacen de archivos', () => {
     expect(() => validarEntorno(entorno)).toThrow(/ALMACEN_TIPO=s3/);
   });
 });
+
+describe('validarEntorno — origen del frontend', () => {
+  it('WEB_ORIGIN es opcional: sin el, no se habilita CORS', () => {
+    const entorno = { ...ENTORNO_COMPLETO } as Record<string, unknown>;
+    delete entorno.WEB_ORIGIN;
+
+    // Un despliegue solo-API no tiene frontend al que abrirle la puerta.
+    expect(() => validarEntorno(entorno)).not.toThrow();
+  });
+
+  it('WEB_ORIGIN, si esta, tiene que ser un origen valido', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, WEB_ORIGIN: 'no-es-una-url' })).toThrow(
+      /WEB_ORIGIN/,
+    );
+  });
+
+  it('acepta un origen con puerto', () => {
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, WEB_ORIGIN: 'http://localhost:3001' }),
+    ).not.toThrow();
+  });
+
+  it('acepta https sin puerto', () => {
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, WEB_ORIGIN: 'https://app.boxadmin.io' }),
+    ).not.toThrow();
+  });
+
+  it('una cadena vacia se trata como ausente, no como error', () => {
+    // Es lo que deja un `.env` con la clave escrita y el valor sin rellenar.
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, WEB_ORIGIN: '' })).not.toThrow();
+  });
+});

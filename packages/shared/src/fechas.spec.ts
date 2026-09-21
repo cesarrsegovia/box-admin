@@ -5,6 +5,7 @@ import {
   FechaInvalidaError,
   comparaHoras,
   instanteDelTurno,
+  minutosEntreHoras,
 } from './fechas';
 
 describe('aFechaISO', () => {
@@ -81,5 +82,23 @@ describe('instanteDelTurno', () => {
 
     expect(() => instanteDelTurno(fecha, '25:00')).toThrow(FechaInvalidaError);
     expect(() => instanteDelTurno(fecha, '8:00')).toThrow(FechaInvalidaError);
+  });
+});
+
+describe('minutosEntreHoras', () => {
+  it('una hora clavada', () => {
+    expect(minutosEntreHoras('18:00', '19:00')).toBe(60);
+  });
+
+  it('hora y media', () => {
+    expect(minutosEntreHoras('18:00', '19:30')).toBe(90);
+  });
+
+  it('cruzar la medianoche no se contempla: devuelve negativo y quien llame decide', () => {
+    expect(minutosEntreHoras('23:00', '01:00')).toBe(-1320);
+  });
+
+  it('una hora invalida revienta en vez de mentir', () => {
+    expect(() => minutosEntreHoras('25:00', '26:00')).toThrow(/Hora invalida/);
   });
 });

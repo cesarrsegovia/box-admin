@@ -25,6 +25,29 @@ async function bootstrap(): Promise<void> {
   // confiar en toda la cadena dejaria falsificar la IP con una cabecera.
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
+  // CORS, y solo si hay un frontend configurado.
+  //
+  // Con el BFF de la Fase 3B el navegador habla siempre con Next, mismo origen,
+  // salvo en UN sitio: el PUT del comprobante va directo del navegador al
+  // almacen, que es exactamente para lo que existen las URLs firmadas. En
+  // desarrollo ese almacen es esta misma API en otro puerto, asi que sin CORS
+  // el navegador bloquea la subida.
+  //
+  // `origin` es un valor concreto y no `true`: reflejar cualquier origen
+  // convertiria estas rutas en algo que cualquier pagina podria invocar.
+  // `credentials` queda en false porque las rutas del almacen se autentican con
+  // su firma HMAC, no con cookies — y porque con `origin` concreto y
+  // credenciales activadas cualquier fallo de configuracion seria mucho mas caro.
+  const config = app.get(ConfigService);
+  const webOrigin = config.get<string>('WEB_ORIGIN');
+  if (webOrigin) {
+    app.enableCors({
+      origin: webOrigin,
+      methods: ['GET', 'PUT', 'OPTIONS'],
+      credentials: false,
+    });
+  }
+
   app.use(helmet());
   app.use(compression());
 
@@ -50,7 +73,6 @@ async function bootstrap(): Promise<void> {
 
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  const config = app.get(ConfigService);
   await app.listen(config.get<number>('PORT') ?? 3000, '0.0.0.0');
 }
 

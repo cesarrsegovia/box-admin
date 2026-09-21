@@ -1070,4 +1070,148 @@ describe('Fase 3A — self-service del alumno', () => {
         .expect(400);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // 7. Mi pack
+  // -------------------------------------------------------------------------
+  describe('mi-pack', () => {
+    /**
+     * Pack TOTAL y sin vigencia a proposito: su ventana de conteo no tiene
+     * limites, asi que cuenta las reservas caiga la clase en el mes que caiga.
+     *
+     * Con un pack MENSUAL estos tests serian imposibles: mi-pack cuenta sobre el
+     * mes EN CURSO, y los turnos de los e2e viven en 2099 porque la API se niega
+     * a generar meses pasados. La semantica del MENSUAL se prueba en los
+     * unitarios, que si pueden fijar el reloj.
+     */
+    async function crearPackSinVentana(): Promise<string> {
+      const { body } = await request(servidor)
+        .post('/packs')
+        .set('Authorization', `Bearer ${gym.adminToken}`)
+        .send({ nombre: '8 clases', tipo: 'TOTAL', clasesTotales: 8 })
+        .expect(201);
+
+      return body.id;
+    }
+
+    it('refleja el consumo real: una reserva cuenta, una cancelacion RECUPERABLE no', async () => {
+      const salaId = await crearSala();
+      const turnoId = await crearTurno(salaId);
+      const packId = await crearPackSinVentana();
+      const alumno = await crearAlumnoPorInvitacion(app, gym, [salaId], { packId });
+      await publicarMes(app, gym.adminToken, salaId, ANIO, MES);
+
+      const vacio = await request(servidor)
+        .get('/mi-pack')
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(200);
+      expect(vacio.body).toMatchObject({ tope: 8, consumidas: 0, restantes: 8 });
+
+      const reserva = await request(servidor)
+        .post(`/turnos/${turnoId}/mi-reserva`)
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(201);
+
+      const conUna = await request(servidor)
+        .get('/mi-pack')
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(200);
+      expect(conUna.body).toMatchObject({ consumidas: 1, restantes: 7 });
+
+      // El alumno cancela dentro de ventana: RECUPERABLE, la clase vuelve.
+      await request(servidor)
+        .delete(`/mis-reservas/${reserva.body.id}`)
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(200);
+
+      const trasCancelar = await request(servidor)
+        .get('/mi-pack')
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(200);
+      expect(trasCancelar.body).toMatchObject({ consumidas: 0, restantes: 8 });
+    });
+
+    it('una cancelacion DEFINITIVA del admin SI sigue gastando la clase', async () => {
+      const salaId = await crearSala();
+      const turnoId = await crearTurno(salaId);
+      const packId = await crearPackSinVentana();
+      const alumno = await crearAlumnoPorInvitacion(app, gym, [salaId], { packId });
+      await publicarMes(app, gym.adminToken, salaId, ANIO, MES);
+
+      const reserva = await request(servidor)
+        .post(`/turnos/${turnoId}/mi-reserva`)
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(201);
+
+      // El admin cancela como DEFINITIVA desde el endpoint de la Fase 1, que
+      // toma el tipo por query y en minusculas.
+      await request(servidor)
+        .delete(`/reservas/${reserva.body.id}?tipo=definitiva`)
+        .set('Authorization', `Bearer ${gym.adminToken}`)
+        .expect(200);
+
+      const { body } = await request(servidor)
+        .get('/mi-pack')
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(200);
+
+      // Es justo la diferencia que el cliente NO podria calcular por su cuenta:
+      // la clase ya no esta en el calendario, pero sigue consumida.
+      expect(body).toMatchObject({ consumidas: 1, restantes: 7 });
+    });
+
+    it('un pack MENSUAL cuenta sobre el mes en curso y lo dice', async () => {
+      const salaId = await crearSala();
+      const pack = await request(servidor)
+        .post('/packs')
+        .set('Authorization', `Bearer ${gym.adminToken}`)
+        .send({ nombre: '8 mensuales', tipo: 'MENSUAL', clasesPorMes: 8 })
+        .expect(201);
+      const alumno = await crearAlumnoPorInvitacion(app, gym, [salaId], { packId: pack.body.id });
+
+      const { body } = await request(servidor)
+        .get('/mi-pack')
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(200);
+
+      // Sin la ventana, "0 de 8" no se puede interpretar: el alumno no sabria
+      // si son de este mes o de todo el año.
+      expect(body.ventanaDesde).toMatch(/^\d{4}-\d{2}-01$/);
+      expect(body.ventanaHasta).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(body.ventanaDesde.slice(0, 7)).toBe(body.ventanaHasta.slice(0, 7));
+    });
+
+    it('un pack TOTAL sin vigencia no acota la ventana', async () => {
+      const salaId = await crearSala();
+      const packId = await crearPackSinVentana();
+      const alumno = await crearAlumnoPorInvitacion(app, gym, [salaId], { packId });
+
+      const { body } = await request(servidor)
+        .get('/mi-pack')
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(200);
+
+      expect(body.ventanaDesde).toBeNull();
+      expect(body.ventanaHasta).toBeNull();
+    });
+
+    it('sin pack, devuelve tope y restantes en null', async () => {
+      const salaId = await crearSala();
+      const alumno = await crearAlumnoPorInvitacion(app, gym, [salaId]);
+
+      const { body } = await request(servidor)
+        .get('/mi-pack')
+        .set('Authorization', `Bearer ${alumno.token}`)
+        .expect(200);
+
+      expect(body).toMatchObject({ pack: null, tope: null, restantes: null });
+    });
+
+    it('un admin sin perfil recibe 404', async () => {
+      await request(servidor)
+        .get('/mi-pack')
+        .set('Authorization', `Bearer ${gym.adminToken}`)
+        .expect(404);
+    });
+  });
 });

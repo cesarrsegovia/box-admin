@@ -21,3 +21,12 @@ Thumbs.db
 # el cwd de los tests es apps/api, asi que el directorio se crea ahi y no en la
 # raiz; un `var/almacen/` a secas queda anclado a la raiz y no lo cubre.
 **/var/almacen/
+
+# Frontend (Fase 3B). El service worker y los sourcemaps son artefactos del
+# build y se regeneran con `pnpm web:build`; los iconos PNG SI se commitean,
+# porque son fuente y sin ellos la app deja de ser instalable.
+apps/web/.next/
+apps/web/public/sw.js
+apps/web/public/sw.js.map
+apps/web/test-results/
+apps/web/playwright-report/

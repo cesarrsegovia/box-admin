@@ -71,5 +71,26 @@ export function validarEntorno(
     }
   }
 
+  // Opcional a proposito: un despliegue solo-API no tiene frontend al que
+  // abrirle la puerta, y exigirla obligaria a inventar un valor. Una cadena
+  // vacia cuenta como ausente: es lo que deja un .env con la clave escrita y
+  // el valor sin rellenar.
+  const webOrigin = config.WEB_ORIGIN;
+  if (webOrigin !== undefined && webOrigin !== '') {
+    if (typeof webOrigin !== 'string') {
+      throw new Error('WEB_ORIGIN debe ser una cadena con el origen del frontend.');
+    }
+    try {
+      // Un origen es esquema + host + puerto. `new URL` lo valida de verdad;
+      // una expresion regular casera aqui seria peor que inutil.
+      new URL(webOrigin);
+    } catch {
+      throw new Error(
+        `WEB_ORIGIN no es un origen valido: ${webOrigin}. ` +
+          'Se espera algo como http://localhost:3001 o https://app.boxadmin.io.',
+      );
+    }
+  }
+
   return config;
 }

@@ -1,0 +1,45 @@
+{
+  "name": "@boxadmin/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "predev": "pnpm --filter @boxadmin/shared build",
+    "dev": "next dev --port 3001",
+    "prebuild": "pnpm --filter @boxadmin/shared build",
+    "build": "next build",
+    "start": "next start --port 3001",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "iconos": "node scripts/generar-iconos.mjs"
+  },
+  "dependencies": {
+    "@boxadmin/shared": "workspace:^",
+    "@hookform/resolvers": "^5.9.1",
+    "@serwist/next": "^9.5.12",
+    "@tanstack/react-query": "^5.103.1",
+    "next": "15.5.25",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-hook-form": "^7.88.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.2.0",
+    "jsdom": "^26.1.0",
+    "serwist": "^9.5.12",
+    "sharp": "^0.35.4",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^3.2.7"
+  }
+}

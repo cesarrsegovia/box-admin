@@ -34,6 +34,11 @@ model Tenant {
   minMinutosAnotarse    Int?
   listaEsperaHabilitada Boolean?
 
+  // El eslabon que faltaba de la cascada de tarifas: HorarioProfesorAsignado
+  // documenta "null = usa la tarifa general del tenant", y esa tarifa no
+  // existia en ningun sitio. La Fase 6 la multiplica; la 4 solo la resuelve.
+  tarifaPorHoraProfesor Decimal? @db.Decimal(10, 2)
+
   usuarios        Usuario[]
   perfiles        Perfil[]
   salas           Sala[]
@@ -50,6 +55,7 @@ model Tenant {
   clavesInvitacionSala ClaveInvitacionSala[]
   comprobantes         Comprobante[]
   listasEspera         ListaEspera[]
+  horariosProfesor     HorarioProfesorAsignado[]
 
   @@map("tenants")
 }
@@ -166,6 +172,7 @@ model Sala {
   mesesCalendario  MesCalendario[]
   ausencias        Ausencia[]
   clavesInvitacion ClaveInvitacionSala[]
+  horariosProfesor HorarioProfesorAsignado[]
 
   // Destino de las FK compuestas de UsuarioSala, Pack y Turno. Ver Usuario.
   @@unique([tenantId, id])
@@ -217,6 +224,11 @@ model Perfil {
   vacaciones   VacacionAlumno[]
   comprobantes Comprobante[]
   listasEspera ListaEspera[]
+
+  // El nombre de la relacion es obligatorio porque Perfil ya se relaciona con
+  // Turno por otro camino (a traves de Reserva), y Prisma no sabria cual es cual.
+  turnosComoProfesor Turno[]                   @relation("TurnoProfesor")
+  horariosAsignados  HorarioProfesorAsignado[]
 
   // Destino de las FK compuestas de UsuarioSala y Reserva. Ver Usuario.
   @@unique([tenantId, id])
@@ -301,7 +313,16 @@ model Turno {
   // FK compuesta: un turno no puede colgar de una sala de otro gimnasio.
   sala     Sala   @relation(fields: [tenantId, salaId], references: [tenantId, id])
 
-  nombre String // ej. "Pilates". En Fase 4 se agrega profesorId.
+  nombre String // ej. "Pilates"
+
+  // La relacion que la Fase 4 viene a crear. Antes de ella, el vinculo con la
+  // profesora vivia DENTRO de `nombre` ("Circuito (Fati)"), que es el hallazgo
+  // central del relevamiento de TurnoFit.
+  //
+  // FK COMPUESTA por tenant, como todo el schema desde la Fase 1: la base
+  // impide por si misma que un turno cuelgue de una profesora de otro gimnasio.
+  profesorId String?
+  profesor   Perfil? @relation("TurnoProfesor", fields: [tenantId, profesorId], references: [tenantId, id])
 
   fecha      DateTime @db.Date
   // "HH:MM" en hora local del salon. String simple a proposito: no hay husos
@@ -327,6 +348,9 @@ model Turno {
   // en la misma sala, fecha y hora. Ningun test existente lo ejercitaba.
   @@unique([tenantId, salaId, fecha, horaInicio])
   @@index([tenantId, salaId, fecha])
+  // El filtro ?profesorId= del calendario admin y la vista de "mis clases"
+  // preguntan las dos por esta columna.
+  @@index([tenantId, profesorId])
   @@map("turnos")
 }
 
@@ -362,6 +386,11 @@ model Reserva {
   origen        OrigenReserva
   esPrueba      Boolean       @default(false)
   pagoRealizado Boolean       @default(false)
+
+  // null = todavia no se paso lista. La asistencia es una propiedad de "este
+  // alumno en esta clase", y eso es exactamente una Reserva: no hace falta una
+  // tabla aparte donde la misma verdad pueda discrepar consigo misma.
+  asistio Boolean?
 
   // Una reserva nunca se borra: se cancela. RECUPERABLE deja de contar contra
   // el pack ("la clase vuelve"); DEFINITIVA sigue contando.
@@ -634,4 +663,47 @@ model Comprobante {
   @@index([tenantId, perfilId])
   @@index([tenantId, estado])
   @@map("comprobantes")
+}
+
+model HorarioProfesorAsignado {
+  // El patron semanal de una profesora: "lunes y miercoles 18:00 en Pilates".
+  //
+  // Conceptualmente es lo mismo que RutinaFija, pero para DICTAR en vez de para
+  // tomar, y se mantiene como modelo aparte porque las reglas de negocio no se
+  // parecen en nada: no consume pack, no tiene cancelaciones, y alimenta la
+  // liquidacion en vez del consumo de clases.
+  //
+  // NO genera turnos. Solo los etiqueta (decision D1 de la fase): si generara,
+  // toda hora contratada seria automaticamente una hora dictada y la metrica
+  // que la liquidacion tiene que dar mediria siempre cero.
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  profesorId String
+  profesor   Perfil @relation(fields: [tenantId, profesorId], references: [tenantId, id], onDelete: Cascade)
+  salaId     String
+  sala       Sala   @relation(fields: [tenantId, salaId], references: [tenantId, id], onDelete: Cascade)
+
+  diaSemana  Int // 0 = domingo ... 6 = sabado, igual que RutinaFija
+  horaInicio String // "HH:MM", misma convencion que Turno
+  horaFin    String
+
+  activo Boolean   @default(true)
+  desde  DateTime  @db.Date
+  hasta  DateTime? @db.Date // null = indefinido
+
+  // null = usa Tenant.tarifaPorHoraProfesor. La cascada se resuelve en la
+  // liquidacion, que la devuelve resuelta sin multiplicarla: el importe en
+  // pesos es de la Fase 6.
+  tarifaPorHora Decimal? @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, profesorId])
+  // El indice del etiquetado: el motor pregunta por sala + dia en cada franja
+  // del mes que planifica.
+  @@index([tenantId, salaId, diaSemana])
+  @@map("horarios_profesor_asignados")
 }

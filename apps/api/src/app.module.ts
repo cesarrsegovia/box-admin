@@ -20,10 +20,13 @@ import { validarEntorno } from './config/validar-entorno';
 import { JobsModule } from './jobs/jobs.module';
 import { ListaEsperaModule } from './lista-espera/lista-espera.module';
 import { MiCalendarioModule } from './mi-calendario/mi-calendario.module';
+import { LiquidacionModule } from './liquidacion/liquidacion.module';
+import { MisClasesModule } from './mis-clases/mis-clases.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { PacksModule } from './packs/packs.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReservasModule } from './reservas/reservas.module';
+import { HorariosProfesorModule } from './horarios-profesor/horarios-profesor.module';
 import { RutinasModule } from './rutinas/rutinas.module';
 import { SalasModule } from './salas/salas.module';
 import { TurnosModule } from './turnos/turnos.module';
@@ -96,10 +99,13 @@ import { VacacionesModule } from './vacaciones/vacaciones.module';
     TurnosModule,
     ReservasModule,
     RutinasModule,
+    HorariosProfesorModule,
     VacacionesModule,
     AusenciasModule,
     CalendarioModule,
     MiCalendarioModule,
+    MisClasesModule,
+    LiquidacionModule,
     ComprobantesModule,
     JobsModule,
   ],

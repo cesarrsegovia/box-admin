@@ -3,10 +3,19 @@
 BoxAdmin es un gestor de gimnasios multi-tenant: una misma instalación sirve a varios
 gimnasios ("boxes"), cada uno con sus propios usuarios y datos, sin que se mezclen entre sí.
 
-Este repositorio está en **Fase 0: fundamentos**. Todavía no hay lógica de negocio de
-gimnasio (clases, reservas, pagos, etc.). Lo que existe es la base sobre la que se construirá
-todo lo demás: autenticación, roles, y el mecanismo de aislamiento por tenant que garantiza
-que un gimnasio nunca pueda ver ni tocar los datos de otro.
+Se construye por fases. Hasta ahora:
+
+| Fase | Qué añadió |
+|---|---|
+| **0** — Fundamentos | Autenticación, roles y el aislamiento por tenant sobre el que se apoya todo lo demás |
+| **1** — Núcleo operativo | Salas, packs, usuarios, turnos y reservas |
+| **2** — Motor de recurrencia | Rutinas fijas y generación automática de los meses |
+| **3A** — Self-service (API) | Auto-registro con clave, disponibilidad unificada, lista de espera y comprobantes |
+| **3B** — La PWA | `apps/web`: la aplicación que usa el alumno, instalable en el teléfono |
+| **4** — El profesor real | `Turno.profesorId` como relación, "mis clases", asistencia y la base de la liquidación |
+
+Cada fase tiene su spec y su plan en `docs/superpowers/`, y su estado en
+`docs/superpowers/plans/PROGRESO.md`.
 
 ## Requisitos
 
@@ -760,6 +769,317 @@ código.** Docker Desktop se cerró solo seis veces entre la Fase 2 y la 3A.
 ⚠️ **`Sala.exclusiva` sigue sin efecto.** Está en el schema desde la Fase 1 y nunca se definió qué
 hace: se buscó en los tres PDFs, en los specs y en el código. Mejor un campo almacenado sin usar que
 una semántica inventada. `soloCuposLiberados` estaba igual y **sí** se resolvió en esta fase.
+
+
+## La PWA del alumno — Fase 3B
+
+`apps/web`: un Next.js 15 instalable en el teléfono, contra la API de la Fase 3A. La Fase 3 del PDF
+se partió en dos, y esta es la segunda mitad.
+
+### Levantarlo
+
+Las dos aplicaciones corren a la vez, en puertos distintos:
+
+```bash
+docker compose up -d postgres postgres-test redis   # NUNCA `up` a secas: ver la trampa de Redis
+pnpm api:dev      # API de Nest, puerto 3000
+pnpm web:dev      # la PWA,      puerto 3001
+```
+
+Después, `http://localhost:3001/<slug-del-gimnasio>/registro`.
+
+### Las seis pantallas
+
+| Ruta | Quién | Qué hace |
+|---|---|---|
+| `/[slug]/login` | público | Entrar |
+| `/[slug]/registro` | público | Auto-registro con clave de invitación |
+| `/[slug]/calendario` | alumno | Vista semanal: reservar, cancelar, lista de espera |
+| `/[slug]/mi-pack` | alumno | Consumo, periodo, si está al día |
+| `/[slug]/comprobantes` | alumno | Subir y ver estado |
+| `/[slug]/perfil` | alumno | Datos y cerrar sesión |
+
+El gimnasio va en la ruta y no en un subdominio: funciona en cualquier hosting sin DNS comodín ni
+certificado wildcard, y en desarrollo funciona tal cual en `localhost`.
+
+### Por qué hay un BFF en medio
+
+**El JavaScript de la página nunca ve el token.** Vive en cookies `httpOnly` que un XSS no puede
+leer, y como la API devuelve los tokens en el cuerpo del JSON, hace falta una capa de Next que los
+recoja y los convierta en cookie.
+
+| Ruta de Next | Qué hace |
+|---|---|
+| `POST /api/auth/login` | Llama a la API, siembra `bx_access`, `bx_refresh` y `bx_slug` |
+| `POST /api/auth/auto-registro` | Igual, contra `/auth/auto-registro` |
+| `POST /api/auth/logout` | Revoca en la API y borra las cookies |
+| `ALL /api/bx/[...ruta]` | **Proxy genérico**: reenvía a la API con el `Authorization` de la cookie |
+
+El proxy es genérico a propósito —un handler por endpoint serían veinte archivos casi idénticos—, y
+el precio es que **la validación del destino tiene que ser seria**: un proxy que acepta cualquier
+destino es un SSRF, porque corre dentro de la red donde vive la API. Esa validación vive aparte, en
+`src/lib/api-url.ts`, con sus propios tests: comprueba la forma cruda y la decodificada de cada
+segmento, y como red final que la URL compuesta no salga del origen de la API.
+
+**La cookie del slug no es decorativa.** Las cookies son del dominio pero los tokens son de **un**
+gimnasio: sin ella, alguien logueado en `/gym-a/` que abriera `/gym-b/calendario` vería los datos de
+A bajo la URL de B, porque el JWT lleva su propio `tenantId` y la API respondería tan tranquila. El
+layout del área de alumno compara el slug de la URL con el de la cookie y, si no coinciden, manda al
+login.
+
+### Variables de entorno
+
+En `apps/web/.env.local`:
+
+```
+API_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3001
+```
+
+⚠️ **`API_URL` NO lleva el prefijo `NEXT_PUBLIC_`, y es deliberado.** Una variable con ese prefijo se
+incrusta en el bundle del navegador. La dirección de la API no tiene por qué ser pública, y sobre
+todo: si estuviera disponible en el cliente, sería una invitación a saltarse el BFF y volver a mandar
+el token desde el navegador.
+
+Y en la API, `WEB_ORIGIN=http://localhost:3001` habilita el CORS que necesita la subida de
+comprobantes. Sin esa variable, el CORS no se habilita en absoluto: un despliegue solo-API no tiene
+frontend al que abrirle la puerta.
+
+### El comprobante, en tres pasos
+
+1. `POST /comprobantes` crea la fila y devuelve una **URL firmada**.
+2. El navegador hace `PUT` del archivo **a esa URL**, directo al almacén.
+3. `PATCH /comprobantes/:id/confirmar` marca que llegó.
+
+El segundo paso es **el único punto de toda la aplicación donde el navegador habla con otro origen**
+— por eso la API necesita CORS acotado a `/archivos-locales`. Y el tercero existe porque ni S3 ni el
+adaptador local pueden avisar a la API de que el `PUT` terminó.
+
+El archivo va **crudo**, sin envolver en `FormData`: la URL se firmó para un `Content-Type` concreto,
+y envolverlo cambiaría los bytes. Si el `PUT` falla, **no se confirma**, así que la fila sin archivo
+no le aparece al admin en vez de darle un enlace roto.
+
+### Qué funciona sin conexión
+
+**Leer el calendario ya cargado, y nada más.** Una sola regla de caché, `NetworkFirst` con timeout
+corto sobre `/api/bx/mi-calendario`: con red, datos frescos; sin red, lo último que se vio, con un
+aviso de cuándo se cargó. Un calendario viejo **sin fecha** es peor que no tenerlo.
+
+**Reservar y cancelar fallan** con un mensaje claro. Se descartó encolarlas con Background Sync: el
+cupo puede agotarse mientras la petición espera, así que el alumno se enteraría de que no tenía plaza
+mucho después de creer que sí. Y Safari no lo soporta, que es el navegador de la mitad de los
+teléfonos.
+
+El service worker lo genera **Serwist**, no `next-pwa` — esa última se publicó por última vez en
+agosto de 2022, antes de que existiera el App Router que el propio PDF pide.
+
+### Tests
+
+```bash
+pnpm web:test        # Vitest: 106 tests de logica y componentes
+pnpm web:test:e2e    # Playwright: 5 tests de navegador real
+```
+
+⚠️ **Playwright corre contra el BUILD DE PRODUCCIÓN**, que él mismo construye y sirve en el 3002. El
+service worker está desactivado en desarrollo, así que probar la PWA contra `next dev` no probaría
+nada de lo que esta fase tiene que demostrar.
+
+Necesita la API levantada aparte, y **con el throttler aflojado**, o falla con 429 a mitad de suite
+—cada test crea su gimnasio con un login y un auto-registro—:
+
+```bash
+cd apps/api && THROTTLE_AUTH_LIMIT=100000 THROTTLE_GENERAL_LIMIT=100000 pnpm start:dev
+```
+
+⚠️ Esa API **comparte Redis con los e2e del backend**: no se pueden correr los dos a la vez.
+
+### Trampas propias de esta fase
+
+⚠️ **Instalar paquetes en `apps/web` borra el cliente generado de Prisma.** pnpm reescribe
+`node_modules` y se lleva `.prisma/client` por delante; la API deja de compilar con decenas de
+`Parameter 'tx' implicitly has an 'any' type`, que no mencionan Prisma por ningún lado. Se arregla
+con:
+
+```bash
+cd apps/api && pnpm exec dotenv -e ../../.env -- prisma generate
+```
+
+⚠️ **Tres paquetes de test están fijados a propósito porque sus últimas versiones ya exigen Node 22**,
+y el monorepo está en `>=20 <21`: `vitest@3`, `jsdom@26` y `@vitejs/plugin-react@5`. El de jsdom es el
+más desagradable: la 30 arrastra `undici@8` y revienta al cargar con una traza que apunta a
+`cachestorage.js` sin mencionar la versión de Node. **Si un paquete de test falla con una traza
+incomprensible dentro de `node_modules`, mirá sus `engines` antes de depurar nada.**
+
+⚠️ **La limpieza del DOM entre tests no es automática con Vitest.** Testing Library la engancha sola
+solo en modo `globals: true`; aquí se registra a mano en `vitest.setup.ts`. Sin eso, los tests fallan
+con "Found multiple elements with the role ..." — y el que falla es el segundo, mientras que el
+culpable es el primero.
+
+⚠️ **Si `WEB_ORIGIN` no es EXACTAMENTE el puerto desde el que mirás, el comprobante no sube.** Es el
+único paso que cruza de origen, así que es el único que nota el desajuste: servir el build en el 3002
+con `WEB_ORIGIN=http://localhost:3001` da un fallo de CORS en el `PUT`. Y el aviso que ve el alumno
+dice **"Sin conexion"**, porque eso es literalmente todo lo que el navegador le cuenta al JavaScript
+de una petición bloqueada por CORS: un `TypeError`, sin cuerpo ni estado. Si la subida falla sin
+motivo aparente, mirá la consola antes que el código.
+
+⚠️ **Cortar la red desde las DevTools NO cambia `navigator.onLine`.** El service worker sirve la
+copia cacheada igual, pero el cartel de "Sin conexion" no aparece, porque depende de la propiedad y
+del evento `offline`, no de que las peticiones fallen. `setOffline` de Playwright sí los cambia —por
+eso el test automático lo ve y una comprobación a mano puede no verlo—. Para probarlo a mano hay que
+usar el modo avión del sistema, o el conmutador de red de la propia pestaña.
+
+### Lo que no entra
+
+- **Salirse de la lista de espera desde la pantalla**: `TurnoDisponible` expone `enListaEspera` y
+  `posicionEnLista` pero **no el id de la entrada en la cola**, que es lo que pide el endpoint. El
+  hook `salirme` está escrito y probado para cuando el contrato lo incluya.
+- **El subdominio por gimnasio**, que sería un middleware de reescritura sobre estas mismas rutas.
+- **Notificaciones push**: llegan en la Fase 5, con el hook que la 3A dejó preparado e inerte.
+- **Cualquier pantalla de administración**: esta aplicación es solo del alumno.
+
+
+## El profesor — Fase 4
+
+Hasta aquí, el vínculo entre una profesora y un horario era **una parte del nombre de la actividad**:
+"Circuito (Fati)". No era una relación; era una cadena de texto que nadie podía filtrar, contar ni
+liquidar. Esta fase lo convierte en `Turno.profesorId`, una FK de verdad.
+
+### El horario no crea turnos: los etiqueta
+
+`HorarioProfesorAsignado` es el patrón semanal de una profesora — "lunes 18:00 en Pilates" — y
+**nunca genera un turno**. Los turnos siguen naciendo de donde nacían: de las rutinas fijas de los
+alumnos y del alta manual del admin. Cuando nace uno, el motor busca si hay una profesora asignada a
+esa sala, ese día y esa hora, y le pone el `profesorId`.
+
+⚠️ **Esto no es un detalle de implementación: es lo que hace que la liquidación signifique algo.** Si
+el horario creara el turno, toda hora contratada sería automáticamente una hora dictada. Con el
+etiquetado, la franja que el gimnasio paga y donde no se anotó nadie queda **contratada y no
+dictada**, que es justo el agujero que el relevamiento de TurnoFit encontró.
+
+```
+Lunes 18:00 · profesora contratada: Fati · rutinas de alumnos: 2
+  -> se crea el turno, con profesorId = Fati
+
+Martes 18:00 · profesora contratada: Fati · rutinas de alumnos: 0
+  -> no se crea turno
+
+Liquidacion del mes: contratadas 8 h | dictadas 4 h
+```
+
+La pertenencia es **por contención, no por hora exacta**: una profesora contratada de 18:00 a 19:00
+se queda también el turno que empieza a las 18:30. Comparar `horaInicio` por igualdad dejaría fuera
+el caso corriente de las clases escalonadas.
+
+### El motor solo rellena huecos
+
+Al regenerar un mes, el motor pone profesora **solo en los turnos que no la tienen**. Nunca pisa un
+valor puesto.
+
+| Situación | Al republicar el mes |
+|---|---|
+| Turno con profesora Ana (suplencia), el patrón dice Fati | Sigue Ana |
+| Turno sin profesora, el patrón dice Fati | Queda Fati |
+| Turno con profesora Fati, el patrón cambió a Ana | Sigue Fati |
+
+No hace falta una columna que marque "lo puso un humano": **tener profesora ya significa que alguien
+lo decidió**. Y la regla cubre los dos caminos reales de golpe — la suplencia sobrevive a cualquier
+republicación, y dar de alta el horario *después* de publicar el mes rellena los turnos huérfanos.
+
+El precio, aceptado: no se puede expresar "esta franja tiene patrón pero quiero que quede
+deliberadamente sin profesora".
+
+### Los dos solapes que rechaza el alta
+
+`POST /horarios-profesor` devuelve **409** en dos casos:
+
+```
+Fati, Sala A, lunes 18:00-19:00   (existente)
+Ana,  Sala A, lunes 18:30-19:30   -> 409, se pisan en la misma sala
+Fati, Sala B, lunes 18:00-19:00   -> 409, no puede estar en dos salas a la vez
+Ana,  Sala A, lunes 19:00-20:00   -> OK, son consecutivas
+Ana,  Sala A, lunes 18:00, desde octubre (el de Fati termina en septiembre)  -> OK
+```
+
+El primero no es purismo: `Turno.profesorId` es uno solo, así que dos horarios que se pisan no se
+pueden resolver, y cuál ganara dependería del orden en que Postgres devolviera las filas.
+
+Las dos comprobaciones viven en el servicio y no en un `@@unique`, porque **un índice no sabe de
+rangos de fechas que se cruzan**.
+
+### Asignar una profesora exige que tenga acceso a la sala
+
+Tanto `POST /horarios-profesor` como `PATCH /turnos/:id/profesor` devuelven **400** si la profesora
+no tiene esa sala asignada. Sin esa puerta acabaría con un turno en una sala que no puede ni ver, y
+las dos mitades del sistema dirían cosas distintas sobre la misma clase. Si el admin quiere la
+suplencia, primero le da la sala.
+
+### Lo que ve la profesora
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/mis-clases?desde=&hasta=` | Sus clases, con cupo y si ya pasó lista |
+| GET | `/mis-clases/:turnoId/alumnos` | Nombre y asistencia. Nada más |
+| POST | `/mis-clases/:turnoId/asistencia` | Pasar lista |
+
+El filtro es `profesorId = su perfil` y nada más: el turno es suyo por definición. **El turno de otra
+profesora devuelve 404 y no 403** — decir que existe ya sería contar algo de la agenda ajena. Un
+admin que llame a `/mis-clases` recibe 404 igual que en `/mi-calendario`: no tiene clases propias.
+
+De cada alumna ve **el nombre y si vino**. Ni teléfono ni ficha médica: desde la Fase 1 la ficha solo
+la ve `ADMIN_SALON` o la propia persona, y esta fase no abre esa puerta.
+
+**Pasar lista es una foto del turno entero**, no un incremento:
+
+```
+POST /mis-clases/:turnoId/asistencia
+  { "presentes": ["perfil-1", "perfil-3"] }
+
+perfil-1 -> asistio = true
+perfil-2 -> asistio = false     (no estaba en la lista)
+perfil-3 -> asistio = true
+```
+
+Así mandar dos veces la misma lista da el mismo resultado, y corregir un error es volver a mandar la
+buena. **Las canceladas no se tocan**: quien canceló no faltó. Y un `perfilId` sin reserva activa es
+un **400**, no un no-op: un id equivocado marcaría ausente a media clase en silencio.
+
+Solo se puede pasar lista de una clase **que ya empezó**. Hacia atrás no hay límite: quien se olvidó
+tres semanas puede ponerse al día, y el rastro queda en `historial_acciones`.
+
+### La liquidación no multiplica
+
+`GET /liquidacion/:profesorId?anio=&mes=` (rol `ADMIN_SALON`, porque enseña tarifas) devuelve una
+sola lista de franjas con tres banderas ortogonales:
+
+| `contratada` | `dictada` | `cerrada` | Qué es |
+|---|---|---|---|
+| sí | sí | no | La clase se dio |
+| sí | no | no | **Nadie se anotó** |
+| sí | no | sí | Feriado |
+| no | sí | — | Suplencia sin contrato en esa franja |
+
+⚠️ **Un día cerrado NO suma a horas contratadas.** Sale aparte, en `horasCerradas`, con su motivo.
+Así "contratadas menos dictadas" significa una sola cosa —horas que nadie usó por falta de alumnos—
+en vez de mezclar eso con feriados, que no son culpa de nadie y se negocian de otra manera.
+
+**Dictadas cuenta todos sus turnos**, incluidas las suplencias y las clases donde todos cancelaron:
+la profesora fue igual.
+
+⚠️ **No hay ni un importe.** El cálculo en pesos —tarifas, ajustes, el "50% base"— es de la Fase 6, y
+adelantarlo aquí duplicaría lógica de reportes en dos sitios. Lo que sí viaja es **la tarifa ya
+resuelta** por la cascada horario → gimnasio, con su `origenTarifa`, para que la Fase 6 solo tenga
+que multiplicar. `minutos` enteros es la verdad; las horas son un string con dos decimales, y la
+Fase 6 multiplicará `minutos / 60 × tarifa` en `Decimal` sin pasar por un float.
+
+`origenTarifa: null` no es un error: un gimnasio puede llevar los horarios sin haber cargado tarifas.
+
+### La baja de un horario no reescribe el pasado
+
+`DELETE /horarios-profesor/:id` es **baja lógica**: pone `activo = false` y además cierra `hasta` a
+hoy si estaba abierto. Cada cosa sirve para algo distinto — `activo` es lo que filtran los listados y
+el etiquetado, y `hasta` es lo que mira la liquidación, que **no filtra por `activo`**. Así, borrar
+un horario deja de generar etiquetas de hoy en adelante pero no cambia lo que ya se liquidó en
+agosto.
 
 
 ## Tests
