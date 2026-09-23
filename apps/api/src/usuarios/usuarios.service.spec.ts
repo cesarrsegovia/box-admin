@@ -48,7 +48,6 @@ const PERFIL = {
   packId: null,
   clasesExtra: 0,
   cancelacionesUsadas: 0,
-  pagoAlDia: false,
   vigenciaDesde: null,
   vigenciaHasta: null,
   createdAt: new Date(),
@@ -104,9 +103,17 @@ function crearServicio() {
   };
   const prisma = { db } as unknown as PrismaService;
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
+  // Doble del servicio de pagos. Devuelve "nadie al dia" por defecto: este spec
+  // prueba el alta y la gestion de usuarios, no el cobro.
+  const pagos = {
+    perfilesAlDia: jest.fn().mockResolvedValue(new Set<string>()),
+    perfilAlDia: jest.fn().mockResolvedValue(false),
+    fijarEstado: jest.fn().mockResolvedValue(undefined),
+  };
 
   return {
-    servicio: new UsuariosService(prisma, historial as unknown as HistorialService),
+    servicio: new UsuariosService(prisma, historial as unknown as HistorialService, pagos as never),
+    pagos,
     usuario,
     perfil,
     sala,
@@ -269,7 +276,6 @@ describe('UsuariosService.crearProfesor', () => {
 
     const datosPerfil = perfil.create.mock.calls[0][0].data;
     expect(datosPerfil.packId).toBeNull();
-    expect(datosPerfil.pagoAlDia).toBe(false);
     expect(datosPerfil.clasesExtra).toBe(0);
   });
 
@@ -526,5 +532,27 @@ describe('UsuariosService.listar con filtro autoRegistrado', () => {
     await servicio.listar(ADMIN, { autoRegistrado: false });
 
     expect(usuario.findMany.mock.calls[0][0].where.perfil).toEqual({ autoRegistrado: false });
+  });
+});
+
+describe('UsuariosService.listar y el estado de pago', () => {
+  it('resuelve el estado de TODOS los perfiles con UNA sola llamada', async () => {
+    // El listado devuelve N alumnos y es la pantalla principal del admin.
+    // Preguntar uno a uno serian N consultas contra la tabla de pagos.
+    const { servicio, pagos } = crearServicio();
+
+    await servicio.listar(ADMIN, {});
+
+    expect(pagos.perfilesAlDia).toHaveBeenCalledTimes(1);
+  });
+
+  it('le pasa los ids de la pagina, no los pide de uno en uno', async () => {
+    const { servicio, pagos } = crearServicio();
+
+    await servicio.listar(ADMIN, {});
+
+    const ids = pagos.perfilesAlDia.mock.calls[0]![1];
+    expect(Array.isArray(ids)).toBe(true);
+    expect(pagos.perfilAlDia).not.toHaveBeenCalled();
   });
 });

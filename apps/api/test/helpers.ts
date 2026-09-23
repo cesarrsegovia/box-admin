@@ -28,7 +28,8 @@ export async function crearAppDeTest(): Promise<EntornoE2E> {
 export async function limpiarBaseDeDatos(prisma: PrismaService): Promise<void> {
   await prisma.base.$executeRawUnsafe(
     'TRUNCATE TABLE ' +
-      '"horarios_profesor_asignados", "comprobantes", "listas_espera", ' +
+      '"suscripciones_push", "plantillas_email", "configuraciones_smtp", ' +
+      '"pagos", "horarios_profesor_asignados", "comprobantes", "listas_espera", ' +
       '"claves_invitacion_salas", "claves_invitacion", ' +
       '"rutinas_fijas", "meses_calendario", "vacaciones_alumnos", "ausencias", ' +
       '"reservas", "usuarios_salas", "turnos", "perfiles", "packs", "salas", ' +

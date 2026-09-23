@@ -37,9 +37,6 @@ export class ActualizarUsuarioDto {
   @IsNotEmpty()
   packId?: string;
 
-  @IsOptional()
-  @IsBoolean()
-  pagoAlDia?: boolean;
 
   @IsOptional()
   @IsInt()

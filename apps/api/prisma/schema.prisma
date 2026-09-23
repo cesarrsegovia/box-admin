@@ -39,6 +39,20 @@ model Tenant {
   // existia en ningun sitio. La Fase 6 la multiplica; la 4 solo la resuelve.
   tarifaPorHoraProfesor Decimal? @db.Decimal(10, 2)
 
+  /// Con cuantos dias de antelacion avisar de un pack por vencer. El checklist
+  /// del PDF dice "con la anticipacion configurada" y no habia donde.
+  ///
+  /// El 7 no sale del PDF: sale de que la vigencia de un pack se mide en meses,
+  /// asi que una semana es el aviso mas corto que todavia deja al alumno margen
+  /// para pagar antes de quedarse sin reservar. Menos, y el aviso llega cuando
+  /// ya no da tiempo; mas, y se avisa de algo que el alumno no puede resolver
+  /// aun y acaba ignorando el correo.
+  ///
+  /// Al ser NOT NULL con default, la migracion que lo introduce rellena con 7
+  /// TODOS los tenants que ya existen. Es lo que se quiere: 7 es el valor por
+  /// defecto tambien para ellos, no un placeholder que haya que revisar.
+  diasAvisoVencimiento Int @default(7)
+
   usuarios        Usuario[]
   perfiles        Perfil[]
   salas           Sala[]
@@ -56,6 +70,11 @@ model Tenant {
   comprobantes         Comprobante[]
   listasEspera         ListaEspera[]
   horariosProfesor     HorarioProfesorAsignado[]
+  pagos                Pago[]
+
+  configuracionSmtp ConfiguracionSMTP?
+  plantillasEmail   PlantillaEmail[]
+  suscripcionesPush SuscripcionPush[]
 
   @@map("tenants")
 }
@@ -143,6 +162,16 @@ enum TipoCancelacion {
   DEFINITIVA
 }
 
+/// Enum y no `String` libre como el PDF. Mismo criterio que TipoCancelacion,
+/// EstadoComprobante y MetodoPago.
+enum TipoPlantilla {
+  CONFIRMACION
+  CANCELACION
+  RECORDATORIO_PAGO
+  LISTA_ESPERA
+  VENCIMIENTO_PACK
+}
+
 model Sala {
   id       String @id @default(cuid())
   tenantId String
@@ -205,7 +234,10 @@ model Perfil {
   pack                Pack?     @relation(fields: [tenantId, packId], references: [tenantId, id])
   clasesExtra         Int       @default(0)
   cancelacionesUsadas Int       @default(0)
-  pagoAlDia           Boolean   @default(false)
+  // `pagoAlDia` vivia aqui hasta la Fase 5A. Se borro: era un booleano que
+  // aprobar un comprobante ponia en true y nada bajaba jamas. Ahora "estar al
+  // dia" se DERIVA de los pagos vigentes, como el consumo del pack se deriva de
+  // las reservas desde la Fase 1.
   vigenciaDesde       DateTime?
   vigenciaHasta       DateTime?
 
@@ -229,6 +261,8 @@ model Perfil {
   // Turno por otro camino (a traves de Reserva), y Prisma no sabria cual es cual.
   turnosComoProfesor Turno[]                   @relation("TurnoProfesor")
   horariosAsignados  HorarioProfesorAsignado[]
+  pagos              Pago[]
+  suscripcionesPush  SuscripcionPush[]
 
   // Destino de las FK compuestas de UsuarioSala y Reserva. Ver Usuario.
   @@unique([tenantId, id])
@@ -242,6 +276,11 @@ model Perfil {
   // Postgres no indexa las claves foraneas por si solo, y esta se consulta
   // siempre junto al tenant ("alumnos del pack X de este gimnasio").
   @@index([tenantId, packId])
+  // El job diario de vencimiento (Fase 5B) pregunta "que packs de este gimnasio
+  // vencen entre hoy y hoy + diasAvisoVencimiento", que es un rango sobre
+  // vigenciaHasta acotado por tenant. Sin este indice recorre todos los perfiles
+  // del gimnasio cada dia. Mismo criterio que Pago.@@index([tenantId, cubreHasta]).
+  @@index([tenantId, vigenciaHasta])
   @@map("perfiles")
 }
 
@@ -612,7 +651,23 @@ model ListaEspera {
   perfilId String
   perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id], onDelete: Cascade)
 
-  // Lo escribira el modulo de notificaciones de la Fase 5. Hoy siempre false.
+  // SIN USO, y hay que decirlo aqui porque el comentario anterior invitaba a lo
+  // contrario. Decia "lo escribira el modulo de notificaciones de la Fase 5";
+  // la Fase 5B comprobo que NO PUEDE escribirlo nadie: esta fila se borra en
+  // `ListaEsperaService.asignarPrimero`, dentro de la misma transaccion que crea
+  // la reserva, y el aviso de cupo se encola despues del commit. Cuando el
+  // worker llega, la fila ya no existe, y un `updateMany` contra ella devuelve
+  // `count: 0` siempre. Escrito como compare-and-set —la unica forma correcta de
+  // escribir una marca asi— el aviso no saldria nunca.
+  //
+  // El borrado es la semantica querida, no un descuido: el email le dice al
+  // alumno "Ya no estas en la lista de espera".
+  //
+  // Asi que la marca de idempotencia de los dos processors de aviso vive hoy en
+  // el propio job de BullMQ, y su destino es una columna NUEVA de `Reserva`.
+  // Esta columna ya no sale hacia la API (se quito de `EntradaListaEspera`) y
+  // queda en la base a la espera: si se borra o se reutiliza, se decide cuando
+  // se pueda aplicar y validar una migracion.
   notificado Boolean @default(false)
 
   createdAt DateTime @default(now())
@@ -626,6 +681,16 @@ enum EstadoComprobante {
   PENDIENTE
   APROBADO
   RECHAZADO
+}
+
+/// Enum y no `String` libre como el PDF: un typo en un string libre es un bug
+/// silencioso, y el enum lo convierte en error de compilacion. Mismo criterio
+/// que TipoCancelacion (Fase 1) y EstadoComprobante (Fase 3A).
+enum MetodoPago {
+  EFECTIVO
+  TRANSFERENCIA
+  CORTESIA
+  OTRO
 }
 
 model Comprobante {
@@ -660,6 +725,10 @@ model Comprobante {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  pagos Pago[]
+
+  // Destino de la FK compuesta de Pago.comprobante. Ver Usuario.
+  @@unique([tenantId, id])
   @@index([tenantId, perfilId])
   @@index([tenantId, estado])
   @@map("comprobantes")
@@ -706,4 +775,129 @@ model HorarioProfesorAsignado {
   // del mes que planifica.
   @@index([tenantId, salaId, diaSemana])
   @@map("horarios_profesor_asignados")
+}
+
+model Pago {
+  // El registro de dinero que YA entro, fuera del sistema. No hay pasarela de
+  // pago ni la pide ninguna fase.
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  // FK COMPUESTAS por tenant, como todo el schema desde la Fase 1.
+  perfilId String
+  perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id])
+
+  monto  Decimal    @db.Decimal(10, 2)
+  metodo MetodoPago
+
+  /// Una sena reserva un lugar; no pone al alumno al dia.
+  esSena Boolean @default(false)
+
+  // El periodo que cubre. Es lo que hace que "al dia" se pueda DERIVAR en vez
+  // de guardarse en un booleano que nadie mantiene: la pregunta es si hay algun
+  // pago vigente que cubra hoy.
+  cubreDesde DateTime @db.Date
+  cubreHasta DateTime @db.Date
+
+  comprobanteId String?
+  comprobante   Comprobante? @relation(fields: [tenantId, comprobanteId], references: [tenantId, id])
+
+  /// Escalar sin FK, igual que HistorialAccion.usuarioId: es auditoria.
+  registradoPor String
+  nota          String?
+
+  // Un pago NO se borra: se anula. Es dinero, y borrar la fila reescribe la
+  // caja que la Fase 6 va a leer. Ademas cubre el caso feo y real: el admin
+  // tecleo 250000 en vez de 25000.
+  anuladoEn  DateTime?
+  anuladoPor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, perfilId])
+  // La pregunta "quien esta al dia" filtra por aqui.
+  @@index([tenantId, cubreHasta])
+  @@map("pagos")
+}
+
+model ConfiguracionSMTP {
+  // Sin `createdAt`, y es el unico modelo del schema junto a PlantillaEmail que
+  // no lo lleva. No es un olvido: esto es configuracion, no historia. Nadie
+  // pregunta cuando se configuro el SMTP por primera vez; se pregunta si el de
+  // ahora funciona. Quien cambio que y cuando ya lo guarda HistorialAccion.
+  tenantId String @id
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  // El PDF guardaba emailOrigen, la clave y emailDestino, y con eso nodemailer
+  // no puede abrir una conexion: faltan el servidor, el puerto y el usuario.
+  host   String
+  puerto Int
+
+  /// El `secure` de nodemailer, y no "usa cifrado": los dos modos cifran. `true`
+  /// es TLS implicito, el del puerto 465, donde la conexion va cifrada desde el
+  /// saludo; `false` es texto plano que sube a TLS con STARTTLS, el del 587.
+  /// Por defecto `true` porque es el modo que no tiene ventana en claro: con
+  /// STARTTLS, un intermediario puede suprimir el anuncio de la extension y
+  /// dejar la sesion sin cifrar. Quien use el 587 lo pone en false a mano.
+  seguro Boolean @default(true)
+
+  usuario String
+
+  /// AES-256-GCM con APP_ENCRYPTION_KEY y prefijo de version. NUNCA viaja de
+  /// vuelta al cliente, ni cifrada ni enmascarada.
+  claveCifrada String
+
+  emailOrigen  String
+  /// Copia interna al salon. `null` = no se copia a nadie.
+  emailDestino String?
+
+  updatedAt DateTime @updatedAt
+
+  @@map("configuraciones_smtp")
+}
+
+model PlantillaEmail {
+  // Sin `createdAt`, por lo mismo que ConfiguracionSMTP: es configuracion. Una
+  // plantilla que no existe se resuelve con la constante del codigo (D5), asi
+  // que "desde cuando existe esta fila" no cambia el comportamiento de nada.
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  tipo       TipoPlantilla
+  asunto     String
+  cuerpoHtml String
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, tipo])
+  @@map("plantillas_email")
+}
+
+model SuscripcionPush {
+  id       String @id @default(cuid())
+  // El PDF NO le ponia tenantId. Sin el, la extension de aislamiento no puede
+  // clasificarla y toda query sobre ella se bloquea.
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  perfilId String
+  perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id], onDelete: Cascade)
+
+  endpoint String
+  p256dh   String
+  auth     String
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, perfilId, endpoint])
+  // REDUNDANTE a proposito, y documentado para que se sepa: (tenantId, perfilId)
+  // es prefijo exacto del @@unique de arriba, y Postgres ya puede resolver el
+  // filtro "suscripciones de este perfil" con ese indice unico. Se deja porque
+  // el mismo patron esta en ListaEspera y en Turno y quitarlo aqui solo seria
+  // una migracion mas. El dia que alguien limpie indices, este sobra.
+  @@index([tenantId, perfilId])
+  @@map("suscripciones_push")
 }

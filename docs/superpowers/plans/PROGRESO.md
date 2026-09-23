@@ -746,3 +746,141 @@ decide qué hacer con `VacacionAlumno.devuelveClase`, inerte desde la Fase 2), l
 pública y check-in, que es donde la liquidación aprende a multiplicar) y la 7 (stretch).
 
 Nada commiteado: los mensajes de commit sugeridos de las 15 tareas están en el plan, uno por tarea.
+
+# Progreso Fase 5A — El ciclo de cobro
+
+**Spec:** `docs/superpowers/specs/2026-09-21-fase5a-ciclo-de-cobro.md`
+**Plan:** `docs/superpowers/plans/2026-09-21-fase5a-ciclo-de-cobro.md` (8 tareas, T0–T7)
+
+La primera mitad de la Fase 5 del PDF. Se partió en dos por lo mismo que se partió la 3: el cobro es
+pequeño y se entrega solo, y la comunicación —donde vive todo el riesgo— depende de él.
+
+- [x] T0 — El schema, la migración y la clasificación
+- [x] T1 — Los contratos compartidos
+- [x] T2 — `estaAlDia`, la función pura
+- [x] T3 — El módulo de pagos
+- [x] T4 — Derivar el estado donde antes se leía la columna
+- [x] T5 — Aprobar un comprobante crea el pago
+- [x] T6 — Los e2e del ciclo completo
+- [x] T7 — Verificación final, README y tracker
+
+## Decisiones cerradas con Cesar antes de empezar
+
+El PDF traía dos agujeros que había que tapar antes de escribir código.
+
+**El importe no estaba en ninguna parte.** El PDF hace `Pago.monto` obligatorio y dice que aprobar un
+comprobante crea el pago, pero un `Comprobante` es la foto de una transferencia: tiene archivo, tipo
+MIME y estado, y ningún importe.
+
+**Nadie bajaba `pagoAlDia`.** Aprobar lo ponía en `true` desde la Fase 3A y nada lo bajaba jamás. Tal
+cual estaba, después del primer pago todo el mundo quedaba al día para siempre, y el job de
+recordatorio de la 5B —que es el criterio de éxito del PDF— no le habría sonado a nadie.
+
+1. **El pago cubre un periodo, y "al día" se deriva.** Mismo criterio que el consumo del pack desde
+   la Fase 1 y la posición en la lista de espera desde la 3A: derivar en vez de guardar un dato que
+   nadie mantiene.
+2. **`Perfil.pagoAlDia` se borra; el override del admin es un pago de cortesía** de importe cero. Una
+   sola tabla, una sola verdad, y la Fase 6 puede explicar por qué alguien está al día sin haber
+   pagado.
+3. **El importe y el periodo los pone el admin al aprobar.** Es quien está mirando la foto.
+
+Y una decisión propia, marcada como tal en la spec: **una seña no pone al día**. Reserva un lugar, no
+salda el periodo.
+
+## Estado final de la Fase 5A
+
+**86 tests en `shared` + 706 unitarios de la API + 163 e2e de la API**, más los 106 de Vitest de la
+PWA, que sigue verde sin tocar una línea. `tsc --noEmit` limpio en los tres paquetes y Prettier limpio
+sobre lo que escribe la fase.
+
+Y el checklist recorrido **a mano** contra la API levantada, incluido el punto que ningún unitario
+puede ver.
+
+Nada commiteado.
+
+### El checklist, verificado a mano
+
+| # | Punto | Resultado |
+|---|---|---|
+| — | **El pago que vence HOY sigue al día todo el día** | ✅ contra el reloj real |
+| 1 | Aprobar un comprobante crea el pago y actualiza el estado | ✅ con su `comprobanteId` enlazado |
+| 2 | Pago manual sin comprobante | ✅ y `15000.50` no pierde centavos |
+| 4 | Un pago vencido deja de poner al día solo | ✅ |
+| 5 | Una seña no pone al día | ✅ |
+| 6 | Anular saca del cálculo sin borrar la fila | ✅ |
+| — | El listado devuelve el estado de todos | ✅ 6 alumnos en 17 ms |
+
+### Las dos mutaciones muerden
+
+| Qué se mutó | Test que rompió |
+|---|---|
+| `comienzoDeHoyUtc(hoy)` → `hoy` | `el ULTIMO dia del periodo cuenta ENTERO` |
+| Quitar el filtro de `anuladoEn` | `un pago anulado no cuenta` |
+
+La primera es la que importa: sin normalizar la fecha, el estado se cae durante todo el último día
+del periodo. Y es un error que ningún test que use medianoche como "hoy" llegaría a ver — por eso el
+`HOY` de la tabla de casos son las 14:30.
+
+### Lo que se encontró al ejecutar el plan
+
+**`prisma migrate dev` no funciona sin interactividad cuando la migración es destructiva.** Borrar
+`pagoAlDia` —91 valores en la base de desarrollo— hace que el CLI pida confirmación, y en un entorno
+no interactivo aborta con un mensaje que habla de `migrate deploy` sin explicar por qué. La salida sin
+usar `migrate reset` (que necesita permiso de Cesar) es generar el SQL a mano:
+
+```bash
+pnpm exec dotenv -e ../../.env -- npx prisma migrate diff \
+  --from-config-datasource --to-schema prisma/schema.prisma --script \
+  > prisma/migrations/<timestamp>_<nombre>/migration.sql
+```
+
+y después `migrate deploy` en las dos bases. **Ojo con las banderas**: `--from-url` y `--from-schema`
+ya no existen en el CLI de Prisma 7; son `--from-config-datasource` y `--to-schema`.
+
+**La migración NO convierte los `pagoAlDia = true` en cortesías, a propósito**, y lleva una cabecera
+explicándolo: una cortesía lleva un periodo, y el periodo que cubría cada uno de esos `true` no lo
+sabe nadie. Inventarlo sería fabricar datos que la Fase 6 leería como ciertos.
+
+**Cuatro tests de fases anteriores que fijaban lo que ya no existe:**
+
+1. `mi-pack.service.spec.ts` esperaba `pagoAlDia: true` porque venía del fixture del perfil. Ahora sale
+   del servicio de pagos, y se añadió un test que lo demuestra: el doble dice `true` y el fixture ya ni
+   siquiera tiene el campo.
+2. `usuarios.service.spec.ts` comprobaba que el alta de profesor escribía `pagoAlDia: false`.
+3. Los e2e de la 3A llamaban a `aprobar` con el cuerpo vacío. Uno de ellos —el del 409 sin archivo—
+   habría pasado a dar **400** por el DTO y estaría pasando por el motivo equivocado.
+4. Dos constructores de servicio en los specs, que ganaron un tercer argumento.
+
+**Un error mío al sustituir código:** reemplacé `return aUsuarioDetalle(await this.buscarConRelaciones(id), true)`
+por una versión de dos líneas con `const datos`, y en tres de los cinco sitios ya existía un `datos`
+en ese ámbito. `tsc` lo cazó con `Cannot redeclare block-scoped variable`.
+
+### Trampas de entorno
+
+- **Docker Desktop se cayó otra vez** (novena desde la Fase 2).
+- **`.env` apunta al 5434 y `.env.test` al 5433**, no al revés. Mi plan lo decía cambiado; no rompió
+  nada porque los comandos usan los archivos de entorno, no los puertos, pero está mal escrito ahí.
+- La trampa del `dotenv` en los e2e **no volvió a morder**: el plan la llevaba escrita desde la Fase 4
+  y el comando se usó bien a la primera.
+
+### Deuda declarada
+
+- **Queda la Fase 5B entera**: SMTP cifrado con AES-256-GCM, plantillas con Handlebars, los cuatro
+  processors de BullMQ y las notificaciones push del navegador.
+- **La seña es una decisión propia**, no del PDF. Una línea en `estado-de-pago.ts` si el gimnasio la
+  ve de otra manera.
+- **`GET /pagos` filtra por cuándo entró el dinero**, no por el periodo que cubre. La Fase 6 añadirá
+  la otra pregunta si la necesita.
+- **La migración borra una columna con datos.** Con producción haría falta una conversión decidida por
+  el gimnasio antes de desplegar.
+- **Siguen los archivos de las Fases 0–2 que no pasan `prettier --check`**, más el README y este
+  tracker: Prettier quiere repaginar todas las tablas de markdown. Pendiente el commit de solo formato.
+- **`Sala.exclusiva`** sigue almacenado sin efecto, y **los husos horarios** siguen sin existir.
+
+## Siguiente paso
+
+La 5B: la comunicación. Es donde el hook de notificaciones deja de estar inerte desde la Fase 3A —
+avisar a quien entra desde la lista de espera es su primer caso— y donde entran el cifrado de
+credenciales, las plantillas y el push.
+
+Nada commiteado: los mensajes de commit sugeridos de las 8 tareas están en el plan, uno por tarea.

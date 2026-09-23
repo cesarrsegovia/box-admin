@@ -847,7 +847,11 @@ describe('Fase 3A — self-service del alumno', () => {
       const aprobado = await request(servidor)
         .patch(`/comprobantes/${creado.body.comprobante.id}/aprobar`)
         .set('Authorization', `Bearer ${gym.adminToken}`)
-        .send({})
+        // Desde la Fase 5A aprobar registra el cobro, y el periodo tiene que
+        // caer en el futuro: si no, el alumno no queda al dia y el expect de
+        // abajo falla. Es la diferencia entre la bandera vieja —que no
+        // caducaba— y el periodo nuevo.
+        .send({ monto: '25000.00', cubreHasta: '2099-12-31' })
         .expect(200);
       expect(aprobado.body).toMatchObject({ estado: 'APROBADO', revisadoPor: gym.adminId });
 
@@ -896,11 +900,13 @@ describe('Fase 3A — self-service del alumno', () => {
       await request(servidor)
         .patch(`/comprobantes/${creado.body.comprobante.id}/aprobar`)
         .set('Authorization', `Bearer ${gym.adminToken}`)
-        .send({})
+        // Con el cuerpo vacio esto daria 400 por el DTO, no 409, y el test
+        // pasaria por el motivo equivocado.
+        .send({ monto: '1.00', cubreHasta: '2099-12-31' })
         .expect(409);
     });
 
-    it('rechazar guarda la nota y NO pone pagoAlDia', async () => {
+    it('rechazar guarda la nota y NO pone al alumno al dia', async () => {
       const salaId = await crearSala();
       const alumno = await crearAlumnoPorInvitacion(app, gym, [salaId]);
 

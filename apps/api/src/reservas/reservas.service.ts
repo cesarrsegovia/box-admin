@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type { Reserva } from '@prisma/client';
@@ -17,7 +18,11 @@ import {
   esConflictoDeSerializacion,
 } from '../common/prisma/serializable';
 import { HistorialService } from '../common/historial/historial.service';
-import { ListaEsperaService } from '../lista-espera/lista-espera.service';
+import { ListaEsperaService, type CupoRepartido } from '../lista-espera/lista-espera.service';
+import {
+  NotificacionesService,
+  type ReservaCambiada,
+} from '../notificaciones/notificaciones.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 import type { CrearReservaDto } from './dto/crear-reserva.dto';
 import type { ReasignarReservaDto } from './dto/reasignar-reserva.dto';
@@ -38,15 +43,49 @@ export function aReservaPublica(reserva: Reserva): ReservaPublica {
   };
 }
 
+/**
+ * Lo que queda por avisar CUANDO LA TRANSACCION HAYA HECHO COMMIT.
+ *
+ * POR QUE NO SE ENCOLA DENTRO. `crear` y `cancelar` corren bajo
+ * `conReintentoDeCupo` con aislamiento Serializable: Postgres puede abortar la
+ * transaccion con 40001 despues de haber ejecutado el cuerpo entero, y el
+ * reintento la vuelve a ejecutar. Redis NO participa de ese rollback, asi que
+ * un `cola.add` de adentro deja el job vivo y el reintento encola otro.
+ *
+ * Y la ventana no es un rincon raro: un aborto por serializacion ocurre justo
+ * cuando dos personas compiten por el ultimo lugar de un turno, que es
+ * exactamente cuando el aviso importa.
+ *
+ * El comentario de la Fase 3A decia que el hook iba dentro "cuando ya se sabe
+ * que la reserva se creo". Era verdad cuando el hook SOLO ESCRIBIA EN EL LOG:
+ * un log duplicado no le hace dano a nadie. Desde que encola, adentro no se
+ * sabe que la reserva se creo, se sabe que esta a punto de crearse. La certeza
+ * llega con el commit.
+ *
+ * EL INTERCAMBIO QUE SE ACEPTA A CAMBIO: si el proceso se muere entre el commit
+ * y el `add`, el aviso SE PIERDE. Es la mitad buena del trato. Perder un aviso
+ * molesta; mandar uno fantasma le dice a alguien que tiene una clase que no
+ * tiene, o le confirma dos veces una que pidio una vez — y eso no se puede
+ * desandar: un aviso mal mandado no da error, llega y se lee.
+ */
+interface AvisosPendientes {
+  cambios: ReservaCambiada[];
+  /** El cupo que `asignarPrimero` repartio dentro de la misma transaccion. */
+  cupo: CupoRepartido | null;
+}
+
 /** El perfil con lo que hace falta para decidir sobre una reserva. */
 const PERFIL_PARA_RESERVAR = { pack: true, salas: { select: { salaId: true } } } as const;
 
 @Injectable()
 export class ReservasService {
+  private readonly logger = new Logger(ReservasService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
     private readonly listaEspera: ListaEsperaService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   /**
@@ -88,7 +127,7 @@ export class ReservasService {
    * El reintento NO cubre los errores de negocio: un turno lleno sigue lleno.
    */
   async crear(actor: JwtPayload, turnoId: string, dto: CrearReservaDto): Promise<ReservaCreada> {
-    return this.conReintentoDeCupo(() =>
+    const { resultado, avisos } = await this.conReintentoDeCupo(() =>
       this.prisma.db.$transaction(
         async (tx) => {
           const cliente = tx as ClientePrismaTx;
@@ -150,11 +189,30 @@ export class ReservasService {
             cliente,
           );
 
-          return { ...aReservaPublica(creada), advertencias };
+          // El aviso NO se encola aqui: se devuelve. Ver AvisosPendientes.
+          return {
+            resultado: { ...aReservaPublica(creada), advertencias },
+            avisos: {
+              cambios: [
+                {
+                  tenantId: actor.tenantId,
+                  perfilId: creada.perfilId,
+                  turnoId: creada.turnoId,
+                  origen: creada.origen,
+                  accion: 'CONFIRMACION' as const,
+                },
+              ],
+              cupo: null,
+            },
+          };
         },
         { isolationLevel: 'Serializable' },
       ),
     );
+
+    await this.encolarAvisos(actor, avisos);
+
+    return resultado;
   }
 
   /**
@@ -172,7 +230,7 @@ export class ReservasService {
    * lugar a dos personas distintas.
    */
   async cancelar(actor: JwtPayload, id: string, tipo: TipoCancelacion): Promise<ReservaPublica> {
-    return this.conReintentoDeCupo(() =>
+    const { resultado, avisos } = await this.conReintentoDeCupo(() =>
       this.prisma.db.$transaction(
         async (tx) => {
           const cliente = tx as ClientePrismaTx;
@@ -216,13 +274,73 @@ export class ReservasService {
           // ocupado y la asignacion encontraria el turno lleno. Y con el MISMO
           // cliente, para que la reserva asignada se revierta junto con la
           // cancelacion si algo falla mas abajo.
-          await this.listaEspera.asignarPrimero(actor, reserva.turnoId, cliente);
+          const cupo = await this.listaEspera.asignarPrimero(actor, reserva.turnoId, cliente);
 
-          return aReservaPublica(cancelada);
+          // Los dos avisos salen juntos, y los dos DESPUES del commit: el del
+          // alumno que cancelo y el del que se quedo con su lugar.
+          return {
+            resultado: aReservaPublica(cancelada),
+            avisos: {
+              cambios: [
+                {
+                  tenantId: actor.tenantId,
+                  perfilId: cancelada.perfilId,
+                  turnoId: cancelada.turnoId,
+                  origen: cancelada.origen,
+                  accion: 'CANCELACION' as const,
+                },
+              ],
+              cupo,
+            },
+          };
         },
         { isolationLevel: 'Serializable' },
       ),
     );
+
+    await this.encolarAvisos(actor, avisos);
+
+    return resultado;
+  }
+
+  /**
+   * Encola lo que quedo pendiente, ya con la transaccion cerrada.
+   *
+   * Los metodos de NotificacionesService siguen sin lanzar nunca, y su
+   * `try/catch` sigue haciendo falta — pero por otro motivo que antes. Ya no
+   * protege una transaccion abierta, porque aqui no hay ninguna: protege de que
+   * un Redis caido convierta un POST perfectamente correcto en un 500 DESPUES
+   * de haber guardado bien la reserva.
+   */
+  private async encolarAvisos(actor: JwtPayload, avisos: AvisosPendientes): Promise<void> {
+    // El try NO es redundante con el de `NotificacionesService.encolar`, aunque
+    // haga lo mismo. Son dos capas porque responden a dos preguntas distintas:
+    // alli, "¿que hace el hook cuando Redis falla?"; aqui, "¿que le pasa a una
+    // reserva ya guardada cuando el hook falla?".
+    //
+    // Sin este try, la correccion de `reservas` queda a merced de la disciplina
+    // interna de otra clase: basta que alguien quite aquel try/catch —o escriba
+    // un hook nuevo que no lo tenga— para que un POST que creo la reserva
+    // devuelva 500. Comprobado con un doble del hook que rechaza: propagaba,
+    // con la reserva ya creada.
+    //
+    // Y NO va en silencio: si se pierde un aviso tiene que quedar dicho.
+    try {
+      for (const cambio of avisos.cambios) {
+        await this.notificaciones.reservaCambiada(cambio);
+      }
+
+      // Los dos avisos de `cancelar` van EN SERIE, y eso tiene un precio que
+      // conviene ver escrito: si el primero entra y Redis se cae en medio, el
+      // `cupoAsignado` se pierde solo. Alguien se queda con una reserva que no
+      // pidio y de la que nadie le avisa. Es la misma perdida que se acepta mas
+      // arriba, pero parcial, que es la version dificil de notar.
+      if (avisos.cupo !== null) {
+        await this.notificaciones.cupoAsignado({ tenantId: actor.tenantId, ...avisos.cupo });
+      }
+    } catch (error) {
+      this.logger.warn(`No se pudieron encolar los avisos de la reserva: ${String(error)}`);
+    }
   }
 
   /**
@@ -237,6 +355,10 @@ export class ReservasService {
     id: string,
     dto: ReasignarReservaDto,
   ): Promise<ReservaPublica> {
+    // PENDIENTE DE DECISION, no es un olvido: mover una reserva de turno NO
+    // avisa a nadie. La Fase 5B solo pide notificar `crear` y `cancelar`; si
+    // aqui hace falta un aviso (y con que plantilla, porque no es ninguna de las
+    // que hay) se decide aparte.
     return this.conReintentoDeCupo(() =>
       this.prisma.db.$transaction(
         async (tx) => {

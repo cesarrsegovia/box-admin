@@ -48,9 +48,6 @@ export class CrearAlumnoDto {
   @IsNotEmpty()
   packId?: string;
 
-  @IsOptional()
-  @IsBoolean()
-  pagoAlDia?: boolean;
 
   @IsOptional()
   @IsInt()

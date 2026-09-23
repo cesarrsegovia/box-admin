@@ -111,9 +111,20 @@ export interface EntradaListaEspera {
   perfilId: string;
   /** Derivada del orden por (createdAt, id). 1 = el proximo en entrar. */
   posicion: number;
-  notificado: boolean;
   createdAt: string;
 }
+
+// AQUI HABIA UN `notificado: boolean`, y se quito en la Fase 5B. Salia hacia el
+// cliente valiendo SIEMPRE false, porque la unica fila que podria ponerlo en
+// true se borra antes de que nadie la marque: `ListaEsperaService.asignarPrimero`
+// elimina la entrada de la cola en la misma transaccion en que crea la reserva,
+// y el aviso de cupo se encola despues del commit. Un campo que miente en un
+// contrato publico es peor que un campo que falta: quien lo leyera creeria que
+// distingue dos situaciones, y no distingue ninguna.
+//
+// La columna `ListaEspera.notificado` sigue en la base —quitarla es una
+// migracion, y eso se decide cuando se pueda migrar y validar—, pero ya no
+// asoma por la API.
 
 // ---------------------------------------------------------------------------
 // Vistas del alumno

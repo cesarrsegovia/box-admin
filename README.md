@@ -13,6 +13,7 @@ Se construye por fases. Hasta ahora:
 | **3A** — Self-service (API) | Auto-registro con clave, disponibilidad unificada, lista de espera y comprobantes |
 | **3B** — La PWA | `apps/web`: la aplicación que usa el alumno, instalable en el teléfono |
 | **4** — El profesor real | `Turno.profesorId` como relación, "mis clases", asistencia y la base de la liquidación |
+| **5A** — El ciclo de cobro | Pagos con periodo; "al día" se deriva en vez de guardarse en una bandera |
 
 Cada fase tiene su spec y su plan en `docs/superpowers/`, y su estado en
 `docs/superpowers/plans/PROGRESO.md`.
@@ -1080,6 +1081,118 @@ hoy si estaba abierto. Cada cosa sirve para algo distinto — `activo` es lo que
 el etiquetado, y `hasta` es lo que mira la liquidación, que **no filtra por `activo`**. Así, borrar
 un horario deja de generar etiquetas de hoy en adelante pero no cambia lo que ya se liquidó en
 agosto.
+
+
+## El ciclo de cobro — Fase 5A
+
+La Fase 5 del PDF se partió en dos, como se partió la 3. El cobro es pequeño y se entrega solo: el
+admin gana control del dinero el mismo día. La comunicación —SMTP cifrado, plantillas, cuatro jobs y
+push— es donde vive todo el riesgo, y además **depende** de esto: el job de recordatorio necesita
+saber quién debe, y eso lo contesta esta mitad.
+
+### "Al día" dejó de ser una columna
+
+Hasta aquí, `Perfil.pagoAlDia` era un booleano que aprobar un comprobante ponía en `true` y **nada
+bajaba jamás**. Después del primer pago, todo el mundo quedaba al día para siempre.
+
+Ahora un `Pago` **cubre un periodo**, y estar al día es una pregunta:
+
+```
+1 de septiembre: pago que cubre del 01-09 al 30-09  -> al dia
+1 de octubre:    ese pago ya no cubre hoy           -> pendiente
+
+Nadie toco nada. Cambio la fecha.
+```
+
+Es el mismo criterio que el proyecto viene aplicando desde la Fase 1: el consumo del pack se cuenta
+sobre las reservas en vez de guardarse en un contador, y la posición en la lista de espera se deriva
+del orden. **Un dato guardado que nadie mantiene acaba mintiendo.**
+
+La columna se borró. El contrato no cambió —`pagoAlDia: boolean` sigue en `UsuarioDetalle` y en
+`MiPackPublico`, y la PWA de la 3B no se enteró de nada— y además **se añadió al listado**, porque el
+objetivo del PDF es que el admin vea el estado de un vistazo, no abriendo fichas de una en una.
+
+⚠️ **El listado no hace N+1.** `GET /usuarios` resuelve los N alumnos de la página con **una** consulta
+a `pagos`; la decisión la sigue tomando la función pura. Hay un test que lo protege: si alguien
+cambia a preguntar de uno en uno, falla.
+
+### Qué cuenta como pago válido
+
+Un pago cuenta para "al día" si cumple las tres:
+
+1. **No está anulado.**
+2. **No es una seña.** Una seña reserva un lugar, no salda el periodo.
+3. **Cubre hoy**, con los dos extremos incluidos.
+
+⚠️ **Lo de la seña no sale del PDF: se decidió en la spec de esta fase.** Si en tu gimnasio una seña
+sí cuenta como "está pagando", es una línea en `estado-de-pago.ts`.
+
+⚠️ **El último día del periodo cuenta entero.** `cubreHasta` es `@db.Date` —medianoche UTC— y "hoy"
+trae la hora, así que comparar los dos en crudo dejaría fuera todo el último día: justo el día en que
+el alumno se acerca a pagar. `estaAlDia` normaliza la fecha antes de comparar, y hay un test cuyo
+"hoy" son las 14:30 precisamente para que ese error no pueda colarse.
+
+### Un pago se anula, no se borra
+
+`PATCH /pagos/:id/anular` marca la fila; nunca la elimina. Es dinero, y borrarlo reescribe la caja que
+la Fase 6 va a leer. Además cubre el caso feo y real: el admin tecleó 250.000 en vez de 25.000.
+
+Anular pide **`ADMIN_SALON`** y registrar solo `ADMIN_OPERATIVO`: cobrar es operativo, **deshacer un
+cobro es contable**.
+
+### Los cinco endpoints
+
+| Método | Ruta | Rol |
+|---|---|---|
+| POST | `/pagos` | `ADMIN_OPERATIVO` |
+| GET | `/pagos?perfilId=&desde=&hasta=` | `ADMIN_OPERATIVO` |
+| PATCH | `/pagos/:id/anular` | `ADMIN_SALON` |
+| PATCH | `/usuarios/:id/estado-pago` | `ADMIN_OPERATIVO` |
+| PATCH | `/comprobantes/:id/aprobar` | `ADMIN_OPERATIVO` |
+
+El rango de `GET /pagos` filtra por **cuándo entró el dinero**, no por el periodo que cubre. Son dos
+preguntas distintas y la de la caja es la primera.
+
+`monto` viaja como **string con dos decimales**, nunca como number: es dinero, y un float binario no
+representa 25000.10 exactamente. Misma regla que el precio de los packs desde la Fase 1.
+
+### Aprobar un comprobante registra el cobro
+
+```
+PATCH /comprobantes/:id/aprobar
+  { "monto": "25000.00", "cubreHasta": "2026-09-30", "metodo": "TRANSFERENCIA" }
+```
+
+El importe y el periodo los pone **el admin**, que es quien está mirando la foto de la transferencia
+y el único que sabe de cuánto era. Deducirlo del precio del pack registraría un número que nadie
+verificó, y se equivocaría en todos los casos que existen de verdad: pagos parciales, señas, ajustes
+y alumnos que cambiaron de pack desde que subieron la foto.
+
+⚠️ **El pago nace en la MISMA transacción que la aprobación.** Si naciera fuera, un fallo entre las
+dos escrituras dejaría un comprobante aprobado sin cobro registrado — y eso no se descubre hasta
+cuadrar la caja a fin de mes.
+
+`metodo` es opcional y por defecto `TRANSFERENCIA`. Rechazar sigue sin crear nada.
+
+### La cortesía del admin
+
+`PATCH /usuarios/:id/estado-pago` con `{ alDia: true, cubreHasta, nota }` crea **un pago de importe
+cero** con método `CORTESIA`. El gimnasio diciendo "este mes lo doy por pagado".
+
+Todo pasa por la misma tabla, así que hay una sola verdad, y la Fase 6 ve la cortesía explícitamente
+en vez de encontrarse un alumno al día que no pagó nada y no poder explicar por qué.
+
+Con `{ alDia: false }` **se anulan las cortesías vigentes y no se toca ningún pago real**: nadie
+puede borrar un cobro desde ese endpoint.
+
+### Lo que dejó de funcionar, a propósito
+
+⚠️ **`pagoAlDia` ya no se puede mandar en el alta de un alumno ni en el PATCH de usuario.** Con
+`forbidNonWhitelisted` activo, mandarlo devuelve **400**. Es lo correcto: el estado de pago ya no se
+declara, se paga.
+
+Y un alumno recién dado de alta queda **pendiente** hasta su primer pago. Antes también: el default
+de la columna era `false`.
 
 
 ## Tests

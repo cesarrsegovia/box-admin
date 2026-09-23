@@ -10,6 +10,10 @@ const ENTORNO_COMPLETO = {
   BOOTSTRAP_KEY: 'clave_bootstrap',
   // Anadida en la Fase 3A: sin ella no se sabe donde guardar los comprobantes.
   ALMACEN_TIPO: 'local',
+  // Anadidas en la Fase 5B. La clave son 32 bytes en hexadecimal.
+  APP_ENCRYPTION_KEY: '0'.repeat(64),
+  EMAIL_TIPO: 'memoria',
+  PUSH_TIPO: 'memoria',
 };
 
 const VARIABLES_REQUERIDAS = [
@@ -21,6 +25,9 @@ const VARIABLES_REQUERIDAS = [
   'JWT_REFRESH_EXPIRES_IN',
   'BOOTSTRAP_KEY',
   'ALMACEN_TIPO',
+  'APP_ENCRYPTION_KEY',
+  'EMAIL_TIPO',
+  'PUSH_TIPO',
 ];
 
 describe('validarEntorno', () => {
@@ -124,5 +131,83 @@ describe('validarEntorno — origen del frontend', () => {
   it('una cadena vacia se trata como ausente, no como error', () => {
     // Es lo que deja un `.env` con la clave escrita y el valor sin rellenar.
     expect(() => validarEntorno({ ...ENTORNO_COMPLETO, WEB_ORIGIN: '' })).not.toThrow();
+  });
+});
+
+describe('validarEntorno — comunicacion', () => {
+  it('lanza si falta APP_ENCRYPTION_KEY', () => {
+    const entorno = { ...ENTORNO_COMPLETO } as Record<string, unknown>;
+    delete entorno.APP_ENCRYPTION_KEY;
+
+    expect(() => validarEntorno(entorno)).toThrow(/APP_ENCRYPTION_KEY/);
+  });
+
+  it('rechaza una APP_ENCRYPTION_KEY de longitud equivocada', () => {
+    // 32 caracteres son 16 bytes, la mitad de lo que exige aes-256-gcm.
+    // Se asierta contra /hexadecimal/ y no contra /APP_ENCRYPTION_KEY/: el
+    // segundo lo cumple tambien el mensaje generico de "variable ausente", con
+    // lo que el test pasaria sin que esta validacion existiera.
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, APP_ENCRYPTION_KEY: '0'.repeat(32) }),
+    ).toThrow(/hexadecimal \(64 caracteres\)/);
+  });
+
+  it('rechaza una APP_ENCRYPTION_KEY con caracteres no hexadecimales', () => {
+    // Longitud correcta, alfabeto equivocado: solo lo caza la expresion regular.
+    const clave = 'z'.repeat(64);
+
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, APP_ENCRYPTION_KEY: clave })).toThrow(
+      /hexadecimal \(64 caracteres\)/,
+    );
+  });
+
+  it('acepta una APP_ENCRYPTION_KEY en mayusculas', () => {
+    // `randomBytes(...).toString('hex')` da minusculas, pero un despliegue puede
+    // haberla pegado en mayusculas y sigue siendo la misma clave.
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, APP_ENCRYPTION_KEY: 'A'.repeat(64) }),
+    ).not.toThrow();
+  });
+
+  it('rechaza un EMAIL_TIPO que no sea memoria ni smtp', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, EMAIL_TIPO: 'sendgrid' })).toThrow(
+      /EMAIL_TIPO/,
+    );
+  });
+
+  it('acepta EMAIL_TIPO=smtp', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, EMAIL_TIPO: 'smtp' })).not.toThrow();
+  });
+
+  it('rechaza un PUSH_TIPO que no sea memoria ni web-push', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, PUSH_TIPO: 'firebase' })).toThrow(
+      /PUSH_TIPO/,
+    );
+  });
+
+  it('acepta PUSH_TIPO=web-push', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, PUSH_TIPO: 'web-push' })).not.toThrow();
+  });
+
+  it('las VAPID ausentes NO impiden arrancar ni con PUSH_TIPO=web-push', () => {
+    // D4. El caso que importa es justo este: con PUSH_TIPO=web-push y sin claves
+    // VAPID, la aplicacion TIENE que arrancar igual — el push se desactiva y el
+    // email sigue saliendo. A diferencia de la clave de cifrado, las VAPID son
+    // una capacidad del despliegue, no un estado roto.
+    //
+    // ENTORNO_COMPLETO no define ninguna VAPID, asi que este entorno ya es "sin
+    // VAPID"; borrarlas seria un no-op y dejaria el test sin morder.
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, PUSH_TIPO: 'web-push' })).not.toThrow();
+
+    // Y el caso que deja de verdad un .env: la clave escrita y el valor sin
+    // rellenar, que llega como cadena vacia y no como ausente.
+    expect(() =>
+      validarEntorno({
+        ...ENTORNO_COMPLETO,
+        PUSH_TIPO: 'web-push',
+        VAPID_PUBLIC_KEY: '',
+        VAPID_PRIVATE_KEY: '',
+      }),
+    ).not.toThrow();
   });
 });

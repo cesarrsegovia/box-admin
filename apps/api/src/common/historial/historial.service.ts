@@ -16,7 +16,19 @@ export type EntidadAuditable =
   | 'ClaveInvitacion'
   | 'Comprobante'
   | 'ListaEspera'
-  | 'HorarioProfesorAsignado';
+  | 'HorarioProfesorAsignado'
+  | 'Pago'
+  // OJO con estas dos (Fase 5B). El `detalle` de una entrada sobre
+  // ConfiguracionSMTP NUNCA debe incluir `claveCifrada`, ni cifrada ni
+  // enmascarada: el schema promete que la credencial no vuelve al cliente, y el
+  // historial es la otra puerta por la que se escaparia, porque lo lee el mismo
+  // admin por otra ruta. Se auditan el resto de campos (host, puerto, usuario,
+  // origen, destino) y basta con un booleano para decir que la clave cambio.
+  //
+  // Para ConfiguracionSMTP el `entidadId` es el propio tenantId: ese modelo no
+  // tiene id propio, su clave primaria ES el tenantId.
+  | 'ConfiguracionSMTP'
+  | 'PlantillaEmail';
 
 export type AccionAuditable =
   | 'CREADA'
@@ -35,7 +47,8 @@ export type AccionAuditable =
   | 'ASIGNADA_DESDE_LISTA'
   | 'AUTO_REGISTRADO'
   | 'PROFESOR_ASIGNADO'
-  | 'ASISTENCIA_REGISTRADA';
+  | 'ASISTENCIA_REGISTRADA'
+  | 'ANULADO';
 
 export interface EntradaHistorial {
   /** Quien ejecuta. De el salen tanto el tenantId como el usuarioId. */

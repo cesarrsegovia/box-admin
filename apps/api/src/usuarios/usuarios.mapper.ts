@@ -10,8 +10,18 @@ export interface UsuarioConPerfil {
   pack: Pack | null;
 }
 
-/** Proyeccion de listado. Nunca incluye fichaMedica. */
-export function aUsuarioResumen({ usuario, perfil, salas }: UsuarioConPerfil): UsuarioResumen {
+/**
+ * Proyeccion de listado. Nunca incluye fichaMedica.
+ *
+ * `alDia` entra por parametro y no sale del perfil: desde la Fase 5A no es una
+ * columna, es una pregunta que se contesta con los pagos vigentes. Sin default,
+ * para que el compilador no deje olvidarlo en ningun punto de uso — el mismo
+ * criterio que `incluyeFichaMedica`.
+ */
+export function aUsuarioResumen(
+  { usuario, perfil, salas }: UsuarioConPerfil,
+  alDia: boolean,
+): UsuarioResumen {
   return {
     id: usuario.id,
     tenantId: usuario.tenantId,
@@ -22,6 +32,7 @@ export function aUsuarioResumen({ usuario, perfil, salas }: UsuarioConPerfil): U
     perfilId: perfil.id,
     telefono: perfil.telefono,
     packId: perfil.packId,
+    pagoAlDia: alDia,
     salaIds: salas.map((sala) => sala.id),
   };
 }
@@ -37,15 +48,15 @@ export function aUsuarioResumen({ usuario, perfil, salas }: UsuarioConPerfil): U
 export function aUsuarioDetalle(
   datos: UsuarioConPerfil,
   incluyeFichaMedica: boolean,
+  alDia: boolean,
 ): UsuarioDetalle {
   const { perfil, pack, salas } = datos;
 
   return {
-    ...aUsuarioResumen(datos),
+    ...aUsuarioResumen(datos, alDia),
     ...(incluyeFichaMedica ? { fichaMedica: perfil.fichaMedica } : {}),
     clasesExtra: perfil.clasesExtra,
     cancelacionesUsadas: perfil.cancelacionesUsadas,
-    pagoAlDia: perfil.pagoAlDia,
     vigenciaDesde: perfil.vigenciaDesde === null ? null : aFechaISO(perfil.vigenciaDesde),
     vigenciaHasta: perfil.vigenciaHasta === null ? null : aFechaISO(perfil.vigenciaHasta),
     pack: pack === null ? null : aPackPublico(pack),

@@ -82,6 +82,11 @@ export interface UsuarioResumen {
   perfilId: string;
   telefono: string | null;
   packId: string | null;
+  /**
+   * DERIVADO desde la Fase 5A: hay un pago vigente, no anulado y que no sea una
+   * sena, cubriendo hoy. Antes era una columna que nadie bajaba nunca.
+   */
+  pagoAlDia: boolean;
   salaIds: string[];
 }
 
@@ -90,7 +95,6 @@ export interface UsuarioDetalle extends UsuarioResumen {
   fichaMedica?: string | null;
   clasesExtra: number;
   cancelacionesUsadas: number;
-  pagoAlDia: boolean;
   /** `YYYY-MM-DD` o `null`. */
   vigenciaDesde: string | null;
   vigenciaHasta: string | null;

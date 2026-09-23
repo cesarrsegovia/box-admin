@@ -7,8 +7,26 @@ import {
 import type { EntradaListaEspera, JwtPayload } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
 import { DisponibilidadService } from '../disponibilidad/disponibilidad.service';
-import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+
+/**
+ * El cupo que se acaba de repartir, para que quien llamo pueda AVISAR.
+ *
+ * Se devuelve en vez de notificarse aqui dentro a proposito: `asignarPrimero`
+ * corre dentro de la transaccion Serializable de la cancelacion que libero el
+ * lugar, y esa transaccion puede abortar por conflicto (40001) y reintentarse
+ * entera. Encolar aqui dejaria el job vivo en Redis —que no participa del
+ * rollback de Postgres— y el reintento encolaria otro. La asignacion SI se
+ * queda dentro, por el motivo que dice su propio comentario; lo que sale fuera
+ * es solo el aviso.
+ */
+export interface CupoRepartido {
+  reservaId: string;
+  perfilId: string;
+  turnoId: string;
+  /** La entrada de la cola de la que salio, ya borrada de la tabla. */
+  entradaId: string;
+}
 
 @Injectable()
 export class ListaEsperaService {
@@ -16,7 +34,6 @@ export class ListaEsperaService {
     private readonly prisma: PrismaService,
     private readonly disponibilidad: DisponibilidadService,
     private readonly historial: HistorialService,
-    private readonly notificaciones: NotificacionesService,
   ) {}
 
   /**
@@ -75,7 +92,8 @@ export class ListaEsperaService {
       turnoId: entrada.turnoId,
       perfilId: entrada.perfilId,
       posicion: await this.posicionDe(turnoId, perfil.id),
-      notificado: entrada.notificado,
+      // `entrada.notificado` NO se expone: valdria siempre false. Ver el
+      // comentario que dejo su hueco en `EntradaListaEspera`.
       createdAt: entrada.createdAt.toISOString(),
     };
   }
@@ -126,7 +144,7 @@ export class ListaEsperaService {
     actor: JwtPayload,
     turnoId: string,
     cliente: ClientePrismaTx,
-  ): Promise<{ reservaId: string; perfilId: string } | null> {
+  ): Promise<CupoRepartido | null> {
     const cola = await cliente.listaEspera.findMany({
       where: { turnoId },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -166,14 +184,15 @@ export class ListaEsperaService {
         cliente,
       );
 
-      await this.notificaciones.cupoAsignado({
-        tenantId: actor.tenantId,
+      // NO se notifica aqui: se DEVUELVE lo que hay que notificar. Ver el
+      // comentario de CupoRepartido. `entradaId` viaja porque el processor lo
+      // necesita para marcar la entrada sin volver a adivinar cual era.
+      return {
+        reservaId: reserva.id,
         perfilId: entrada.perfilId,
         turnoId,
-        reservaId: reserva.id,
-      });
-
-      return { reservaId: reserva.id, perfilId: entrada.perfilId };
+        entradaId: entrada.id,
+      };
     }
 
     return null;

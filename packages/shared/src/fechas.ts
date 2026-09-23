@@ -110,3 +110,39 @@ export function minutosEntreHoras(inicio: string, fin: string): number {
 
   return aMinutos(fin) - aMinutos(inicio);
 }
+
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MESES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+
+/**
+ * Una fecha como la escribiria una persona: "lunes 7 de septiembre".
+ *
+ * Se arma a mano y no con `toLocaleDateString`: el resultado de esa dependeria
+ * de los datos de idioma del sistema donde corra el worker, que en un contenedor
+ * minimo pueden no estar y devolver el nombre en ingles. Esto es lo que va a
+ * leer un alumno, asi que no puede depender de como este montada la imagen.
+ *
+ * Todo en UTC, como el resto del archivo: las columnas `@db.Date` vuelven a
+ * medianoche UTC y los getters locales desplazarian el dia en cualquier maquina
+ * al oeste de Greenwich. El worker no corre necesariamente en el huso del salon.
+ *
+ * Los acentos son deliberados: esto NO es un identificador ni un log, es el
+ * texto que se interpola en el asunto de un email ("Reservaste Pilates para el
+ * miércoles 7 de octubre"), y ahi "miercoles" se lee como un error.
+ */
+export function fechaLegible(fecha: Date): string {
+  return `${DIAS[fecha.getUTCDay()]} ${fecha.getUTCDate()} de ${MESES[fecha.getUTCMonth()]}`;
+}

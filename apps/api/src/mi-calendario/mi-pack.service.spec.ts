@@ -24,7 +24,6 @@ const PERFIL = {
   id: 'perfil-1',
   clasesExtra: 0,
   cancelacionesUsadas: 1,
-  pagoAlDia: true,
   vigenciaDesde: null as Date | null,
   vigenciaHasta: null as Date | null,
   pack: PACK_MENSUAL,
@@ -36,7 +35,15 @@ function crearServicio() {
     reserva: { count: jest.fn().mockResolvedValue(3) },
   };
 
-  return { servicio: new MiPackService({ db } as unknown as PrismaService), db };
+  // Doble del servicio de pagos: desde la Fase 5A "al dia" se deriva, y este
+  // spec prueba el consumo del pack, no el cobro.
+  const pagos = { perfilAlDia: jest.fn().mockResolvedValue(false) };
+
+  return {
+    servicio: new MiPackService({ db } as unknown as PrismaService, pagos as never),
+    db,
+    pagos,
+  };
 }
 
 describe('MiPackService.deActor', () => {
@@ -51,8 +58,7 @@ describe('MiPackService.deActor', () => {
       restantes: 5,
       cancelacionesUsadas: 1,
       cancelacionesPermitidas: 2,
-      pagoAlDia: true,
-    });
+        });
     expect(mp.pack).toMatchObject({ id: 'pack-1', nombre: '8 clases' });
   });
 
@@ -159,5 +165,20 @@ describe('MiPackService.deActor', () => {
     db.perfil.findFirst.mockResolvedValue(null);
 
     await expect(servicio.deActor(ALUMNO, AHORA)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('MiPackService y el estado de pago', () => {
+  it('el estado NO sale del perfil: lo contesta el servicio de pagos', async () => {
+    // Desde la Fase 5A `pagoAlDia` no es una columna. Si alguien volviera a
+    // leerlo del perfil, este test lo veria: el doble dice que si y el fixture
+    // del perfil ya ni siquiera tiene el campo.
+    const { servicio, pagos } = crearServicio();
+    pagos.perfilAlDia.mockResolvedValue(true);
+
+    const miPack = await servicio.deActor(ALUMNO, AHORA);
+
+    expect(miPack.pagoAlDia).toBe(true);
+    expect(pagos.perfilAlDia).toHaveBeenCalled();
   });
 });

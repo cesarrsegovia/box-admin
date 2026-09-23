@@ -9,6 +9,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ComprobantesService } from './comprobantes.service';
 import { CrearComprobanteDto } from './dto/crear-comprobante.dto';
+import { AprobarComprobanteDto } from './dto/aprobar-comprobante.dto';
 import { RevisarComprobanteDto } from './dto/revisar-comprobante.dto';
 
 @Controller('comprobantes')
@@ -50,9 +51,9 @@ export class ComprobantesController {
   aprobar(
     @CurrentUser() actor: JwtPayload,
     @Param('id') id: string,
-    @Body() dto: RevisarComprobanteDto,
+    @Body() dto: AprobarComprobanteDto,
   ): Promise<ComprobantePublico> {
-    return this.comprobantes.revisar(actor, id, 'APROBADO', dto.nota);
+    return this.comprobantes.aprobar(actor, id, dto);
   }
 
   @Roles('ADMIN_OPERATIVO')
@@ -62,6 +63,6 @@ export class ComprobantesController {
     @Param('id') id: string,
     @Body() dto: RevisarComprobanteDto,
   ): Promise<ComprobantePublico> {
-    return this.comprobantes.revisar(actor, id, 'RECHAZADO', dto.nota);
+    return this.comprobantes.rechazar(actor, id, dto.nota);
   }
 }

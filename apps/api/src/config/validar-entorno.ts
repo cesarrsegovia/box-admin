@@ -1,3 +1,5 @@
+import { PATRON_CLAVE_HEX } from '../comunicacion/cifrado';
+
 /**
  * Variables de entorno que la aplicacion necesita para arrancar. Si falta
  * alguna (o llega vacia / solo con espacios), preferimos que el proceso muera
@@ -13,6 +15,9 @@ const VARIABLES_REQUERIDAS = [
   'JWT_REFRESH_EXPIRES_IN',
   'BOOTSTRAP_KEY',
   'ALMACEN_TIPO',
+  'APP_ENCRYPTION_KEY',
+  'EMAIL_TIPO',
+  'PUSH_TIPO',
 ] as const;
 
 /**
@@ -69,6 +74,32 @@ export function validarEntorno(
         );
       }
     }
+  }
+
+  // 32 bytes en hexadecimal: es la longitud que exige aes-256-gcm. Validarlo
+  // aqui y no en el primer cifrado hace que un despliegue mal configurado muera
+  // al arrancar en vez de la primera vez que alguien guarda su SMTP. El patron
+  // vive en cifrado.ts, que es quien sabe que forma tiene una clave valida.
+  const clave = config.APP_ENCRYPTION_KEY;
+  if (typeof clave !== 'string' || !PATRON_CLAVE_HEX.test(clave)) {
+    throw new Error(
+      'APP_ENCRYPTION_KEY debe ser 32 bytes en hexadecimal (64 caracteres). ' +
+        "Generala con: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+    );
+  }
+
+  const email = config.EMAIL_TIPO;
+  if (email !== 'memoria' && email !== 'smtp') {
+    throw new Error(`EMAIL_TIPO debe ser "memoria" o "smtp", no ${JSON.stringify(email)}.`);
+  }
+
+  // Las VAPID NO se exigen, ni siquiera con PUSH_TIPO=web-push: sin ellas el
+  // push se desactiva, POST /push/suscripcion responde 503 y el email sigue
+  // saliendo. Es una capacidad del despliegue, no un estado roto — a diferencia
+  // de la clave de cifrado, que si falta deja credenciales ilegibles en la base.
+  const push = config.PUSH_TIPO;
+  if (push !== 'memoria' && push !== 'web-push') {
+    throw new Error(`PUSH_TIPO debe ser "memoria" o "web-push", no ${JSON.stringify(push)}.`);
   }
 
   // Opcional a proposito: un despliegue solo-API no tiene frontend al que

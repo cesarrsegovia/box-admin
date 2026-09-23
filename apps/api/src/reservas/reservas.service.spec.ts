@@ -1,8 +1,9 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '@boxadmin/shared';
 import { ReservasService } from './reservas.service';
 import type { HistorialService } from '../common/historial/historial.service';
 import type { ListaEsperaService } from '../lista-espera/lista-espera.service';
+import type { NotificacionesService } from '../notificaciones/notificaciones.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 const ADMIN: JwtPayload = { sub: 'usr-admin', tenantId: 'gym-1', rol: 'ADMIN_OPERATIVO' };
@@ -76,18 +77,26 @@ function crearServicio() {
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
   // Desde la Fase 3A, cancelar reparte el cupo liberado al primero de la cola.
   const listaEspera = { asignarPrimero: jest.fn().mockResolvedValue(null) };
+  // Desde la Fase 5B, crear y cancelar encolan el aviso al alumno. Y lo hacen
+  // DESPUES del commit, no dentro de la transaccion.
+  const notificaciones = {
+    reservaCambiada: jest.fn().mockResolvedValue(undefined),
+    cupoAsignado: jest.fn().mockResolvedValue(undefined),
+  };
 
   return {
     servicio: new ReservasService(
       prisma,
       historial as unknown as HistorialService,
       listaEspera as unknown as ListaEsperaService,
+      notificaciones as unknown as NotificacionesService,
     ),
     turno,
     perfil,
     reserva,
     historial,
     listaEspera,
+    notificaciones,
     db,
   };
 }
@@ -499,5 +508,167 @@ describe('ReservasService.cancelar dispara la lista de espera', () => {
       ConflictException,
     );
     expect(listaEspera.asignarPrimero).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReservasService avisa al alumno', () => {
+  it('crear encola una CONFIRMACION con el origen real de la reserva', async () => {
+    const { servicio, notificaciones } = crearServicio();
+
+    await servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' });
+
+    // El objeto EXACTO: lo que sale de aqui acaba en un payload de Redis, y lo
+    // que no haga falta ahi no tiene por que estar.
+    expect(notificaciones.reservaCambiada).toHaveBeenCalledWith({
+      tenantId: 'gym-1',
+      perfilId: 'perf-1',
+      turnoId: 'turno-1',
+      origen: 'ADMIN',
+      accion: 'CONFIRMACION',
+    });
+  });
+
+  it('cancelar encola una CANCELACION', async () => {
+    const { servicio, notificaciones } = crearServicio();
+
+    await servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE');
+
+    expect(notificaciones.reservaCambiada).toHaveBeenCalledWith({
+      tenantId: 'gym-1',
+      perfilId: 'perf-1',
+      turnoId: 'turno-1',
+      origen: 'ADMIN',
+      accion: 'CANCELACION',
+    });
+  });
+
+  it('una reserva rechazada no avisa a nadie', async () => {
+    const { servicio, turno, notificaciones } = crearServicio();
+    turno.findFirst.mockResolvedValue(null);
+
+    await expect(servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+
+    expect(notificaciones.reservaCambiada).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReservasService encola los avisos DESPUES del commit', () => {
+  /** Lo que lanza Postgres cuando aborta una transaccion por solape. */
+  function conflictoDeSerializacion(): Error {
+    return Object.assign(new Error('could not serialize access'), { code: '40001' });
+  }
+
+  it('crear: un aborto 40001 reintentado NO duplica el aviso', async () => {
+    const { servicio, notificaciones, db } = crearServicio();
+
+    // El primer intento ejecuta el cuerpo ENTERO y despues aborta: es el caso
+    // exacto que rompia el encolado de adentro. Redis no participa del rollback
+    // de Postgres, asi que el job del intento fallido se habria quedado vivo y
+    // el reintento habria encolado otro.
+    //
+    // MUTACION QUE TIENE QUE ROMPER ESTE TEST: devolver el `reservaCambiada`
+    // adentro de la transaccion. Entonces `add` se llama dos veces.
+    let intentos = 0;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      intentos += 1;
+      const salida = await fn(db);
+      if (intentos === 1) throw conflictoDeSerializacion();
+      return salida;
+    });
+
+    await servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' });
+
+    expect(intentos).toBe(2);
+    expect(notificaciones.reservaCambiada).toHaveBeenCalledTimes(1);
+  });
+
+  it('crear: nada se encola mientras la transaccion sigue abierta', async () => {
+    const { servicio, notificaciones, db } = crearServicio();
+
+    let avisadoDentro = false;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      avisadoDentro = notificaciones.reservaCambiada.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' });
+
+    expect(avisadoDentro).toBe(false);
+    expect(notificaciones.reservaCambiada).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancelar: encola tambien el cupo que repartio la lista de espera', async () => {
+    const { servicio, notificaciones, listaEspera } = crearServicio();
+    listaEspera.asignarPrimero.mockResolvedValue({
+      reservaId: 'reserva-nueva',
+      perfilId: 'perfil-7',
+      turnoId: 'turno-1',
+      entradaId: 'le-1',
+    });
+
+    await servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE');
+
+    // El objeto EXACTO: esto acaba en un payload que vive en Redis.
+    expect(notificaciones.cupoAsignado).toHaveBeenCalledWith({
+      tenantId: 'gym-1',
+      reservaId: 'reserva-nueva',
+      perfilId: 'perfil-7',
+      turnoId: 'turno-1',
+      entradaId: 'le-1',
+    });
+  });
+
+  it('cancelar: un aborto 40001 reintentado NO duplica ninguno de los dos avisos', async () => {
+    const { servicio, notificaciones, listaEspera, db } = crearServicio();
+    listaEspera.asignarPrimero.mockResolvedValue({
+      reservaId: 'reserva-nueva',
+      perfilId: 'perfil-7',
+      turnoId: 'turno-1',
+      entradaId: 'le-1',
+    });
+
+    let intentos = 0;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      intentos += 1;
+      const salida = await fn(db);
+      if (intentos === 1) throw conflictoDeSerializacion();
+      return salida;
+    });
+
+    await servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE');
+
+    expect(intentos).toBe(2);
+    expect(notificaciones.reservaCambiada).toHaveBeenCalledTimes(1);
+    expect(notificaciones.cupoAsignado).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ReservasService no queda a merced del hook', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('un hook que LANZA no convierte en 500 una reserva ya guardada', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { servicio, notificaciones, reserva } = crearServicio();
+    // Un doble que rechaza: hoy el servicio real se traga el fallo, pero eso es
+    // disciplina de OTRA clase. `reservas` tiene que sostenerse sola.
+    notificaciones.reservaCambiada.mockRejectedValue(new Error('Redis caido'));
+
+    const creada = await servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' });
+
+    expect(creada.id).toBe('res-1');
+    expect(reserva.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('un hook que lanza tampoco tumba una cancelacion', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { servicio, notificaciones } = crearServicio();
+    notificaciones.reservaCambiada.mockRejectedValue(new Error('Redis caido'));
+
+    await expect(servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE')).resolves.toBeDefined();
   });
 });

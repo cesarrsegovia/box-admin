@@ -4,6 +4,7 @@ import {
   esHoraValida,
   FechaInvalidaError,
   comparaHoras,
+  fechaLegible,
   instanteDelTurno,
   minutosEntreHoras,
 } from './fechas';
@@ -100,5 +101,57 @@ describe('minutosEntreHoras', () => {
 
   it('una hora invalida revienta en vez de mentir', () => {
     expect(() => minutosEntreHoras('25:00', '26:00')).toThrow(/Hora invalida/);
+  });
+});
+
+describe('fechaLegible', () => {
+  it.each([
+    ['2026-10-04', 'domingo 4 de octubre'],
+    ['2026-10-05', 'lunes 5 de octubre'],
+    ['2026-10-06', 'martes 6 de octubre'],
+    ['2026-10-07', 'miércoles 7 de octubre'],
+    ['2026-10-08', 'jueves 8 de octubre'],
+    ['2026-10-09', 'viernes 9 de octubre'],
+    ['2026-10-10', 'sábado 10 de octubre'],
+  ])('%s se escribe "%s"', (iso, esperado) => {
+    expect(fechaLegible(desdeFechaISO(iso))).toBe(esperado);
+  });
+
+  it('el cambio de mes no arrastra el mes anterior', () => {
+    expect(fechaLegible(desdeFechaISO('2026-01-31'))).toBe('sábado 31 de enero');
+    expect(fechaLegible(desdeFechaISO('2026-02-01'))).toBe('domingo 1 de febrero');
+  });
+
+  it('los doce meses tienen nombre', () => {
+    const nombres = Array.from(
+      { length: 12 },
+      (_, mes) => fechaLegible(new Date(Date.UTC(2026, mes, 15))).split(' de ')[1],
+    );
+
+    expect(nombres).toEqual([
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
+    ]);
+  });
+
+  it('no depende del huso del proceso', () => {
+    // Estos dos instantes son el mismo dia UTC a un lado y a otro de la
+    // medianoche. Solo leyendolos en UTC salen estas dos respuestas a la vez:
+    // un proceso en UTC+1 o mas leeria el primero como jueves 8, y uno en UTC-1
+    // o menos leeria el segundo como miercoles 7. Se fija asi, con un par, en
+    // vez de tocar process.env.TZ a mitad de la suite: Node cachea la zona y
+    // reasignarla dentro de un test es de por si poco fiable.
+    expect(fechaLegible(new Date('2026-10-07T23:30:00.000Z'))).toBe('miércoles 7 de octubre');
+    expect(fechaLegible(new Date('2026-10-08T00:30:00.000Z'))).toBe('jueves 8 de octubre');
   });
 });

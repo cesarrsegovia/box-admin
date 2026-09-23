@@ -35,9 +35,12 @@ function crearServicio() {
     update: jest.fn().mockResolvedValue({}),
   };
 
+  const pago = { create: jest.fn().mockResolvedValue({ id: 'pago-1' }) };
+
   const db = {
     comprobante,
     perfil,
+    pago,
     $transaction: jest.fn((fn: (tx: unknown) => unknown): unknown => fn(db)),
   };
   const almacen = {
@@ -48,6 +51,7 @@ function crearServicio() {
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
 
   return {
+    pago,
     servicio: new ComprobantesService(
       { db } as unknown as PrismaService,
       almacen as unknown as AlmacenDeArchivos,
@@ -224,37 +228,35 @@ describe('ComprobantesService.listar', () => {
   });
 });
 
-describe('ComprobantesService.revisar', () => {
-  it('aprobar deja el comprobante APROBADO y pone pagoAlDia en true', async () => {
-    const { servicio, comprobante, perfil } = crearServicio();
+describe('ComprobantesService.aprobar y rechazar', () => {
+  it('aprobar deja el comprobante APROBADO y registra el cobro', async () => {
+    const { servicio, comprobante, pago } = crearServicio();
 
-    await servicio.revisar(ADMIN, 'comp-1', 'APROBADO', undefined);
+    await servicio.aprobar(ADMIN, 'comp-1', { monto: '25000.00', cubreHasta: '2099-12-31' });
 
     expect(comprobante.update.mock.calls[0][0].data).toMatchObject({
       estado: 'APROBADO',
       revisadoPor: 'usr-admin',
     });
-    // pagoAlDia existe desde la Fase 1 sin que nada lo escriba: esta es la
-    // fase donde encuentra su dueno.
-    expect(perfil.update).toHaveBeenCalledWith({
-      where: { id: 'perfil-1' },
-      data: { pagoAlDia: true },
-    });
+    // Desde la Fase 5A, poner al alumno al dia no es encender una bandera: es
+    // que exista un pago que cubra hoy.
+    expect(pago.create).toHaveBeenCalledTimes(1);
   });
 
-  it('rechazar NO toca pagoAlDia', async () => {
-    const { servicio, perfil } = crearServicio();
+  it('rechazar NO registra ningun cobro', async () => {
+    const { servicio, pago } = crearServicio();
 
-    // Un rechazo no quita un pago anterior que si estaba bien.
-    await servicio.revisar(ADMIN, 'comp-1', 'RECHAZADO', 'Ilegible');
+    // Un rechazo no quita un pago anterior que si estaba bien, y desde luego no
+    // crea uno nuevo.
+    await servicio.rechazar(ADMIN, 'comp-1', 'Ilegible');
 
-    expect(perfil.update).not.toHaveBeenCalled();
+    expect(pago.create).not.toHaveBeenCalled();
   });
 
   it('rechazar guarda la nota', async () => {
     const { servicio, comprobante } = crearServicio();
 
-    await servicio.revisar(ADMIN, 'comp-1', 'RECHAZADO', 'Ilegible');
+    await servicio.rechazar(ADMIN, 'comp-1', 'Ilegible');
 
     expect(comprobante.update.mock.calls[0][0].data).toMatchObject({
       estado: 'RECHAZADO',
@@ -266,7 +268,7 @@ describe('ComprobantesService.revisar', () => {
     const { servicio, comprobante } = crearServicio();
     comprobante.findFirst.mockResolvedValue({ ...FILA, estado: 'APROBADO' });
 
-    await expect(servicio.revisar(ADMIN, 'comp-1', 'RECHAZADO', undefined)).rejects.toBeInstanceOf(
+    await expect(servicio.rechazar(ADMIN, 'comp-1', undefined)).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
@@ -276,7 +278,7 @@ describe('ComprobantesService.revisar', () => {
     comprobante.findFirst.mockResolvedValue({ ...FILA, subidoEn: null });
 
     // Aprobar un comprobante sin archivo seria aprobar la nada.
-    await expect(servicio.revisar(ADMIN, 'comp-1', 'APROBADO', undefined)).rejects.toBeInstanceOf(
+    await expect(servicio.aprobar(ADMIN, 'comp-1', { monto: '25000.00', cubreHasta: '2099-12-31' })).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
@@ -285,7 +287,7 @@ describe('ComprobantesService.revisar', () => {
     const { servicio, comprobante } = crearServicio();
     comprobante.findFirst.mockResolvedValue(null);
 
-    await expect(servicio.revisar(ADMIN, 'comp-9', 'APROBADO', undefined)).rejects.toBeInstanceOf(
+    await expect(servicio.aprobar(ADMIN, 'comp-9', { monto: '25000.00', cubreHasta: '2099-12-31' })).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
@@ -293,11 +295,65 @@ describe('ComprobantesService.revisar', () => {
   it('registra la revision en el historial', async () => {
     const { servicio, historial } = crearServicio();
 
-    await servicio.revisar(ADMIN, 'comp-1', 'APROBADO', undefined);
+    await servicio.aprobar(ADMIN, 'comp-1', { monto: '25000.00', cubreHasta: '2099-12-31' });
 
     expect(historial.registrar).toHaveBeenCalledWith(
       expect.objectContaining({ entidad: 'Comprobante', accion: 'APROBADO' }),
       expect.anything(),
     );
+  });
+});
+
+describe('ComprobantesService.aprobar y el pago', () => {
+  const APROBACION = { monto: '25000.00', cubreHasta: '2099-12-31' };
+
+  it('el pago lleva el importe, el comprobante y el metodo por defecto', async () => {
+    const { servicio, pago } = crearServicio();
+
+    await servicio.aprobar(ADMIN, 'comp-1', APROBACION);
+
+    const datos = pago.create.mock.calls[0]![0].data;
+    expect(datos.monto).toBe('25000.00');
+    expect(datos.comprobanteId).toBe('comp-1');
+    // Un comprobante es una transferencia el 99% de las veces.
+    expect(datos.metodo).toBe('TRANSFERENCIA');
+  });
+
+  it('el metodo se puede cambiar', async () => {
+    const { servicio, pago } = crearServicio();
+
+    await servicio.aprobar(ADMIN, 'comp-1', { ...APROBACION, metodo: 'EFECTIVO' });
+
+    expect(pago.create.mock.calls[0]![0].data.metodo).toBe('EFECTIVO');
+  });
+
+  it('el pago cubre desde HOY hasta la fecha indicada', async () => {
+    const { servicio, pago } = crearServicio();
+
+    await servicio.aprobar(ADMIN, 'comp-1', APROBACION);
+
+    const datos = pago.create.mock.calls[0]![0].data;
+    expect(datos.cubreHasta).toEqual(new Date('2099-12-31T00:00:00.000Z'));
+    expect(datos.cubreDesde).toBeInstanceOf(Date);
+  });
+
+  it('el pago se crea en la MISMA transaccion que la aprobacion', async () => {
+    // Si naciera fuera, un fallo entre las dos escrituras dejaria un
+    // comprobante aprobado sin cobro registrado, y eso no se descubre hasta
+    // cuadrar la caja a fin de mes.
+    const { servicio, comprobante, pago } = crearServicio();
+
+    await servicio.aprobar(ADMIN, 'comp-1', APROBACION);
+
+    expect(comprobante.update).toHaveBeenCalled();
+    expect(pago.create).toHaveBeenCalled();
+  });
+
+  it('si el comprobante no es aprobable, no se registra ningun cobro', async () => {
+    const { servicio, comprobante, pago } = crearServicio();
+    comprobante.findFirst.mockResolvedValue({ ...FILA, subidoEn: null });
+
+    await expect(servicio.aprobar(ADMIN, 'comp-1', APROBACION)).rejects.toThrow();
+    expect(pago.create).not.toHaveBeenCalled();
   });
 });

@@ -2,12 +2,16 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Pack } from '@prisma/client';
 import { aFechaISO, type JwtPayload, type MiPackPublico } from '@boxadmin/shared';
 import { aPackPublico } from '../packs/packs.service';
+import { PagosService } from '../pagos/pagos.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { topeDelPack, ventanaDeConteo } from '../reservas/ventana-pack';
 
 @Injectable()
 export class MiPackService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pagos: PagosService,
+  ) {}
 
   /**
    * El estado del pack del alumno.
@@ -45,6 +49,10 @@ export class MiPackService {
       },
     });
 
+    // Derivado, no leido: desde la Fase 5A "al dia" es una pregunta sobre los
+    // pagos vigentes, no una columna del perfil.
+    const alDia = await this.pagos.perfilAlDia(this.prisma.db, perfil.id, ahora);
+
     return {
       pack: perfil.pack === null ? null : aPackPublico(perfil.pack as Pack),
       tope,
@@ -58,7 +66,7 @@ export class MiPackService {
       clasesExtra: perfil.clasesExtra,
       cancelacionesUsadas: perfil.cancelacionesUsadas,
       cancelacionesPermitidas: perfil.pack?.cancelacionesPermitidas ?? null,
-      pagoAlDia: perfil.pagoAlDia,
+      pagoAlDia: alDia,
       vigenciaDesde: perfil.vigenciaDesde === null ? null : aFechaISO(perfil.vigenciaDesde),
       vigenciaHasta: perfil.vigenciaHasta === null ? null : aFechaISO(perfil.vigenciaHasta),
     };

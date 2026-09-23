@@ -20,6 +20,13 @@ export const MODELOS_CON_TENANT = [
   'ListaEspera',
   'Comprobante',
   'HorarioProfesorAsignado',
+  'Pago',
+  // `ConfiguracionSMTP` tiene el tenantId como clave primaria y no como columna
+  // suelta. Sigue siendo "modelo con tenant": a la extension solo le importa que
+  // la columna exista para poder inyectarla en el where.
+  'ConfiguracionSMTP',
+  'PlantillaEmail',
+  'SuscripcionPush',
 ] as const;
 
 /** Modelos que se aíslan a través de una relación: modelo -> campo de relación. */

@@ -3,7 +3,6 @@ import type { JwtPayload } from '@boxadmin/shared';
 import { ListaEsperaService } from './lista-espera.service';
 import type { DisponibilidadService } from '../disponibilidad/disponibilidad.service';
 import type { HistorialService } from '../common/historial/historial.service';
-import type { NotificacionesService } from '../notificaciones/notificaciones.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 const ALUMNO: JwtPayload = { sub: 'usr-1', tenantId: 'gym-1', rol: 'ALUMNO' };
@@ -47,20 +46,17 @@ function crearServicio() {
   };
   const disponibilidad = { paraTurno: jest.fn().mockResolvedValue(EN_LISTA_ESPERA) };
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
-  const notificaciones = { cupoAsignado: jest.fn().mockResolvedValue(undefined) };
 
   return {
     servicio: new ListaEsperaService(
       { db } as unknown as PrismaService,
       disponibilidad as unknown as DisponibilidadService,
       historial as unknown as HistorialService,
-      notificaciones as unknown as NotificacionesService,
     ),
     listaEspera,
     reserva,
     disponibilidad,
     historial,
-    notificaciones,
     db,
   };
 }
@@ -233,17 +229,24 @@ describe('ListaEsperaService.asignarPrimero', () => {
     );
   });
 
-  it('dispara el hook de notificacion', async () => {
-    const { servicio, listaEspera, notificaciones, db } = crearServicio();
+  it('DEVUELVE el aviso en vez de encolarlo', async () => {
+    const { servicio, listaEspera, db } = crearServicio();
     listaEspera.findMany.mockResolvedValue([PRIMERO]);
 
-    await servicio.asignarPrimero(ALUMNO, 'turno-1', db as never);
+    const repartido = await servicio.asignarPrimero(ALUMNO, 'turno-1', db as never);
 
-    expect(notificaciones.cupoAsignado).toHaveBeenCalledWith({
-      tenantId: 'gym-1',
+    // El objeto EXACTO, no un objectContaining: este assert es justo el que
+    // garantiza que no se cuela nada de mas en lo que acaba en el payload.
+    //
+    // Y se comprueba sobre lo DEVUELTO, no sobre un espia del hook: desde la
+    // Fase 5B esto corre dentro de una transaccion que puede abortar por
+    // conflicto y reintentarse, asi que encolar aqui mandaria el aviso dos
+    // veces. Quien encola es quien hizo commit.
+    expect(repartido).toEqual({
       perfilId: 'perfil-7',
       turnoId: 'turno-1',
       reservaId: 'reserva-nueva',
+      entradaId: 'le-1',
     });
   });
 

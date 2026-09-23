@@ -20,7 +20,9 @@ import {
   type UsuarioResumen,
 } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
+import { PagosService } from '../pagos/pagos.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import type { EstadoPagoDto } from '../pagos/dto/estado-pago.dto';
 import type { ActualizarSalasDto } from './dto/actualizar-salas.dto';
 import type { ActualizarUsuarioDto } from './dto/actualizar-usuario.dto';
 import type { CrearAlumnoDto } from './dto/crear-alumno.dto';
@@ -45,7 +47,6 @@ export interface FiltroUsuarios {
 /** Campos que solo tienen sentido en un alumno. */
 const CAMPOS_DE_ALUMNO = [
   'packId',
-  'pagoAlDia',
   'clasesExtra',
   'cancelacionesUsadas',
   'vigenciaDesde',
@@ -59,7 +60,6 @@ const RELACIONES = {
 /** Datos que solo tiene un alumno. Un profesor entra con esto en `undefined`. */
 interface DatosDeAlumno {
   packId?: string;
-  pagoAlDia?: boolean;
   clasesExtra?: number;
   vigenciaDesde?: string;
   vigenciaHasta?: string;
@@ -70,12 +70,12 @@ export class UsuariosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly pagos: PagosService,
   ) {}
 
   crearAlumno(actor: JwtPayload, dto: CrearAlumnoDto): Promise<AltaUsuarioRespuesta> {
     return this.crear(actor, 'ALUMNO', dto, {
       packId: dto.packId,
-      pagoAlDia: dto.pagoAlDia,
       clasesExtra: dto.clasesExtra,
       vigenciaDesde: dto.vigenciaDesde,
       vigenciaHasta: dto.vigenciaHasta,
@@ -124,10 +124,18 @@ export class UsuariosService {
       orderBy: { nombreCompleto: 'asc' },
     });
 
-    return filas
+    const datos = filas
       .map((fila) => aplanar(fila as UsuarioConRelaciones))
-      .filter((datos): datos is NonNullable<typeof datos> => datos !== null)
-      .map(aUsuarioResumen);
+      .filter((fila): fila is NonNullable<typeof fila> => fila !== null);
+
+    // UNA consulta para los N perfiles de la pagina, no una por alumno: este
+    // endpoint es la pantalla principal del admin.
+    const alDia = await this.pagos.perfilesAlDia(
+      this.prisma.db,
+      datos.map((fila) => fila.perfil.id),
+    );
+
+    return datos.map((fila) => aUsuarioResumen(fila, alDia.has(fila.perfil.id)));
   }
 
   async obtener(actor: JwtPayload, id: string): Promise<UsuarioDetalle> {
@@ -146,7 +154,11 @@ export class UsuariosService {
     // clinico de nadie.
     const puedeVerFicha = rolAlcanza(actor.rol, 'ADMIN_SALON') || actor.sub === id;
 
-    return aUsuarioDetalle(datos, puedeVerFicha);
+    return aUsuarioDetalle(
+      datos,
+      puedeVerFicha,
+      await this.pagos.perfilAlDia(this.prisma.db, datos.perfil.id),
+    );
   }
 
   async actualizar(
@@ -183,8 +195,7 @@ export class UsuariosService {
           telefono: dto.telefono,
           fichaMedica: dto.fichaMedica,
           packId: dto.packId,
-          pagoAlDia: dto.pagoAlDia,
-          clasesExtra: dto.clasesExtra,
+              clasesExtra: dto.clasesExtra,
           cancelacionesUsadas: dto.cancelacionesUsadas,
           vigenciaDesde: dto.vigenciaDesde ? desdeFechaISO(dto.vigenciaDesde) : undefined,
           vigenciaHasta: dto.vigenciaHasta ? desdeFechaISO(dto.vigenciaHasta) : undefined,
@@ -197,7 +208,27 @@ export class UsuariosService {
       );
     });
 
-    return aUsuarioDetalle(await this.buscarConRelaciones(id), true);
+    const actualizado = await this.buscarConRelaciones(id);
+    return aUsuarioDetalle(
+      actualizado,
+      true,
+      await this.pagos.perfilAlDia(this.prisma.db, actualizado.perfil.id),
+    );
+  }
+
+  /**
+   * El override del admin, sobre el USUARIO: la ruta habla de usuarios porque es
+   * donde vive el resto de la gestion, pero un pago cuelga del perfil.
+   */
+  async fijarEstadoDePago(
+    actor: JwtPayload,
+    id: string,
+    dto: EstadoPagoDto,
+  ): Promise<UsuarioDetalle> {
+    const datos = await this.buscarConRelaciones(id);
+    await this.pagos.fijarEstado(actor, datos.perfil.id, dto);
+
+    return await this.obtener(actor, id);
   }
 
   async actualizarSalas(
@@ -245,7 +276,12 @@ export class UsuariosService {
       );
     });
 
-    return aUsuarioDetalle(await this.buscarConRelaciones(id), true);
+    const actualizado = await this.buscarConRelaciones(id);
+    return aUsuarioDetalle(
+      actualizado,
+      true,
+      await this.pagos.perfilAlDia(this.prisma.db, actualizado.perfil.id),
+    );
   }
 
   async resetearPassword(actor: JwtPayload, id: string): Promise<ResetPasswordRespuesta> {
@@ -281,7 +317,12 @@ export class UsuariosService {
       );
     });
 
-    return aUsuarioDetalle(await this.buscarConRelaciones(id), true);
+    const actualizado = await this.buscarConRelaciones(id);
+    return aUsuarioDetalle(
+      actualizado,
+      true,
+      await this.pagos.perfilAlDia(this.prisma.db, actualizado.perfil.id),
+    );
   }
 
   private async crear(
@@ -336,7 +377,6 @@ export class UsuariosService {
           telefono: base.telefono ?? null,
           fichaMedica: base.fichaMedica ?? null,
           packId: alumno?.packId ?? null,
-          pagoAlDia: alumno?.pagoAlDia ?? false,
           clasesExtra: alumno?.clasesExtra ?? 0,
           vigenciaDesde: alumno?.vigenciaDesde ? desdeFechaISO(alumno.vigenciaDesde) : null,
           vigenciaHasta: alumno?.vigenciaHasta ? desdeFechaISO(alumno.vigenciaHasta) : null,
@@ -370,7 +410,7 @@ export class UsuariosService {
     const datos: UsuarioConPerfil = { ...creado, salas, pack };
 
     return {
-      ...aUsuarioDetalle(datos, true),
+      ...aUsuarioDetalle(datos, true, await this.pagos.perfilAlDia(this.prisma.db, datos.perfil.id)),
       passwordTemporal,
       advertencias: this.advertenciasDeAlta(rol, salas, pack),
     };

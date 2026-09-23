@@ -10,6 +10,7 @@ import { AusenciasModule } from './ausencias/ausencias.module';
 import { AuthModule } from './auth/auth.module';
 import { CalendarioModule } from './calendario/calendario.module';
 import { ComprobantesModule } from './comprobantes/comprobantes.module';
+import { ComunicacionModule } from './comunicacion/comunicacion.module';
 import { DisponibilidadModule } from './disponibilidad/disponibilidad.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -21,10 +22,12 @@ import { JobsModule } from './jobs/jobs.module';
 import { ListaEsperaModule } from './lista-espera/lista-espera.module';
 import { MiCalendarioModule } from './mi-calendario/mi-calendario.module';
 import { LiquidacionModule } from './liquidacion/liquidacion.module';
+import { PagosModule } from './pagos/pagos.module';
 import { MisClasesModule } from './mis-clases/mis-clases.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { PacksModule } from './packs/packs.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PushModule } from './push/push.module';
 import { ReservasModule } from './reservas/reservas.module';
 import { HorariosProfesorModule } from './horarios-profesor/horarios-profesor.module';
 import { RutinasModule } from './rutinas/rutinas.module';
@@ -88,6 +91,7 @@ import { VacacionesModule } from './vacaciones/vacaciones.module';
     PrismaModule,
     HistorialModule,
     AlmacenModule.forRoot(),
+    ComunicacionModule.forRoot(),
     DisponibilidadModule,
     NotificacionesModule,
     ListaEsperaModule,
@@ -107,6 +111,8 @@ import { VacacionesModule } from './vacaciones/vacaciones.module';
     MisClasesModule,
     LiquidacionModule,
     ComprobantesModule,
+    PagosModule,
+    PushModule,
     JobsModule,
   ],
   providers: [

@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
+  comienzoDeHoyUtc,
+  desdeFechaISO,
   rolAlcanza,
   type ComprobanteCreado,
   type ComprobantePublico,
@@ -16,6 +18,7 @@ import {
 import { ALMACEN_DE_ARCHIVOS, type AlmacenDeArchivos } from '../almacen/almacen.interface';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import type { AprobarComprobanteDto } from './dto/aprobar-comprobante.dto';
 import type { CrearComprobanteDto } from './dto/crear-comprobante.dto';
 
 /**
@@ -165,51 +168,56 @@ export class ComprobantesService {
     return publicos;
   }
 
-  async revisar(
+  async aprobar(
     actor: JwtPayload,
     id: string,
-    estado: 'APROBADO' | 'RECHAZADO',
-    nota: string | undefined,
+    dto: AprobarComprobanteDto,
   ): Promise<ComprobantePublico> {
+    const cubreHasta = desdeFechaISO(dto.cubreHasta);
+
     const fila = await this.prisma.db.$transaction(async (tx) => {
       const cliente = tx as ClientePrismaTx;
 
-      const existente = (await cliente.comprobante.findFirst({
-        where: { id },
-      })) as FilaComprobante | null;
-      if (!existente) throw new NotFoundException('Comprobante inexistente');
-      if (existente.estado !== 'PENDIENTE') {
-        throw new ConflictException(`El comprobante ya estaba ${existente.estado.toLowerCase()}`);
-      }
-      if (existente.subidoEn === null) {
-        throw new ConflictException(
-          'Este comprobante todavia no tiene archivo: el alumno no termino de subirlo.',
-        );
-      }
+      const existente = await this.exigirRevisable(cliente, id);
 
       const actualizado = (await cliente.comprobante.update({
         where: { id },
-        data: { estado, revisadoPor: actor.sub, revisadoEn: new Date(), nota: nota ?? null },
+        data: {
+          estado: 'APROBADO',
+          revisadoPor: actor.sub,
+          revisadoEn: new Date(),
+          nota: dto.nota ?? null,
+        },
       })) as FilaComprobante;
 
-      // Aprobar un comprobante es lo que pone al alumno al dia. `pagoAlDia`
-      // existe desde la Fase 1 sin que nada lo escriba: esta es la fase donde
-      // encuentra su dueno. Rechazar no lo toca, porque un rechazo no quita un
-      // pago anterior que si estaba bien.
-      if (estado === 'APROBADO') {
-        await cliente.perfil.update({
-          where: { id: existente.perfilId },
-          data: { pagoAlDia: true },
-        });
-      }
+      // El pago nace en la MISMA transaccion. Si naciera fuera, un fallo entre
+      // las dos escrituras dejaria un comprobante aprobado sin cobro
+      // registrado, y eso no se descubre hasta cuadrar la caja a fin de mes.
+      //
+      // Aprobar es lo que pone al alumno al dia, y desde la Fase 5A eso no es
+      // encender una bandera: es que exista un pago que cubra hoy.
+      await cliente.pago.create({
+        data: {
+          tenantId: actor.tenantId,
+          perfilId: existente.perfilId,
+          monto: dto.monto,
+          metodo: dto.metodo ?? 'TRANSFERENCIA',
+          esSena: false,
+          cubreDesde: comienzoDeHoyUtc(new Date()),
+          cubreHasta,
+          comprobanteId: id,
+          registradoPor: actor.sub,
+          nota: dto.nota ?? null,
+        },
+      });
 
       await this.historial.registrar(
         {
           actor,
           entidad: 'Comprobante',
           entidadId: id,
-          accion: estado,
-          detalle: { perfilId: existente.perfilId, nota: nota ?? null },
+          accion: 'APROBADO',
+          detalle: { perfilId: existente.perfilId, monto: dto.monto, nota: dto.nota ?? null },
         },
         cliente,
       );
@@ -218,6 +226,64 @@ export class ComprobantesService {
     });
 
     return this.aPublico(fila, await this.firmarSiHayArchivo(fila));
+  }
+
+  async rechazar(
+    actor: JwtPayload,
+    id: string,
+    nota: string | undefined,
+  ): Promise<ComprobantePublico> {
+    const fila = await this.prisma.db.$transaction(async (tx) => {
+      const cliente = tx as ClientePrismaTx;
+
+      await this.exigirRevisable(cliente, id);
+
+      const actualizado = (await cliente.comprobante.update({
+        where: { id },
+        data: {
+          estado: 'RECHAZADO',
+          revisadoPor: actor.sub,
+          revisadoEn: new Date(),
+          nota: nota ?? null,
+        },
+      })) as FilaComprobante;
+
+      await this.historial.registrar(
+        {
+          actor,
+          entidad: 'Comprobante',
+          entidadId: id,
+          accion: 'RECHAZADO',
+          detalle: { nota: nota ?? null },
+        },
+        cliente,
+      );
+
+      return actualizado;
+    });
+
+    return this.aPublico(fila, await this.firmarSiHayArchivo(fila));
+  }
+
+  /** Las dos comprobaciones que comparten aprobar y rechazar. */
+  private async exigirRevisable(
+    cliente: ClientePrismaTx,
+    id: string,
+  ): Promise<FilaComprobante> {
+    const existente = (await cliente.comprobante.findFirst({
+      where: { id },
+    })) as FilaComprobante | null;
+    if (!existente) throw new NotFoundException('Comprobante inexistente');
+    if (existente.estado !== 'PENDIENTE') {
+      throw new ConflictException(`El comprobante ya estaba ${existente.estado.toLowerCase()}`);
+    }
+    if (existente.subidoEn === null) {
+      throw new ConflictException(
+        'Este comprobante todavia no tiene archivo: el alumno no termino de subirlo.',
+      );
+    }
+
+    return existente;
   }
 
   private async perfilDelActor(actor: JwtPayload): Promise<{ id: string }> {

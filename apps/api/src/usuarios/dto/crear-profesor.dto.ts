@@ -9,7 +9,7 @@ import {
 } from 'class-validator';
 
 /**
- * El alta de profesor NO acepta packId, clasesExtra, cancelaciones, pagoAlDia ni
+ * El alta de profesor NO acepta packId, clasesExtra, cancelaciones ni
  * vigencias. No es que los ignore: con `forbidNonWhitelisted: true` en el
  * ValidationPipe global, mandarlos devuelve 400.
  *

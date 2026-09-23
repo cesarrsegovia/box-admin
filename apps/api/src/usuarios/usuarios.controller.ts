@@ -20,6 +20,7 @@ import type {
 } from '@boxadmin/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { EstadoPagoDto } from '../pagos/dto/estado-pago.dto';
 import { ActualizarSalasDto } from './dto/actualizar-salas.dto';
 import { ActualizarUsuarioDto } from './dto/actualizar-usuario.dto';
 import { CrearAlumnoDto } from './dto/crear-alumno.dto';
@@ -85,6 +86,16 @@ export class UsuariosController {
     @Body() dto: ActualizarSalasDto,
   ): Promise<UsuarioDetalle> {
     return this.usuarios.actualizarSalas(actor, id, dto);
+  }
+
+  @Roles('ADMIN_OPERATIVO')
+  @Patch(':id/estado-pago')
+  fijarEstadoDePago(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: EstadoPagoDto,
+  ): Promise<UsuarioDetalle> {
+    return this.usuarios.fijarEstadoDePago(actor, id, dto);
   }
 
   @Roles('ADMIN_SALON')
