@@ -75,6 +75,22 @@ import { NOTIFICACION_RESERVA_QUEUE, type DatosNotificacionReserva } from './col
  *    que un retry desde un panel de Bull no manda nada y el operador no tiene
  *    forma de ver por que.
  *
+ * Y DOS COSAS QUE LA MARCA NO DICE, que son el caso FRECUENTE y no el raro:
+ *
+ * e. `MensajeroService.avisar` NUNCA LANZA. Si el SMTP esta caido o mal
+ *    configurado, este `process` termina bien, el job se completa y la marca se
+ *    queda puesta: NO HAY REINTENTO POSIBLE. Asi que "en el peor caso el aviso
+ *    se pierde" es optimista — se pierde SIEMPRE que falle el envio, y el unico
+ *    rastro es un `logger.warn` dentro del mensajero. Es deliberado (reintentar
+ *    el job entero por un SMTP caido le mandaria el aviso tres veces a quien si
+ *    lo recibio), pero la marca no es una garantia de entrega: garantiza que se
+ *    intento, una vez.
+ *
+ * f. EL EMAIL Y EL PUSH FALLAN POR SEPARADO —`avisar` los manda en dos pasos— y
+ *    esta marca es un booleano POR JOB, no por canal. Si sale uno y el otro no,
+ *    la marca dice "hecho" para los dos y nadie reintenta el que falto. Se
+ *    acepta por lo mismo de arriba; queda escrito para que no sorprenda.
+ *
  * Y NO es un dato del payload en el sentido de `colas.ts`: no lo pone quien
  * encola, no se lee como identificador y no sale de `datosDeEnvio()`. Es un
  * booleano que el worker se escribe a si mismo.
@@ -203,8 +219,15 @@ export class NotificacionReservaProcessor extends WorkerHost {
         return;
       }
 
+      // `reserva.perfilId`, NO el `perfilId` del payload, y esto es LO QUE
+      // DECIDE A QUIEN LE LLEGA EL EMAIL. De aqui salen `email` y `nombre`, asi
+      // que buscar por el del payload dejaria la garantia a medias: el push
+      // iria al perfil contrastado y el correo —el canal que de verdad llega a
+      // una persona— al que dijo el payload. Los dos identificadores valen lo
+      // mismo hoy por el where de arriba; si alguien lo afloja, que sea un
+      // aviso que no sale, no un aviso que sale a otro.
       const perfil = await this.prisma.db.perfil.findFirst({
-        where: { id: perfilId },
+        where: { id: reserva.perfilId },
         include: { usuario: { select: { nombreCompleto: true, email: true, activo: true } } },
       });
       const turno = await this.prisma.db.turno.findFirst({ where: { id: turnoId } });
@@ -229,7 +252,7 @@ export class NotificacionReservaProcessor extends WorkerHost {
       // puesta aqui donde el destinatario viene dado y no se elige con un where.
       if (!perfil.usuario.activo) {
         this.logger.log(
-          `El usuario del perfil ${perfilId} esta dado de baja; se omite el aviso ` +
+          `El usuario del perfil ${perfil.id} esta dado de baja; se omite el aviso ` +
             `${accion} (job ${job.id})`,
         );
         return;
@@ -253,12 +276,13 @@ export class NotificacionReservaProcessor extends WorkerHost {
 
       await this.mensajero.avisar(
         {
-          // `reserva.perfilId`, NO el `perfilId` del payload, aunque hoy sean el
-          // mismo valor por el where de arriba. Este es el que paso el contraste:
-          // salio de una fila que existe y es de este turno. Cogiendo el del
-          // payload, el dia que alguien retoque aquel where lo unico que sostiene
-          // la regla del destinatario deja de sostenerla, y en silencio.
-          perfilId: reserva.perfilId,
+          // EL DESTINATARIO ENTERO SALE DE `perfil`, y `perfil` salio de
+          // `reserva.perfilId`: los tres campos vienen de la misma fila
+          // contrastada, no dos de ella y uno del payload. Un destinatario
+          // mezclado es peor que uno equivocado, porque manda el push a una
+          // persona y el email a otra. Hay un test que lo fija con un doble
+          // deliberadamente laxo.
+          perfilId: perfil.id,
           email: perfil.usuario.email,
           nombre: perfil.usuario.nombreCompleto,
         },
@@ -274,7 +298,18 @@ export class NotificacionReservaProcessor extends WorkerHost {
           fecha: fechaLegible(turno.fecha),
           hora: turno.horaInicio,
         },
-        '/calendario',
+        // CON EL SLUG DEL GIMNASIO DENTRO. Las pantallas de la PWA viven en
+        // `/<slug>/calendario`: un `/calendario` pelado es un 404 en cuanto el
+        // alumno toca la notificacion con la aplicacion cerrada, que es el caso
+        // normal. Adivinar el slug en el cliente —mirando una ventana ya
+        // abierta— funciona en desarrollo, donde siempre hay una pestana, y
+        // falla justo cuando hace falta; peor, a un socio de dos gimnasios puede
+        // abrirle el que no es. El destino viaja entero desde aqui.
+        //
+        // Si no hay tenant no hay slug, y sin slug la ruta estaria rota: se
+        // manda `null`, que `MensajeroService` traduce en "email si, push no".
+        // Una notificacion que lleva a un 404 es peor que ninguna.
+        tenant ? `/${tenant.slug}/calendario` : null,
       );
     });
   }

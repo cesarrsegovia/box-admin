@@ -835,12 +835,23 @@ En `apps/web/.env.local`:
 ```
 API_URL=http://localhost:3000
 NEXT_PUBLIC_APP_URL=http://localhost:3001
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=
 ```
 
 ⚠️ **`API_URL` NO lleva el prefijo `NEXT_PUBLIC_`, y es deliberado.** Una variable con ese prefijo se
 incrusta en el bundle del navegador. La dirección de la API no tiene por qué ser pública, y sobre
 todo: si estuviera disponible en el cliente, sería una invitación a saltarse el BFF y volver a mandar
 el token desde el navegador.
+
+⚠️ **`NEXT_PUBLIC_VAPID_PUBLIC_KEY` sí lo lleva, y tampoco es un descuido.** Se lee justo lo
+contrario del aviso de arriba, así que conviene leer los dos juntos: el navegador **necesita** esa
+clave para suscribirse al push —se la pasa a `pushManager.subscribe`—, y es la mitad **pública** de
+un par VAPID. La privada (`VAPID_PRIVATE_KEY`) vive solo en la API y nunca sale de ahí. La regla no
+es "ninguna variable es pública", es "solo lo que el navegador necesita, y solo si publicarlo no
+cuesta nada".
+
+Vacía significa que este despliegue no tiene push: el botón de notificaciones **no se pinta**, y la
+API responde **503** a quien lo intente de todos modos.
 
 Y en la API, `WEB_ORIGIN=http://localhost:3001` habilita el CORS que necesita la subida de
 comprobantes. Sin esa variable, el CORS no se habilita en absoluto: un despliegue solo-API no tiene
@@ -874,10 +885,63 @@ teléfonos.
 El service worker lo genera **Serwist**, no `next-pwa` — esa última se publicó por última vez en
 agosto de 2022, antes de que existiera el App Router que el propio PDF pide.
 
+### Las notificaciones push
+
+El service worker trae dos listeners propios —`push` y `notificationclick`— escritos a mano junto a
+la regla de caché: Serwist gestiona caché, no push.
+
+**El permiso del navegador tiene tres estados, no dos.** `default`, `granted` y `denied`. El que se
+olvida es el tercero: una vez que el alumno dice que no, `Notification.requestPermission()` **no
+vuelve a preguntar** y resuelve `denied` al instante. Por eso el botón desaparece en ese caso y en su
+lugar se explica que hay que habilitarlas desde la configuración del navegador; dejar un botón que al
+pulsarlo no abre ningún diálogo es peor que no tenerlo.
+
+**Un 503 de `/push/suscripcion` no es un error del alumno.** Significa que este despliegue no tiene
+claves VAPID, así que se traduce a "este gimnasio todavía no tiene las notificaciones configuradas" y
+no a un "algo salió mal" que invita a reintentarlo toda la tarde.
+
+**Al desactivar, primero el servidor y después el navegador.** Al revés, un `DELETE` que falla deja
+al navegador desuscrito mientras la pantalla sigue diciendo que las notificaciones están activas: el
+alumno se cree avisado y no le llega nada. Y al activar, si la API no se queda con la suscripción, se
+deshace también en el navegador.
+
+En cuanto el `DELETE` responde, **la pantalla pasa a "Activar" antes de tocar el navegador**: la fila
+ya no está en el servidor, así que no va a llegar ni un aviso más pase lo que pase debajo. Si el
+`unsubscribe()` del navegador falla, se muestra el error pero el botón ya dice la verdad. Es el único
+camino por el que el alumno podría creerse avisado sin estarlo, y se cierra con el orden de dos
+líneas.
+
+Los avisos que **sustituyen al botón** (permiso denegado, gimnasio sin configurar) llevan
+`role="alert"` aunque no sean errores: si no, quien usa lector de pantalla pulsa, el botón desaparece
+y para él no ha pasado nada.
+
+⚠️ **El título de la notificación llega SIN escapar, y es correcto.** Es el asunto de la plantilla
+del gimnasio, que la API no escapa a propósito (escaparlo convertía `O'Brien & Ana` en
+`O&#x27;Brien &amp;amp; Ana` en la bandeja de entrada). `showNotification` lo pinta como texto y ahí
+no hay problema — pero ese texto lo escribe el admin del gimnasio y lleva datos interpolados, así que
+**cualquier sitio de la PWA que lo pinte en el DOM** (un centro de notificaciones, un toast, un
+historial) tiene que usar `textContent` o el equivalente de React, **jamás**
+`dangerouslySetInnerHTML`. Hoy no lo pinta nadie; queda dicho en `src/lib/push.ts`, que es por donde
+pasa.
+
+**La notificación lleva su destino completo, con el slug del gimnasio** (`/<slug>/mi-pack`), y lo
+manda la API en el `urlPush` de los processors, que son quienes saben de qué tenant es el aviso. El
+service worker lo abre tal cual: **no adivina nada**, solo filtra que no salga del origen.
+
+⚠️ **Completar el slug en el cliente a partir de una ventana abierta se probó y se quitó**, y queda
+escrito porque es tentador: falla justo en los dos casos que cuentan. Con la aplicación cerrada —el
+caso normal al tocar una notificación— no hay ninguna ventana de la que sacarlo, así que no defiende
+nada; y a un socio de dos gimnasios con una pestaña abierta en el otro lo llevaría a
+`/gym-b/calendario`: una pantalla plausible y equivocada, que es **peor** que un 404 porque no se
+nota. Un destino ambiguo se arregla en quien lo emite, no en quien lo recibe.
+
+Reutilizar una ventana ya abierta en `notificationclick` sí se conserva, pero es solo cortesía —no
+abrir una pestaña de más—: de su URL no se deduce nada.
+
 ### Tests
 
 ```bash
-pnpm web:test        # Vitest: 106 tests de logica y componentes
+pnpm web:test        # Vitest: 149 tests de logica y componentes
 pnpm web:test:e2e    # Playwright: 5 tests de navegador real
 ```
 
@@ -1194,6 +1258,119 @@ declara, se paga.
 Y un alumno recién dado de alta queda **pendiente** hasta su primer pago. Antes también: el default
 de la columna era `false`.
 
+
+## La comunicación — Fase 5B
+
+Cada gimnasio manda sus propios emails, con su servidor SMTP y sus plantillas, y el alumno puede
+recibir notificaciones push en el navegador. Es la fase donde el enganche de notificaciones —que
+existía desde la 3A y solo escribía en el log— empieza a avisar de verdad.
+
+### Dos puertos, cuatro adaptadores
+
+El email y el push son **puertos**: interfaces con dos implementaciones cada una, elegidas al arrancar
+según una variable de entorno. Mismo patrón que el almacén de archivos desde la Fase 3A.
+
+| Variable                                 | Valores                         | Qué hace                                                                                             |
+| ---------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `EMAIL_TIPO`                             | `memoria` \| `smtp`             | `memoria` guarda los envíos en un array del proceso (desarrollo y tests); `smtp` los manda de verdad |
+| `PUSH_TIPO`                              | `memoria` \| `web-push`         | Igual, para las notificaciones del navegador                                                         |
+| `APP_ENCRYPTION_KEY`                     | 32 bytes en hex (64 caracteres) | Cifra la contraseña SMTP de cada gimnasio. **Obligatoria**: sin ella el proceso no arranca           |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | opcionales                      | Sin ellas el push se desactiva y `POST /push/suscripcion` responde **503**                           |
+| `JOBS_RECURRENTES`                       | `0` \| `1`                      | Registra los dos crones diarios. Por defecto apagado                                                 |
+
+Generar la clave de cifrado:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### La contraseña se cifra, y no vuelve nunca
+
+La contraseña del SMTP se guarda cifrada con AES-256-GCM en el formato `v1:<iv>:<tag>:<datos>`. El
+prefijo de versión está para poder rotar el algoritmo sin adivinar qué hay en cada fila; la rotación
+en sí todavía no está implementada.
+
+`GET /config/smtp` **no devuelve la contraseña, ni enmascarada**: una máscara sigue confirmando la
+longitud. Solo dice `tieneClave: true`. Y el detalle que queda en el historial lleva el host y el
+usuario, nunca la clave.
+
+Hay una cuarta puerta menos obvia y está cerrada a propósito: `PUT /config/smtp` **verifica la
+conexión antes de guardar**, y si falla devuelve un 400 con el motivo. Ese motivo pasa por un saneado
+(`motivoSeguro`) porque nodemailer arma el error de autenticación como `Invalid login:` seguido de la
+respuesta literal del servidor — y un servidor verboso reimprime ahí el base64 de la contraseña que
+acaba de recibir. No hace falta un atacante: basta un host mal tecleado. El mismo saneado se aplica al
+log del mensajero, porque un log se guarda, se rota y acaba en más manos que una respuesta HTTP.
+
+### Las VAPID son opcionales, y eso es una decisión
+
+A diferencia de la clave de cifrado —que si falta deja credenciales ilegibles en la base—, las claves
+VAPID **no se exigen**. Sin ellas el push simplemente no existe: suscribirse responde 503, y el email
+sigue saliendo igual. Es una capacidad del despliegue, no un estado roto.
+
+El 503 importa: no es que el cliente mande algo mal, es que esta instalación no tiene esa capacidad.
+La PWA lo distingue y no le muestra al alumno un error genérico.
+
+### Los crones están tras una bandera
+
+Los dos jobs diarios —recordatorio de pago y aviso de vencimiento— solo se registran con
+`JOBS_RECURRENTES=1`. La bandera no es cosmética: sin ella, **cada corrida de `jest` que levanta la
+aplicación dejaría un cron diario vivo en el Redis compartido**, y eso no se nota hasta que la máquina
+lleva días encendida.
+
+Los recurrentes se registran con `upsertJobScheduler` y no con `add(..., { repeat })`. El motivo es
+concreto: la clave de un job repetible incluye el patrón y la zona horaria, así que cambiar la hora
+del cron con la API vieja **crea uno nuevo y deja el anterior disparando** — dos tandas de correo
+masivo al día, sin ningún síntoma. `upsertJobScheduler` está cifrado solo por su identificador y
+actualiza en sitio.
+
+⚠️ **El patrón `0 9 * * *` se interpreta en la zona horaria del worker**, no en la del gimnasio. En un
+contenedor en UTC son las 6 de la mañana en Argentina. La zona se pasa en las opciones de `repeat`
+cuando se decida cuál.
+
+### Las reservas de RUTINA no avisan
+
+Publicar un mes con treinta alumnos son ciento veinte reservas. Si cada una mandara un correo, serían
+ciento veinte correos en el mismo minuto, y el alumno ya sabe que va todos los martes: lo que no sabe
+es lo que **cambia**. Así que las reservas de origen `RUTINA` se filtran antes de encolar nada.
+
+### Qué se avisa, y por dónde
+
+| Aviso                   | Cuándo                                        | Plantilla           |
+| ----------------------- | --------------------------------------------- | ------------------- |
+| Confirmación de reserva | alta manual o del alumno                      | `CONFIRMACION`      |
+| Cancelación             | al cancelar                                   | `CANCELACION`       |
+| Cupo asignado           | al entrar desde la lista de espera            | `LISTA_ESPERA`      |
+| Recordatorio de pago    | job diario, a quien no está al día            | `RECORDATORIO_PAGO` |
+| Vencimiento de pack     | job diario, dentro de la ventana del gimnasio | `VENCIMIENTO_PACK`  |
+
+Las cinco plantillas vienen por defecto en el código y cada gimnasio puede reescribirlas. El **cuerpo**
+se escapa como HTML; el **asunto no**, a propósito: escaparlo convertía un apóstrofo en `&#x27;` en la
+bandeja de entrada. Ese mismo asunto se usa como título de la notificación push, así que en la PWA
+tiene que tratarse siempre como texto y nunca como HTML.
+
+Al guardar una plantilla se comprueba que compile, y si no, responde 400 con el error. Se valida en el
+momento de guardar porque ahí hay un humano mirando que puede corregirlo; enterarse tres días después,
+porque nadie recibió nada, es otra cosa.
+
+### Los avisos se encolan, no se mandan
+
+Entre la petición y el correo hay una cola de BullMQ. Dos razones: un SMTP lento dentro de una
+transacción de Postgres es un bloqueo esperando a una red ajena, y el enganche que dispara el aviso
+corre dentro de la transacción que crea o cancela la reserva — una excepción ahí revertiría una
+operación perfectamente válida.
+
+El aviso se encola **después** del commit, no dentro. Redis no participa del rollback de Postgres: si
+la transacción aborta por conflicto de serialización después de haber encolado, el job ya está en la
+cola y el reintento encola otro. El precio aceptado es el contrario: si el proceso muere entre el
+commit y el encolado, el aviso **se pierde**. Es preferible — perder un aviso molesta; mandar uno de
+una reserva que no existe no se puede desandar.
+
+Un payload de job lleva **identificadores y nada más**. Nunca la configuración SMTP: un job se
+serializa a Redis en JSON y se queda ahí hasta que caduque. El servidor de correo se resuelve dentro
+del processor, que ya abre su contexto de gimnasio.
+
+Para el push en la PWA, ver [Las notificaciones push](#las-notificaciones-push) en la sección de la
+Fase 3B.
 
 ## Tests
 

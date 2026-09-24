@@ -225,7 +225,7 @@ casos. El processor solo junta los datos y llama al puerto.
 | Processor | Cuándo | Qué manda |
 |---|---|---|
 | `notificacion-reserva` | al reservar o cancelar | `CONFIRMACION` / `CANCELACION` |
-| `notificacion-lista-espera` | al entrar desde la cola | `LISTA_ESPERA`, y marca `ListaEspera.notificado` |
+| `notificacion-lista-espera` | al entrar desde la cola | `LISTA_ESPERA`. **NO marca `ListaEspera.notificado`**: esa fila se borra al asignar el cupo, asi que cuando el worker toma el job ya no existe. La marca de idempotencia vive en el job. |
 | `recordatorio-pago` | diario | `RECORDATORIO_PAGO` a quien **no** está al día |
 | `vencimiento-pack` | diario | `VENCIMIENTO_PACK` si la vigencia cae dentro de `diasAvisoVencimiento` |
 

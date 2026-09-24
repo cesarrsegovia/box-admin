@@ -60,6 +60,22 @@ import { NOTIFICACION_LISTA_ESPERA_QUEUE, type DatosNotificacionListaEspera } fr
  * redistribuye mientras el primer worker sigue vivo, los dos leen la marca
  * ausente y los dos mandan.
  *
+ * Y DOS COSAS QUE LA MARCA NO DICE, que son el caso FRECUENTE y no el raro:
+ *
+ * e. `MensajeroService.avisar` NUNCA LANZA. Si el SMTP esta caido o mal
+ *    configurado, este `process` termina bien, el job se completa y la marca se
+ *    queda puesta: NO HAY REINTENTO POSIBLE. Asi que "en el peor caso el aviso
+ *    se pierde" es optimista — se pierde SIEMPRE que falle el envio, y el unico
+ *    rastro es un `logger.warn` dentro del mensajero. Es deliberado (reintentar
+ *    el job entero por un SMTP caido le mandaria el aviso tres veces a quien si
+ *    lo recibio), pero la marca no es una garantia de entrega: garantiza que se
+ *    intento, una vez.
+ *
+ * f. EL EMAIL Y EL PUSH FALLAN POR SEPARADO —`avisar` los manda en dos pasos— y
+ *    esta marca es un booleano POR JOB, no por canal. Si sale uno y el otro no,
+ *    la marca dice "hecho" para los dos y nadie reintenta el que falto. Se
+ *    acepta por lo mismo de arriba; queda escrito para que no sorprenda.
+ *
  * COMO SE CIERRA, cuando se pueda migrar: una columna NUEVA en `Reserva` —no
  * en `ListaEspera`, por todo lo de arriba— escrita como compare-and-set. Eso
  * sirve a los DOS processors con el mismo mecanismo, que era lo que se queria
@@ -185,15 +201,28 @@ export class NotificacionListaEsperaProcessor extends WorkerHost {
           return;
         }
 
+        // Con `entradaId`: este es el log que alguien va a ir a investigar, y es
+        // el id con el que se cruza con el `ASIGNADA_DESDE_LISTA` del historial
+        // (`detalle.desdeListaEspera`) para ver a quien se le dio el cupo de
+        // verdad. Un log de alarma sin la clave para investigarlo es media
+        // alarma.
         this.logger.error(
           `El perfil ${perfilId} no tiene ninguna reserva de lista de espera en el turno ` +
-            `${turnoId}, que sigue existiendo; se omite el aviso de cupo (job ${job.id})`,
+            `${turnoId}, que sigue existiendo (entrada ${entradaId}); se omite el aviso de ` +
+            `cupo (job ${job.id})`,
         );
         return;
       }
 
+      // `reserva.perfilId`, NO el `perfilId` del payload, y esto es LO QUE
+      // DECIDE A QUIEN LE LLEGA EL EMAIL. De aqui salen `email` y `nombre`, asi
+      // que buscar por el del payload dejaria la garantia a medias: el push
+      // iria al perfil contrastado y el correo —el canal que de verdad llega a
+      // una persona— al que dijo el payload. Los dos identificadores valen lo
+      // mismo hoy por el where de arriba; si alguien lo afloja, que sea un
+      // aviso que no sale, no un aviso que sale a otro.
       const perfil = await this.prisma.db.perfil.findFirst({
-        where: { id: perfilId },
+        where: { id: reserva.perfilId },
         include: { usuario: { select: { nombreCompleto: true, email: true, activo: true } } },
       });
       const turno = await this.prisma.db.turno.findFirst({ where: { id: turnoId } });
@@ -216,7 +245,7 @@ export class NotificacionListaEsperaProcessor extends WorkerHost {
       // comprobacion el correo sale igual.
       if (!perfil.usuario.activo) {
         this.logger.log(
-          `El usuario del perfil ${perfilId} esta dado de baja; se omite el aviso de cupo ` +
+          `El usuario del perfil ${perfil.id} esta dado de baja; se omite el aviso de cupo ` +
             `(job ${job.id})`,
         );
         return;
@@ -245,13 +274,13 @@ export class NotificacionListaEsperaProcessor extends WorkerHost {
 
       await this.mensajero.avisar(
         {
-          // `reserva.perfilId`, NO el `perfilId` del payload, aunque hoy sean el
-          // mismo valor por el where de arriba. Este es el que paso el contraste:
-          // salio de una fila que existe, es de este turno y vino de la cola.
-          // Cogiendo el del payload, el dia que alguien retoque aquel where lo
-          // unico que sostiene la regla del destinatario deja de sostenerla, y en
-          // silencio.
-          perfilId: reserva.perfilId,
+          // EL DESTINATARIO ENTERO SALE DE `perfil`, y `perfil` salio de
+          // `reserva.perfilId`: los tres campos vienen de la misma fila
+          // contrastada, no dos de ella y uno del payload. Un destinatario
+          // mezclado es peor que uno equivocado, porque manda el push a una
+          // persona y el email a otra. Hay un test que lo fija con un doble
+          // deliberadamente laxo.
+          perfilId: perfil.id,
           email: perfil.usuario.email,
           nombre: perfil.usuario.nombreCompleto,
         },
@@ -268,7 +297,12 @@ export class NotificacionListaEsperaProcessor extends WorkerHost {
           fecha: fechaLegible(turno.fecha),
           hora: turno.horaInicio,
         },
-        '/calendario',
+        // CON EL SLUG DEL GIMNASIO DENTRO: las pantallas viven en
+        // `/<slug>/calendario` y un `/calendario` pelado es un 404 cuando el
+        // alumno toca la notificacion con la PWA cerrada. El motivo entero esta
+        // en el mismo sitio del processor de reserva. Sin tenant no hay slug, y
+        // entonces `null`: email si, push no.
+        tenant ? `/${tenant.slug}/calendario` : null,
       );
     });
   }

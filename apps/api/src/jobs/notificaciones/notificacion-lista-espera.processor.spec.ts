@@ -9,7 +9,7 @@ import { NotificacionListaEsperaProcessor } from './notificacion-lista-espera.pr
 type Fila = Record<string, any>;
 type JobDeTest = Job<DatosNotificacionListaEspera & { avisoMarcado?: true }>;
 
-const GIMNASIO = { id: 'gym-1', nombre: 'Box Fuego' };
+const GIMNASIO = { id: 'gym-1', nombre: 'Box Fuego', slug: 'box-fuego' };
 
 const ANA = {
   id: 'perfil-ana',
@@ -58,6 +58,15 @@ interface Escenario {
   job?: Partial<DatosNotificacionListaEspera & { avisoMarcado?: true }>;
   /** Cuantas veces revienta `updateData` antes de funcionar. */
   fallosAlMarcar?: number;
+  /**
+   * Rompe el doble de Prisma A PROPOSITO: le quita el `perfilId` al where de la
+   * reserva, que es exactamente el futuro que el processor dice temer —alguien
+   * afloja ese where y la consulta empieza a devolver la reserva de OTRO alumno
+   * del mismo turno—. Sirve para comprobar que el destinatario no se arma a
+   * medias entre la fila encontrada y el payload; sin el, los dos perfilId
+   * valen lo mismo y el test no puede distinguir nada.
+   */
+  whereLaxo?: boolean;
 }
 
 /**
@@ -108,8 +117,11 @@ function crearEscenario(escenario: Escenario = {}) {
   const db = {
     reserva: {
       async findFirst({ where }: { where: Fila }): Promise<Fila | null> {
+        const efectivo = { ...where };
+        if (escenario.whereLaxo) delete efectivo.perfilId;
+
         return (
-          [...filtrar(reservas, where)].sort(
+          [...filtrar(reservas, efectivo)].sort(
             (a, b) => Number(b.createdAt) - Number(a.createdAt),
           )[0] ?? null
         );
@@ -228,7 +240,9 @@ describe('NotificacionListaEsperaProcessor', () => {
     // Y no "2026-10-07", que es lo que daria aFechaISO. El email lo lee un
     // alumno, no un sistema.
     expect(datos.fecha).not.toMatch(/\d{4}-\d{2}-\d{2}/);
-    expect(url).toBe('/calendario');
+    // CON EL SLUG: las pantallas de la PWA viven en `/<slug>/calendario`, y
+    // un `/calendario` pelado abre un 404 con la aplicacion cerrada.
+    expect(url).toBe('/box-fuego/calendario');
   });
 
   // --------------------------------------------------------------------------
@@ -259,6 +273,30 @@ describe('NotificacionListaEsperaProcessor', () => {
 
     expect(avisar).not.toHaveBeenCalled();
     expect(pasos).toEqual([]);
+  });
+
+  it('el destinatario ENTERO sale de la reserva contrastada, no del payload', async () => {
+    // Con el doble laxo, la consulta devuelve la reserva de Ana aunque el
+    // payload diga Beto. Entonces `perfilId`, `email` y `nombre` tienen que ser
+    // LOS TRES de Ana: si `email` y `nombre` se buscaran por el perfilId del
+    // payload, el push iria a Ana y el correo a Beto. Un destinatario mezclado
+    // es peor que uno equivocado, y ninguna de las dos mitades da error: llegan.
+    const { processor, job, avisar } = crearEscenario({
+      reservas: [cupoDe('perfil-ana')],
+      job: { perfilId: 'perfil-beto' },
+      whereLaxo: true,
+    });
+
+    await processor.process(job);
+
+    expect(avisar).toHaveBeenCalledTimes(1);
+    // `toEqual` sobre el destinatario ENTERO, no sobre un campo: lo que se fija
+    // es que los tres salgan de la misma fila.
+    expect(avisar.mock.calls[0]?.[0]).toEqual({
+      perfilId: 'perfil-ana',
+      email: 'ana@correo.test',
+      nombre: 'Ana',
+    });
   });
 
   it('un perfil sin cupo en un turno QUE SIGUE VIVO si es una alarma', async () => {
@@ -396,6 +434,26 @@ describe('NotificacionListaEsperaProcessor', () => {
     await processor.process(job);
 
     expect(avisar).toHaveBeenCalledTimes(1);
+  });
+
+  it('la marca NO se come el payload', async () => {
+    // `updateData` REEMPLAZA los datos del job, no los mezcla. Escribir
+    // `{ avisoMarcado: true }` a secas en vez de `{ ...job.data, ... }` pasa
+    // todos los demas tests —la segunda vuelta sale igual por el early return—,
+    // pero deja el job en Redis sin tenantId, sin perfilId y sin turnoId: un job
+    // en `failed` asi no se puede diagnosticar desde un panel de Bull, ni saber
+    // a quien se le iba a avisar.
+    const { processor, job } = crearEscenario({ reservas: [cupoDe('perfil-ana')] });
+
+    await processor.process(job);
+
+    expect(job.data).toEqual({
+      tenantId: 'gym-1',
+      perfilId: 'perfil-ana',
+      turnoId: 'turno-1',
+      entradaId: 'le-1',
+      avisoMarcado: true,
+    });
   });
 
   it('un job que ya venia marcado no consulta ni manda', async () => {

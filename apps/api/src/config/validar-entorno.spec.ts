@@ -51,11 +51,14 @@ describe('validarEntorno', () => {
     expect(() => validarEntorno(entorno)).toThrow();
   });
 
-  it.each(VARIABLES_REQUERIDAS)('el mensaje de error nombra la variable %s faltante', (variable) => {
-    const entorno = { ...ENTORNO_COMPLETO } as Record<string, unknown>;
-    delete entorno[variable];
-    expect(() => validarEntorno(entorno)).toThrow(new RegExp(variable));
-  });
+  it.each(VARIABLES_REQUERIDAS)(
+    'el mensaje de error nombra la variable %s faltante',
+    (variable) => {
+      const entorno = { ...ENTORNO_COMPLETO } as Record<string, unknown>;
+      delete entorno[variable];
+      expect(() => validarEntorno(entorno)).toThrow(new RegExp(variable));
+    },
+  );
 });
 
 describe('validarEntorno — almacen de archivos', () => {
@@ -187,6 +190,33 @@ describe('validarEntorno — comunicacion', () => {
 
   it('acepta PUSH_TIPO=web-push', () => {
     expect(() => validarEntorno({ ...ENTORNO_COMPLETO, PUSH_TIPO: 'web-push' })).not.toThrow();
+  });
+
+  it('rechaza un JOBS_RECURRENTES que no sea 0 ni 1', () => {
+    // El caso real no es un valor absurdo: es `true`, que es lo que escribe
+    // quien QUIERE encender los crones. `RegistroDeCrones` compara con '1'
+    // exacto, asi que `true` los deja apagados en silencio — un despliegue que
+    // cree tener recordatorios diarios y no los tiene, descubierto semanas
+    // despues porque nadie recibio nada.
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, JOBS_RECURRENTES: 'true' })).toThrow(
+      /JOBS_RECURRENTES/,
+    );
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, JOBS_RECURRENTES: 'si' })).toThrow(
+      /JOBS_RECURRENTES/,
+    );
+    // Y una cadena vacia, que es lo que deja la clave escrita sin rellenar.
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, JOBS_RECURRENTES: '' })).toThrow(
+      /JOBS_RECURRENTES/,
+    );
+  });
+
+  it('acepta JOBS_RECURRENTES en 0, en 1, y AUSENTE', () => {
+    // Ausente tiene que seguir valiendo: hacerla requerida romperia los
+    // despliegues que hoy no la definen, y apagado es el default correcto.
+    // ENTORNO_COMPLETO no la trae, asi que ese caso ya es "ausente".
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO })).not.toThrow();
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, JOBS_RECURRENTES: '0' })).not.toThrow();
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, JOBS_RECURRENTES: '1' })).not.toThrow();
   });
 
   it('las VAPID ausentes NO impiden arrancar ni con PUSH_TIPO=web-push', () => {

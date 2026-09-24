@@ -185,8 +185,19 @@ export class ListaEsperaService {
       );
 
       // NO se notifica aqui: se DEVUELVE lo que hay que notificar. Ver el
-      // comentario de CupoRepartido. `entradaId` viaja porque el processor lo
-      // necesita para marcar la entrada sin volver a adivinar cual era.
+      // comentario de CupoRepartido.
+      //
+      // `entradaId` viaja para CORRELACIONAR: es el mismo id que acaba de
+      // guardarse arriba en `detalle.desdeListaEspera`, asi que los logs del
+      // processor del aviso se pueden cruzar con esta fila del historial.
+      //
+      // NO viaja para marcar `ListaEspera.notificado`, aunque esa columna
+      // exista y lo parezca —aqui decia justo eso, y era falso—: la fila la
+      // acaba de borrar el `deleteMany` de tres lineas mas arriba, dentro de
+      // esta misma transaccion, y este aviso se encola DESPUES del commit.
+      // Cuando el worker llega no hay fila que marcar, y un compare-and-set
+      // sobre ella no dejaria salir ni un aviso. Esta entero en la cabecera de
+      // `notificacion-lista-espera.processor.ts`.
       return {
         reservaId: reserva.id,
         perfilId: entrada.perfilId,

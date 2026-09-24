@@ -38,4 +38,17 @@ describe('Aviso', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByText('Datos de hace 3 minutos')).toBeInTheDocument();
   });
+
+  it('un aviso que sustituye a un control SI se anuncia, aunque no sea un error', () => {
+    // El caso: se pulsa un boton, el boton desaparece y en su sitio queda una
+    // explicacion. Sin esto, quien usa lector de pantalla pierde el foco y no
+    // oye nada.
+    render(
+      <Aviso tono="info" alerta>
+        Bloqueaste las notificaciones
+      </Aviso>,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Bloqueaste las notificaciones');
+  });
 });

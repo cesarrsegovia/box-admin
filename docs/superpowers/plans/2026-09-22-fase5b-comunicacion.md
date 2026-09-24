@@ -2696,7 +2696,7 @@ read-modify-write **sin atomicidad**, así que un job *stalled* con dos ejecucio
 vence por una pausa del event loop, un GC o un Redis lento, y BullMQ lo redistribuye mientras el
 primer worker sigue vivo— hace que los dos lean la marca ausente y los dos manden. Si la columna se
 escribe con un `update` normal, **cambiamos la marca de sitio y nos llevamos el mismo agujero
-puesto**. Va como `updateMany({ where: { …, notificado: false } })` mirando el `count`: si volvió 0,
+puesto**. Va como `updateMany({ where: { id, avisoConfirmacionEn: null } })` mirando el `count`: si volvió 0,
 otro ya la marcó y este no manda.
 
 Hacen falta **tres** columnas, no una: una reserva puede generar un aviso de CONFIRMACIÓN, después uno
@@ -2872,35 +2872,59 @@ vez de reventar: no hay nada que avisar.
 Igual que el anterior, con dos diferencias:
 
 - Usa el tipo `LISTA_ESPERA`.
-- **Marca `ListaEspera.notificado = true`** después de avisar. Ese campo existe desde la Fase 3A con
-  el comentario *"Lo escribira el modulo de notificaciones de la Fase 5. Hoy siempre false"*: esta es
-  la tarea que lo cumple.
+- ~~**Marca `ListaEspera.notificado = true`** después de avisar.~~
+
+🛑 **TODO ESTE PÁRRAFO ESTABA MAL Y ES EL PEOR ERROR DE LA FASE. Se corrigió antes de escribir una
+línea de código, porque el implementador paró a preguntar.**
+
+`asignarPrimero` **borra** la fila de `ListaEspera` en la misma transacción en la que crea la reserva,
+y el aviso se encola **después** del commit. Cuando el worker toma el job, la fila ya no existe.
+Entonces:
+
+- El `updateMany` de abajo habría devuelto `count: 0` **siempre**. No lanza, no escribe, no rompe
+  nada: la task habría cumplido su propio mensaje de commit mintiendo.
+- Y con el CAS que este plan llegó a pedir (`where: { notificado: false }` + salir si `count === 0`),
+  el gate que existe para evitar un duplicado se convierte en un gate que **suprime el 100% de los
+  avisos de lista de espera**. Sin excepción, sin log, y probablemente en verde contra un doble
+  escrito a medida.
+
+Las tres evidencias de que el borrado es la semántica querida y no un descuido: el contrato de
+`CupoRepartido` dice *"la entrada de la cola de la que salió, **ya borrada de la tabla**"*; hay un test
+commiteado (`lista-espera.service.spec.ts`, *"borra la fila de la cola al asignar"*); y la plantilla
+`LISTA_ESPERA` dice textualmente *"Ya no estás en la lista de espera"*.
+
+**Lo que se hace en su lugar:** la marca va en `job.updateData`, igual que el hermano de la Task 8, y
+se escribe **ANTES** de avisar (perder antes que duplicar, el intercambio que ya eligió la fase). El
+`entradaId` del payload se queda, pero su uso es otro: **correlacionar los logs del aviso con el
+`detalle.desdeListaEspera` del `ASIGNADA_DESDE_LISTA` del historial**.
+
+La columna `ListaEspera.notificado` queda muerta en la base, con un comentario en el schema. Y
+`EntradaListaEspera.notificado` **se quitó del contrato compartido**: viajaba a la API valiendo
+siempre `false`, y un campo que miente en un contrato público es peor que un campo que falta.
+Comprobado que no lo usaba nadie, `apps/web` incluido.
 
 - [ ] **Step 1: El processor**
 
-Mismo esqueleto que la Task 8, y al final del `runWithTenant`:
+Mismo esqueleto que la Task 8, con el `where` de la reserva haciendo el trabajo de dos reglas a la
+vez: `findFirst({ where: { turnoId, perfilId, origen: 'LISTA_ESPERA', canceladaEn: null } })`. Si es de
+otro perfil no aparece; si la cancelaron entre el encolado y el envío, tampoco.
 
-```ts
-      await this.mensajero.avisar(destinatario, 'LISTA_ESPERA', datos, '/calendario');
-
-      // El campo existe desde la Fase 3A esperando a esta linea. Se marca
-      // DESPUES de avisar: si se marcara antes y el aviso fallara, la entrada
-      // quedaria como notificada sin que nadie recibiera nada.
-      await this.prisma.db.listaEspera.updateMany({
-        where: { id: entradaId },
-        data: { notificado: true },
-      });
-```
-
-⚠️ `MensajeroService.avisar` **nunca lanza**, así que "después de avisar" no garantiza que el email
-saliera: garantiza que se intentó. Es lo correcto — reintentar el job entero por un SMTP caído
-mandaría el aviso tres veces a quien sí lo recibió.
+⚠️ `MensajeroService.avisar` **nunca lanza**, así que marcar no garantiza que el email saliera:
+garantiza que se intentó. Es lo correcto —reintentar el job entero por un SMTP caído mandaría el aviso
+tres veces a quien sí lo recibió—, pero tiene una consecuencia que hay que escribir en el processor:
+el aviso **se pierde siempre que falle el SMTP**, con un `logger.warn` como único rastro. Es el caso
+frecuente, no el raro.
 
 - [ ] **Step 2: Los tests**
 
 1. `avisa con el tipo LISTA_ESPERA`.
-2. **`marca notificado DESPUES de avisar`** — se comprueba el orden de las llamadas.
-3. `si la entrada ya no existe, no lanza`.
+2. **`se marca ANTES de mandar, no despues`** — y ojo: el test obvio de idempotencia **sobrevive** a
+   invertir el orden. Hace falta además uno con un fallo inyectado entre marcar y mandar. Pasó igual
+   en la Task 8.
+3. `si la reserva ya no existe, no lanza`.
+4. **`no escribe ListaEspera.notificado: esa fila ya no existe`** — espía `listaEspera.updateMany` y
+   `update`. Este test es el que impide que alguien "arregle" esto volviendo a la trampa de arriba: la
+   decisión no puede vivir solo en un comentario.
 
 - [ ] **Step 3: Registrarlo y correr**
 
@@ -2911,13 +2935,18 @@ cd /d/Dev/box-admin/apps/api && pnpm exec jest src/jobs --silent
 **Mensaje de commit sugerido para Cesar:**
 
 ```
-feat(api): processor del cupo liberado, y ListaEspera.notificado se escribe
+feat(api): processor del cupo liberado
 
-El campo existe desde la Fase 3A con un comentario que decia "lo
-escribira el modulo de notificaciones de la Fase 5". Esta es esa linea.
+NO escribe ListaEspera.notificado, pese a que ese campo nacio en la Fase
+3A esperando esta linea: la fila se borra al asignar el cupo, en la misma
+transaccion que crea la reserva, asi que cuando el worker toma el job ya
+no existe. Un updateMany ahi devuelve count 0 siempre, y el CAS que se
+habia planeado habria suprimido todos los avisos de lista de espera.
 
-Se marca DESPUES de avisar: al reves, un aviso fallido dejaria la entrada
-como notificada sin que nadie recibiera nada.
+La marca de idempotencia vive en el job, igual que en el processor de
+reserva, y se escribe ANTES de avisar: perder un aviso antes que
+duplicarlo. El campo sale del contrato compartido, donde viajaba valiendo
+siempre false.
 ```
 
 ---

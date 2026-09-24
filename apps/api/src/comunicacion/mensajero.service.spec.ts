@@ -92,6 +92,22 @@ describe('MensajeroService', () => {
     expect(mensaje.asunto).toBe('Anotada en Yoga');
   });
 
+  it('sin ruta no manda push, pero si email', async () => {
+    // El espejo del caso de abajo. `null` significa que quien avisa no pudo
+    // componer la ruta —hoy: no encontro el gimnasio del que sale el slug—, y
+    // una notificacion sin slug lleva a un 404: la PWA sirve sus pantallas bajo
+    // `/<slug>/...`. Mandar una que termina en 404 es peor que no mandarla; el
+    // alumno la toca, no ve nada, y la proxima ya no la toca. El email no
+    // depende de ninguna ruta, asi que sale igual.
+    const { mensajero, envios, push } = crearMensajero();
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await mensajero.avisar(DESTINATARIO, 'CONFIRMACION', { alumno: 'Ana' }, null);
+
+    expect(envios.enviar).toHaveBeenCalledTimes(1);
+    expect(push.notificar).not.toHaveBeenCalled();
+  });
+
   it('sin SMTP configurado no manda email, pero si push', async () => {
     const { mensajero, config, envios, push } = crearMensajero();
     config.datosDeEnvio.mockResolvedValue(null);

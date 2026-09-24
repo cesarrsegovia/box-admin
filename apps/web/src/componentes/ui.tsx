@@ -47,12 +47,29 @@ const CLASES_DE_AVISO: Record<TonoDeAviso, string> = {
   exito: 'bg-emerald-50 text-emerald-800 border-emerald-200',
 };
 
-export function Aviso({ tono = 'info', children }: { tono?: TonoDeAviso; children: ReactNode }) {
+export function Aviso({
+  tono = 'info',
+  alerta = false,
+  children,
+}: {
+  tono?: TonoDeAviso;
+  /**
+   * Anunciarlo aunque no sea un error.
+   *
+   * Para el aviso que SUSTITUYE al control que la persona acaba de accionar: si
+   * el boton desaparece y en su sitio aparece una explicacion, quien usa lector
+   * de pantalla pierde el foco y no oye nada —pulsa, y para el no pasa nada—.
+   * No se activa solo por `tono="info"` porque un "datos de hace 3 minutos" que
+   * aparece por su cuenta si seria ruido.
+   */
+  alerta?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div
-      // Solo los errores usan `role="alert"`: ese rol interrumpe al lector de
-      // pantalla, y hacerlo por un "datos de hace 3 minutos" seria ruido.
-      role={tono === 'error' ? 'alert' : undefined}
+      // Los errores lo llevan siempre; el resto, solo si lo piden. Ese rol
+      // interrumpe al lector de pantalla y no se reparte gratis.
+      role={tono === 'error' || alerta ? 'alert' : undefined}
       className={`rounded-lg border px-3 py-2 text-sm ${CLASES_DE_AVISO[tono]}`}
     >
       {children}

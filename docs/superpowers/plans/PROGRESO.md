@@ -884,3 +884,176 @@ avisar a quien entra desde la lista de espera es su primer caso— y donde entra
 credenciales, las plantillas y el push.
 
 Nada commiteado: los mensajes de commit sugeridos de las 8 tareas están en el plan, uno por tarea.
+
+---
+
+# Progreso Fase 5B — La comunicacion
+
+**Spec:** `docs/superpowers/specs/2026-09-22-fase5b-comunicacion.md`
+**Plan:** `docs/superpowers/plans/2026-09-22-fase5b-comunicacion.md` (14 tareas, T0-T13)
+
+La segunda mitad de la Fase 5. Aqui el hook de notificaciones deja de estar inerte desde la Fase 3A, y
+entran el cifrado de credenciales, las plantillas, el email por gimnasio y el push web.
+
+- [x] T0 — Dependencias, schema, entorno
+- [x] T1 — El cifrado
+- [x] T2 — Los contratos compartidos
+- [x] T3 — Los dos puertos y sus cuatro adaptadores
+- [x] T4 — Las plantillas y `resolverMensaje`
+- [x] T5 — La configuracion de SMTP y de plantillas
+- [x] T6 — Las suscripciones push
+- [x] T7 — El mensajero, y el hook que deja de estar inerte
+- [x] T8 — El processor de reserva
+- [x] T9 — El processor de la lista de espera
+- [x] T10 — Los dos jobs diarios y el registro de crones
+- [x] T11 — El push en la PWA
+- [~] T12 — Los e2e — **escritos, NUNCA EJECUTADOS** (Docker caido toda la sesion)
+- [ ] T13 — Verificacion final, README y tracker — a medias, por lo mismo
+
+## Decisiones cerradas con Cesar
+
+1. **El recordatorio de vencimiento se repite cada dia de la ventana, y se deja asi.** Sin un campo de
+   "ya avisado", un pack que vence en siete dias manda **ocho** correos: la ventana `[hoy, hoy+7]` es
+   inclusiva por los dos lados, y el comentario original decia siete y estaba mal por uno. Cesar lo
+   quiere arreglado, pero **en una fase posterior**: la solucion es una columna de estado y conviene
+   pensarla junto al resto de "ultima vez que avisamos de X".
+2. **`RECORDATORIO_PAGO` se queda vago**, sin importe ni periodo. Un importe en un email queda
+   desactualizado con un pago parcial o una cortesia, y discutirlo por correo es peor que no ponerlo.
+3. **Cinco plantillas, no seis.** La spec decia seis; se contaron.
+
+Pendientes de respuesta al cerrar la sesion: **la hora y la zona del cron** —hoy `0 9 * * *` se
+interpreta en UTC, o sea las 6 de la manana en Argentina— y si se quiere un **tope de envio** por
+gimnasio.
+
+## Los errores de este plan, que son la parte que sirve
+
+Veinte, y **dos de ellos habrian pasado los tests en verde mientras el sistema hacia lo contrario de lo
+que el test decia comprobar**. Se listan porque el patron se repite: lo que falla no es el codigo que
+no compila, es la proteccion que parece estar puesta.
+
+### Los que mentian en verde
+
+- **`Handlebars.compile` es perezoso y no lanza nunca.** El plan pedia validar las plantillas con el.
+  Escrito asi, `try { compile(x) } catch` **pasa siempre sin comprobar nada**: el agujero seguia
+  abierto con un test certificando lo contrario. Hay que usar `precompile`.
+- **`ListaEspera.notificado` no se puede escribir.** `asignarPrimero` borra la fila en la misma
+  transaccion que crea la reserva, y el aviso se encola despues del commit: cuando el worker corre, la
+  fila ya no existe. El plan pedia marcar ahi, y el compare-and-set que se llego a pedir habria
+  suprimido el **100%** de los avisos de lista de espera, sin lanzar y sin log.
+
+### Los de seguridad
+
+- **La contrasena SMTP volvia al cliente en el 400.** nodemailer arma el `EAUTH` como
+  `Invalid login: <respuesta literal del servidor>`, y un servidor verboso reimprime el base64 de la
+  clave. Probado con servidores SMTP falsos, no de palabra. De ahi salio `motivoSeguro`.
+- **Y `motivoSeguro` se rompio despues por cinco caminos**: fragmentacion por un salto de linea
+  —alcanzable de verdad, porque nodemailer une las lineas de continuacion de una respuesta multilinea
+  con un salto literal—, el `code` devuelto sin sanear, normalizacion NFC/NFD, base64url, y
+  `motivoSeguro(null)` que explotaba.
+- **La misma fuga por la puerta del log.** El `MensajeroService` logueaba `(error as Error).message` de
+  un fallo de envio: el mismisimo texto, a un sitio que ademas se queda escrito.
+- **El asunto del email iba escapado como HTML.**
+- **`cc` en vez de `bcc`** para la copia interna: el alumno veia la direccion interna del gimnasio.
+- **Dos alumnos sobre el mismo navegador.** `suscribir` buscaba por `(perfilId, endpoint)` y el unique
+  lleva `perfilId`, asi que Ana y Beto compartiendo el navegador del gimnasio acababan con dos filas
+  sobre el mismo endpoint. Y la de Ana no se limpiaba nunca sola, porque el endpoint sigue siendo
+  valido: web-push responde 200 y el 404/410 que dispara la limpieza no llega jamas.
+- **La cinta defensiva del destinatario protegia el canal equivocado**: el `perfilId` salia de la
+  reserva contrastada, pero el `email` salia del perfil buscado por el payload. Con el `where`
+  aflojado, eso no era "el aviso equivocado": eran **dos avisos a dos personas distintas por el mismo
+  job**.
+
+### Los de concurrencia y jobs
+
+- **Encolar dentro de una transaccion `Serializable`.** Redis no participa del rollback de Postgres: un
+  aborto 40001 despues de encolar deja el job vivo y el reintento encola otro. Y pasa justo cuando dos
+  personas compiten por el ultimo lugar, que es cuando el aviso importa.
+- **`attempts: 1` NO impide una segunda tanda.** El camino *stalled* de BullMQ re-encola sin consultar
+  `attempts`, y para un job repetible **ni siquiera tiene tope**. Un deploy a las 09:00 reenvia la
+  tanda entera.
+- **`add(..., { repeat })` duplica el cron al cambiar el patron.** La clave del repetible incluye el
+  patron y la zona, asi que cambiar la hora —o anadir la zona— creaba un cron nuevo y dejaba el viejo
+  disparando: dos tandas de correo masivo al dia, para siempre. Migrado a `upsertJobScheduler`, que
+  esta cifrado solo por su id.
+- **`upsert` esta bloqueado por la extension de aislamiento** (`UnsafeUniqueOperationError`). Hubo que
+  sustituirlo por `findFirst` + `create`/`update` en transaccion, y el `data` del `update` no puede
+  llevar `tenantId` o salta `ReasignacionDeTenantError`.
+
+### Los que rompian en arranque, no en test
+
+- **Faltaba registrar `PagosModule`** en `jobs.module.ts`: sin el, Nest no resuelve `PagosService` y la
+  aplicacion no levanta.
+- **Faltaban los `@OnWorkerEvent('error')`**: sin oyente, BullMQ emite sobre un EventEmitter vacio y
+  Node lo convierte en `ERR_UNHANDLED_ERROR`.
+- **`fechaLegible(perfil.vigenciaHasta)`** no compilaba: el tipo es `Date | null`.
+- **`verificar(): Promise<void>`** en la interfaz rompia `tsc`, porque el test la llama con argumento.
+
+### Los de destino y de cobertura
+
+- **`urlPush` sin el slug del gimnasio.** Las pantallas viven en `/<slug>/calendario`; con la PWA
+  cerrada —el caso normal al tocar una notificacion— se abria un **404**.
+- **La regla del payload no la defendia ningun test.** Meter el `smtp` entero en el job dejaba la suite
+  **en verde, con la credencial dentro**. Estaba escrita en un comentario largo y convincente.
+- **Un test de VAPID vacio**: borraba claves de un entorno que nunca se definia, asi que habria pasado
+  igual con el comportamiento contrario.
+- **Faltaba `@@index([tenantId, vigenciaHasta])`** en `Perfil`, que es justo por donde consulta el job
+  diario de vencimientos.
+
+## Trampas nuevas, para no volver a pisarlas
+
+- **Prisma numera las migraciones en UTC.** Una escrita a mano con la hora local queda ordenada
+  **antes** de las ya aplicadas.
+- **`Prisma.dmmf.datamodel.enums` esta VACIO en Prisma 7.** El test de paridad de enums va por
+  `Object.keys($Enums.X)`.
+- **`Handlebars.compile` no lanza; `precompile` si.**
+- **El matcher `name` de Testing Library es PARCIAL**: `/activar notificaciones/i` casa tambien con
+  `"Desactivar notificaciones"`. Hay que anclarlo, o las aserciones posteriores a un cambio de estado
+  son vacias.
+- **`if (false && ...)` no sirve para mutar**: TypeScript no estrecha tipos dentro de una expresion
+  inalcanzable y la suite deja de compilar (`TS18047`). Hay que borrar el bloque entero, que ademas es
+  la mutacion honesta.
+- **En una cola diaria, `removeOnComplete: N` son DIAS, no avisos.** Copiar el 500 de las colas de
+  eventos no poda nunca, y encima parece que si.
+- **BullMQ interpreta el patron del cron en la zona del worker**, no en la del gimnasio.
+
+## Deuda anotada
+
+- **El recordatorio de vencimiento repetido** (decision 1, arriba).
+- **Las marcas de idempotencia viven en `job.updateData`, o sea en Redis.** Su sitio es una columna de
+  `Reserva`, y hacen falta **tres**: confirmacion, cancelacion y cupo de lista de espera. Y **hay que
+  escribirlas como compare-and-set**, mirando el `count` de un `updateMany` con la condicion en el
+  `where`: con un `update` a secas se cambia la marca de sitio y se lleva el mismo agujero puesto, con
+  apariencia de arreglado. Bloqueado por Docker.
+- **`DatosDePlantilla` es un `Record<string, string>` que no comprueba nada.** Una variable mal escrita
+  compila y manda un email con el hueco vacio, y ninguna plantilla declara que variables necesita.
+- **Una clave SMTP de menos de 8 caracteres, si viene troceada, se escapa de `motivoSeguro`.** Lo
+  cerraria un `@MinLength` en el DTO; es decision de producto, porque rechazaria la contrasena de un
+  servidor legitimo que use una corta.
+- **La rotacion de la clave de cifrado** sigue sin implementarse; existe el formato (`v1:`).
+- **Sin tope ni limite de ritmo** en el envio masivo: un gimnasio con 500 morosos manda 500 correos
+  secuenciales en un solo job.
+- **`VacacionAlumno.devuelveClase`** se reetiqueta a la Fase 6. **`Sala.exclusiva`** sigue almacenado
+  sin efecto y **los husos horarios** siguen sin existir.
+- **Siguen los archivos de las Fases 0-2 que no pasan `prettier --check`**, mas el README y este
+  tracker. Pendiente el commit de solo formato.
+
+## Estado al cerrar la sesion
+
+**936 unitarios de la API / 53 suites**, **96 en `shared` / 4**, **149 en la PWA / 16**. `tsc --noEmit`
+limpio en los tres paquetes, `pnpm build` de la web compila, y Prettier limpio sobre lo que escribe la
+fase.
+
+**Los e2e NO se corrieron**: Docker Desktop estuvo caido toda la sesion. Los de la T12 estan escritos y
+marcados en el propio archivo como nunca ejecutados.
+
+Las fases 3B, 4, 5A y la 5B hasta la T9 quedaron commiteadas por Cesar en `ae54b60 fase 5`.
+
+## Siguiente paso
+
+Levantar Docker y cerrar T12 y T13: correr los e2e (163 de baseline mas los nuevos), recorrer el
+checklist a mano contra la API viva —con los tres puntos que ningun test automatico ve: que la
+contrasena no aparece en el log, que un host inventado da 400 sin guardar nada, y que los crones
+aparecen en Redis con la bandera encendida y no con la apagada— y hacer la migracion de las tres
+columnas de idempotencia.
+
+Despues, la Fase 6: analitica, web publica y check-in.

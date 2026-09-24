@@ -35,7 +35,17 @@ export class MensajeroService {
     destinatario: Destinatario,
     tipo: TipoPlantilla,
     datos: DatosDePlantilla,
-    urlPush: string,
+    /**
+     * A donde lleva la notificacion, CON EL SLUG DEL GIMNASIO DENTRO
+     * (`/<slug>/calendario`). Las pantallas de la PWA viven bajo el slug, asi
+     * que una ruta sin el —`/calendario`— es un 404 en cuanto el alumno toca la
+     * notificacion con la aplicacion cerrada, que es el caso normal.
+     *
+     * `null` significa QUE NO SE PUEDE COMPONER LA RUTA, y entonces no se manda
+     * push: el email sale igual, porque el email no depende de ninguna ruta.
+     * Ver `porPush`.
+     */
+    urlPush: string | null,
   ): Promise<void> {
     let mensaje: { asunto: string; html: string };
 
@@ -135,7 +145,22 @@ export class MensajeroService {
    *
    * Quien lo pinte en la PWA tiene que tratarlo como TEXTO, nunca como HTML.
    */
-  private async porPush(destinatario: Destinatario, titulo: string, url: string): Promise<void> {
+  private async porPush(
+    destinatario: Destinatario,
+    titulo: string,
+    url: string | null,
+  ): Promise<void> {
+    // SIN RUTA NO HAY PUSH, y es deliberado. Un push lleva a una pantalla; si no
+    // se pudo componer la ruta —hoy, que no se encontro el gimnasio del que sale
+    // el slug— la notificacion llevaria a un 404. Mandar una notificacion que
+    // termina en un 404 es peor que no mandarla: el alumno la toca, no ve nada,
+    // y la proxima ya no la toca. El email, que no depende de ninguna ruta, sale
+    // igual.
+    if (url === null) {
+      this.logger.warn(`Sin ruta para el push a ${destinatario.perfilId}; solo se manda el email`);
+      return;
+    }
+
     try {
       await this.push.notificar(this.prisma.db, destinatario.perfilId, {
         titulo,

@@ -9,7 +9,7 @@ import { NotificacionReservaProcessor } from './notificacion-reserva.processor';
 type Fila = Record<string, any>;
 type JobDeTest = Job<DatosNotificacionReserva & { avisoMarcado?: true }>;
 
-const GIMNASIO = { id: 'gym-1', nombre: 'Box Fuego' };
+const GIMNASIO = { id: 'gym-1', nombre: 'Box Fuego', slug: 'box-fuego' };
 
 const ANA = {
   id: 'perfil-ana',
@@ -52,10 +52,21 @@ interface Escenario {
   reservas?: Fila[];
   perfiles?: Fila[];
   turnos?: Fila[];
+  /** El gimnasio no aparece: de ahi sale el slug de la ruta del push. */
+  sinTenant?: boolean;
   /** Lo que trae el payload del job, sobre los valores por defecto. */
   job?: Partial<DatosNotificacionReserva & { avisoMarcado?: true }>;
   /** Cuantas veces revienta `updateData` antes de funcionar. */
   fallosAlMarcar?: number;
+  /**
+   * Rompe el doble de Prisma A PROPOSITO: le quita el `perfilId` al where de las
+   * reservas, que es exactamente el futuro que el processor dice temer —alguien
+   * afloja ese where y la consulta empieza a devolver la reserva de OTRO alumno
+   * del mismo turno—. Sirve para comprobar que el destinatario no se arma a
+   * medias entre la fila encontrada y el payload; sin el, los dos perfilId
+   * valen lo mismo y el test no puede distinguir nada.
+   */
+  whereLaxo?: boolean;
 }
 
 /**
@@ -106,7 +117,10 @@ function crearEscenario(escenario: Escenario = {}) {
   const db = {
     reserva: {
       async findMany({ where }: { where: Fila }): Promise<Fila[]> {
-        return [...filtrar(reservas, where)].sort(
+        const efectivo = { ...where };
+        if (escenario.whereLaxo) delete efectivo.perfilId;
+
+        return [...filtrar(reservas, efectivo)].sort(
           (a, b) => Number(b.createdAt) - Number(a.createdAt),
         );
       },
@@ -125,6 +139,7 @@ function crearEscenario(escenario: Escenario = {}) {
       // Modelo global: la extension le clava `id = tenantId` en vez de filtrar
       // por una columna tenantId que este modelo no tiene.
       async findFirst(): Promise<Fila | null> {
+        if (escenario.sinTenant) return null;
         return GIMNASIO.id === tenantActual() ? GIMNASIO : null;
       },
     },
@@ -218,7 +233,31 @@ describe('NotificacionReservaProcessor', () => {
     // Y no "2026-10-07", que es lo que daria aFechaISO. El email lo lee un
     // alumno, no un sistema.
     expect(datos.fecha).not.toMatch(/\d{4}-\d{2}-\d{2}/);
-    expect(url).toBe('/calendario');
+    // CON EL SLUG: las pantallas de la PWA viven en `/<slug>/calendario`, y
+    // un `/calendario` pelado abre un 404 cuando el alumno toca la
+    // notificacion con la aplicacion cerrada, que es el caso normal.
+    expect(url).toBe('/box-fuego/calendario');
+  });
+
+  it('sin gimnasio no hay slug, y entonces la ruta del push va en null: email si, push no', async () => {
+    // El gimnasio es de donde sale el slug. Sin el, la ruta seria `/undefined/…`
+    // o `/calendario` pelado, y las dos abren un 404 en cuanto el alumno toca la
+    // notificacion con la PWA cerrada. `null` le dice a `MensajeroService` que
+    // mande solo el email, que no depende de ninguna ruta. Es el mismo criterio
+    // que el resto de la fase: perder un canal antes que mandar algo roto.
+    const { processor, job, avisar } = crearEscenario({
+      reservas: [reservaDe('perfil-ana')],
+      sinTenant: true,
+    });
+
+    await processor.process(job);
+
+    expect(avisar).toHaveBeenCalledTimes(1);
+    expect(avisar.mock.calls[0]?.[3]).toBeNull();
+    // Y el nombre del gimnasio sigue degradando a cadena vacia: un email sin el
+    // nombre se lee igual, una ruta sin slug no lleva a ningun lado. No es la
+    // misma decision y por eso no se toman juntas.
+    expect((avisar.mock.calls[0]?.[2] as Fila).gimnasio).toBe('');
   });
 
   it('manda la CANCELACION cuando la reserva esta de verdad cancelada', async () => {
@@ -249,6 +288,30 @@ describe('NotificacionReservaProcessor', () => {
     await processor.process(job);
 
     expect(avisar).not.toHaveBeenCalled();
+  });
+
+  it('el destinatario ENTERO sale de la reserva contrastada, no del payload', async () => {
+    // Con el doble laxo, la consulta devuelve la reserva de Ana aunque el
+    // payload diga Beto. Entonces `perfilId`, `email` y `nombre` tienen que ser
+    // LOS TRES de Ana: si `email` y `nombre` se buscaran por el perfilId del
+    // payload, el push iria a Ana y el correo a Beto. Un destinatario mezclado
+    // es peor que uno equivocado, y ninguna de las dos mitades da error: llegan.
+    const { processor, job, avisar } = crearEscenario({
+      reservas: [reservaDe('perfil-ana')],
+      job: { perfilId: 'perfil-beto' },
+      whereLaxo: true,
+    });
+
+    await processor.process(job);
+
+    expect(avisar).toHaveBeenCalledTimes(1);
+    // `toEqual` sobre el destinatario ENTERO, no sobre un campo: lo que se fija
+    // es que los tres salgan de la misma fila.
+    expect(avisar.mock.calls[0]?.[0]).toEqual({
+      perfilId: 'perfil-ana',
+      email: 'ana@correo.test',
+      nombre: 'Ana',
+    });
   });
 
   it('el intento fallido de Beto tampoco marca nada: el aviso de Ana sigue vivo', async () => {
@@ -387,6 +450,28 @@ describe('NotificacionReservaProcessor', () => {
     await processor.process(job);
 
     expect(avisar).toHaveBeenCalledTimes(1);
+  });
+
+  it('la marca NO se come el payload', async () => {
+    // `updateData` REEMPLAZA los datos del job, no los mezcla. Escribir
+    // `{ avisoMarcado: true }` a secas en vez de `{ ...job.data, ... }` pasa
+    // todos los demas tests —la segunda vuelta sale igual por el early return—,
+    // pero deja el job en Redis sin tenantId, sin perfilId y sin turnoId: un job
+    // en `failed` asi no se puede diagnosticar desde un panel de Bull, ni saber
+    // a quien se le iba a avisar. Mismo test, palabra por palabra, en el
+    // processor hermano de la lista de espera: los dos comparten el mecanismo y
+    // tienen que compartir la red.
+    const { processor, job } = crearEscenario({ reservas: [reservaDe('perfil-ana')] });
+
+    await processor.process(job);
+
+    expect(job.data).toEqual({
+      tenantId: 'gym-1',
+      perfilId: 'perfil-ana',
+      turnoId: 'turno-1',
+      accion: 'CONFIRMACION',
+      avisoMarcado: true,
+    });
   });
 
   it('un job que ya venia marcado no consulta ni manda', async () => {

@@ -41,9 +41,7 @@ const VARIABLES_DE_S3 = [
  * Devuelve el mismo config recibido (Nest lo requiere) si todo esta bien;
  * lanza un error accionable, nombrando la variable, si falta o esta vacia.
  */
-export function validarEntorno(
-  config: Record<string, unknown>,
-): Record<string, unknown> {
+export function validarEntorno(config: Record<string, unknown>): Record<string, unknown> {
   for (const variable of VARIABLES_REQUERIDAS) {
     const valor = config[variable];
 
@@ -100,6 +98,26 @@ export function validarEntorno(
   const push = config.PUSH_TIPO;
   if (push !== 'memoria' && push !== 'web-push') {
     throw new Error(`PUSH_TIPO debe ser "memoria" o "web-push", no ${JSON.stringify(push)}.`);
+  }
+
+  // JOBS_RECURRENTES enciende los dos crones diarios, que son el UNICO camino
+  // del sistema que manda correo masivo sin que nadie lo mire. AUSENTE ES
+  // VALIDO y significa apagado: convertirla en requerida romperia los
+  // despliegues que hoy no la definen, y apagado es el default correcto.
+  //
+  // Lo que si se rechaza es un valor que no sea '0' ni '1', y no es purismo:
+  // `RegistroDeCrones` compara con `!== '1'` EXACTO, asi que un
+  // `JOBS_RECURRENTES=true` —que es lo que escribe quien quiere encenderlos—
+  // deja los crones APAGADOS sin una sola linea de log que lo diga. Es un
+  // despliegue que cree tener recordatorios diarios y no los tiene, y se
+  // descubre semanas despues porque ningun alumno recibio nada. El tipeo en el
+  // NOMBRE de la variable no hay forma de atraparlo; este si.
+  const crones = config.JOBS_RECURRENTES;
+  if (crones !== undefined && crones !== '0' && crones !== '1') {
+    throw new Error(
+      `JOBS_RECURRENTES debe ser "0" o "1", no ${JSON.stringify(crones)}. ` +
+        'Ausente equivale a "0" (los jobs diarios no se registran).',
+    );
   }
 
   // Opcional a proposito: un despliegue solo-API no tiene frontend al que

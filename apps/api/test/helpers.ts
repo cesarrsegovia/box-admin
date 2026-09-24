@@ -245,3 +245,33 @@ export async function crearProfesor(
     email,
   };
 }
+
+/**
+ * Espera a que la bandeja del adaptador de memoria tenga al menos `cuantos`.
+ *
+ * Los avisos se encolan, asi que entre la peticion y el email hay un worker de
+ * por medio. Sondear es la unica forma honesta: un `setTimeout` fijo seria
+ * lento cuando va bien e intermitente cuando va mal. Mismo criterio que
+ * `esperarPublicacion`, que resuelve lo mismo para la publicacion de un mes.
+ *
+ * OJO: esto sirve para esperar una PRESENCIA. Para comprobar una AUSENCIA no
+ * vale —sondear "que no llegue nada" termina en cuanto mira la primera vez, que
+ * es antes de que el worker haya tenido ocasion de mandar nada—. Ver el caso de
+ * la publicacion de un mes en `comunicacion.e2e-spec.ts`.
+ */
+export async function esperarEmails(
+  envios: { enviados: unknown[] },
+  cuantos: number,
+  intentos = 60,
+): Promise<void> {
+  for (let i = 0; i < intentos; i++) {
+    if (envios.enviados.length >= cuantos) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  throw new Error(
+    `No llegaron ${cuantos} emails tras ${intentos} intentos. ` +
+      'Si la bandeja esta vacia, lo mas probable es que el processor no este registrado ' +
+      'o que Redis no responda.',
+  );
+}
