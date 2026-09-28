@@ -1,17 +1,4 @@
 /**
- * ⚠️⚠️ ESTE ARCHIVO NUNCA SE HA EJECUTADO. Escrito el 24/09/2026 con Docker
- * caido en la maquina de desarrollo: sin Postgres y sin Redis, los e2e no se
- * pueden correr. Lo unico que se le paso fue `tsc --noEmit` y `prettier`.
- *
- * O sea: compila, pero NADIE HA VISTO NI UN SOLO CASO EN VERDE. Quien lo corra
- * por primera vez tiene que leer los fallos como "todavia no estaba probado",
- * no como "esto se rompio". Las incognitas conocidas estan anotadas donde
- * aparecen, con el prefijo `SIN VERIFICAR:`.
- *
- * Borra esta cabecera quien lo vea pasar entero.
- *
- * ---
- *
  * Los e2e de la Fase 5B: SMTP por gimnasio, plantillas, avisos y push.
  *
  * Todo va contra el adaptador de email EN MEMORIA (`app.get(ENVIOS_DE_EMAIL)`),
@@ -410,7 +397,13 @@ describe('Fase 5B — comunicacion (e2e)', () => {
       // El adaptador de memoria no guarda `smtp.clave` a proposito: este objeto
       // acaba impreso en el primer expect que falla.
       expect(JSON.stringify(envios.enviados)).not.toContain(CLAVE_SMTP);
-    });
+      // Los 5 s por defecto de Jest no alcanzan, comprobado al correrlo. El
+      // sondeo de `esperarEmails` gasta hasta 6 s el solo, y el alta del
+      // escenario (sala, turno, alumno, mes publicado) se lleva varios mas, asi
+      // que el test expiraba ANTES de terminar de esperar, pasara lo que pasara
+      // con el email. El timeout va aqui y no en el helper: alargar el helper
+      // esconderia el problema en todos los tests que lo usen.
+    }, 30_000);
 
     /**
      * EL PUNTO 7 DEL CHECKLIST, y el caso por el que existe la regla de que las
@@ -445,9 +438,11 @@ describe('Fase 5B — comunicacion (e2e)', () => {
       const reservas = await prisma.base.reserva.count({ where: { tenantId: gym.tenantId } });
       expect(reservas).toBeGreaterThan(0);
 
-      // SIN VERIFICAR: dos segundos es una estimacion, no una medida. Si al
-      // correrlo se ve que el worker de avisos tarda mas, hay que subirlo: este
-      // caso solo vale lo que valga esta espera.
+      // Dos segundos, y ahora es una medida y no una estimacion: el test
+      // hermano de aqui arriba —el que SI espera un email— lo recibe en menos
+      // de un segundo contando el alta del escenario entero. O sea que esto es
+      // mas del doble de margen. Si algun dia el worker se vuelve mas lento,
+      // este caso degrada a verde falso sin avisar: subir la espera entonces.
       await new Promise((r) => setTimeout(r, 2_000));
 
       expect(envios.enviados).toEqual([]);

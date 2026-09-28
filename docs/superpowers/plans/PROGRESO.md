@@ -907,8 +907,8 @@ entran el cifrado de credenciales, las plantillas, el email por gimnasio y el pu
 - [x] T9 — El processor de la lista de espera
 - [x] T10 — Los dos jobs diarios y el registro de crones
 - [x] T11 — El push en la PWA
-- [~] T12 — Los e2e — **escritos, NUNCA EJECUTADOS** (Docker caido toda la sesion)
-- [ ] T13 — Verificacion final, README y tracker — a medias, por lo mismo
+- [x] T12 — Los e2e — **ejecutados y en verde el 26/09/2026**: 171 tests / 9 suites
+- [x] T13 — Verificacion final, README y tracker — **checklist a mano completo el 28/09/2026**
 
 ## Decisiones cerradas con Cesar
 
@@ -1043,17 +1043,64 @@ no compila, es la proteccion que parece estar puesta.
 limpio en los tres paquetes, `pnpm build` de la web compila, y Prettier limpio sobre lo que escribe la
 fase.
 
-**Los e2e NO se corrieron**: Docker Desktop estuvo caido toda la sesion. Los de la T12 estan escritos y
-marcados en el propio archivo como nunca ejecutados.
+**Los e2e YA se corrieron** (26/09/2026, con Docker levantado): **171 tests / 9 suites en verde**, y
+repetido cuatro veces para descartar intermitencias. La cabecera de "nunca ejecutado" se retiro del
+archivo, que era lo que ella misma pedia.
+
+Un solo caso fallo la primera vez y era el previsto: `reservar a mano manda un email` expiraba por el
+timeout de 5 s de Jest, porque `esperarEmails` sondea hasta 6 s el solo. Arreglado con un timeout
+explicito de 30 s **en el test y no en el helper**: alargar el helper habria escondido el problema en
+todos los tests que lo usen. Con eso, el email llega en menos de un segundo.
+
+⚠️ **Y una leccion de la sesion que no es del codigo:** durante un rato los e2e parecieron
+intermitentes (unas corridas verdes, otras con un fallo). No era el codigo. Eran **tres procesos node
+huerfanos** de una corrida anterior que se habia cortado: el envoltorio murio y los hijos no, y el
+jest superviviente mantenia la app de Nest con sus workers suscritos a la cola del Redis compartido,
+asi que se llevaba los emails que el test esperaba. Al matarlos por PID, cuatro corridas seguidas en
+verde. Si los e2e de este repo se ponen intermitentes, mirar primero si hay un node vivo de antes
+—`Get-CimInstance Win32_Process -Filter "Name='node.exe'"` y leer el `CommandLine`— antes de tocar
+una linea.
 
 Las fases 3B, 4, 5A y la 5B hasta la T9 quedaron commiteadas por Cesar en `ae54b60 fase 5`.
 
 ## Siguiente paso
 
-Levantar Docker y cerrar T12 y T13: correr los e2e (163 de baseline mas los nuevos), recorrer el
-checklist a mano contra la API viva —con los tres puntos que ningun test automatico ve: que la
-contrasena no aparece en el log, que un host inventado da 400 sin guardar nada, y que los crones
-aparecen en Redis con la bandera encendida y no con la apagada— y hacer la migracion de las tres
-columnas de idempotencia.
+Cerrar T13. De los tres puntos del checklist a mano, **el de los crones ya esta hecho** (26/09):
+con `JOBS_RECURRENTES=1` aparecen en Redis `bull:recordatorio-pago-queue:repeat:recordatorio-pago-diario`
+y su gemelo de vencimiento; con `0`, cero claves y el log lo dice.
+
+Y ahi se comprobo algo que matiza la deuda de la zona horaria: la proxima ejecucion quedo en **12:00
+UTC = 09:00 en Argentina**, o sea que **en esta maquina el cron dispara bien**, porque el worker corre
+en horario local. El problema de "las 9 son las 6 de la manana" **solo aparece si el contenedor de
+produccion corre en UTC**. Es un riesgo de despliegue, no un fallo actual — y la razon por la que
+conviene fijar el `tz` explicitamente en vez de depender de donde corra el contenedor.
+
+**Checklist a mano COMPLETO el 28/09/2026**, con la API levantada y `EMAIL_TIPO=smtp`:
+
+- **Host inventado → 400 sin guardar nada.** `PUT /config/smtp` contra `smtp.no-existe-jamas-98765.test`
+  devolvio `400 "No se pudo conectar al servidor SMTP: EDNS"`. Cero filas en `configuraciones_smtp`
+  para ese gimnasio y `GET /config/smtp` respondiendo 404. El motivo es el `code`, corto y util, sin
+  rastro de credencial.
+- **La contrasena no vuelve en la respuesta.** El `PUT` que SI guarda devuelve `tieneClave: true` y
+  ningun campo con la clave.
+- **La contrasena no llega al log, ni al guardar ni al enviar.** Para el envio se monto un servidor
+  SMTP falso y deliberadamente charlatan que acepta el saludo y el AUTH —asi que `verify()` pasa y la
+  configuracion se guarda— y despues rechaza el `MAIL FROM` con un 550 multilinea **que ecoa el base64
+  que acaba de recibir**. Con eso, el log de la API escribio unicamente
+  `WARN [MensajeroService] Fallo el email a alumna@check.test: EENVELOPE`, y la busqueda en el log
+  entero dio **cero** apariciones de la clave: en claro, en el base64 de AUTH PLAIN, en el base64 de la
+  clave sola, y por fragmentos.
+
+  Matiz honesto: ese camino ejercita el **paso 1** de `motivoSeguro` —devolver el `code` cuando tiene
+  forma de codigo, que corta antes de mirar el mensaje—. El saneado del mensaje en si lo cubren los
+  unitarios con sus cinco clases de ataque. Lo que la prueba manual demuestra es el resultado de punta
+  a punta, que es lo que pedia el checklist.
+
+  El servidor falso quedo en el scratchpad de la sesion, no en el repo. Si hay que repetirlo: tiene que
+  capturar **AUTH PLAIN**, no solo AUTH LOGIN — en el primer intento solo interceptaba LOGIN,
+  nodemailer eligio PLAIN, y el 550 ecoo una cadena vacia. El resultado "cero fugas" de esa primera
+  vuelta no probaba nada, porque no habia nada que filtrar.
+
+Queda **solo** la migracion de las tres columnas de idempotencia.
 
 Despues, la Fase 6: analitica, web publica y check-in.
