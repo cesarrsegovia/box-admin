@@ -55,6 +55,7 @@ describe('NotificacionesService', () => {
 
     await servicio.reservaCambiada({
       tenantId: 'gym-1',
+      reservaId: 'r',
       perfilId: 'p',
       turnoId: 't',
       origen: 'RUTINA',
@@ -69,6 +70,7 @@ describe('NotificacionesService', () => {
 
     await servicio.reservaCambiada({
       tenantId: 'gym-1',
+      reservaId: 'r',
       perfilId: 'p',
       turnoId: 't',
       origen: 'ALUMNO',
@@ -97,13 +99,17 @@ describe('NotificacionesService', () => {
       tenantId: 'gym-1',
       perfilId: 'perfil-1',
       turnoId: 'turno-1',
-      // Ni el reservaId, que entra al hook pero NO viaja en el job.
+      // EL reservaId SI VIAJA desde la Fase 5B, y es la unica adicion: es la
+      // fila sobre la que el worker hace su compare-and-set, y `(perfilId,
+      // turnoId)` no identifica una —no hay unique sobre esa pareja—. Sigue
+      // siendo un identificador, asi que la regla del payload no se afloja.
       reservaId: 'reserva-1',
       entradaId: 'entrada-1',
     });
 
     expect(add.mock.calls[0]?.[1]).toEqual({
       tenantId: 'gym-1',
+      reservaId: 'reserva-1',
       perfilId: 'perfil-1',
       turnoId: 'turno-1',
       entradaId: 'entrada-1',
@@ -115,6 +121,7 @@ describe('NotificacionesService', () => {
 
     await servicio.reservaCambiada({
       tenantId: 'gym-1',
+      reservaId: 'reserva-1',
       perfilId: 'perfil-1',
       turnoId: 'turno-1',
       origen: 'ALUMNO',
@@ -123,6 +130,7 @@ describe('NotificacionesService', () => {
 
     expect(add.mock.calls[0]?.[1]).toEqual({
       tenantId: 'gym-1',
+      reservaId: 'reserva-1',
       perfilId: 'perfil-1',
       turnoId: 'turno-1',
       accion: 'CANCELACION',

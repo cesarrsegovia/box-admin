@@ -8,14 +8,21 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NOTIFICACION_LISTA_ESPERA_QUEUE, type DatosNotificacionListaEspera } from './colas';
 
 /**
- * LA MARCA DE IDEMPOTENCIA, la misma que usa el processor hermano
- * (`notificacion-reserva.processor.ts`) y por el mismo motivo: `attempts: 3`
- * hace que este `process` pueda correr dos veces con el mismo job, y la segunda
- * vuelta no puede mandar el segundo email.
+ * LA MARCA DE IDEMPOTENCIA VIVE EN LA BASE, en `Reserva.avisoCupoEn`, y se
+ * escribe COMO COMPARE-AND-SET. Es el mismo mecanismo que usa el processor
+ * hermano (`notificacion-reserva.processor.ts`) con sus dos columnas
+ * —`avisoConfirmacionEn` y `avisoCancelacionEn`— y por el mismo motivo:
+ * `attempts: 3` hace que este `process` pueda correr dos veces con el mismo
+ * job, y la segunda vuelta no puede mandar el segundo email.
+ *
+ * Son TRES columnas y no una porque una misma reserva puede generar los tres
+ * avisos: el alumno entra por la lista de espera (este), se le confirma, y
+ * despues cancela.
  *
  * ==========================================================================
- * POR QUE NO SE USA `ListaEspera.notificado`, AUNQUE LA COLUMNA EXISTA Y
- * PAREZCA HECHA A MEDIDA DE ESTE PROCESSOR. LEER ESTO ANTES DE "ARREGLARLO".
+ * POR QUE LA MARCA CUELGA DE `Reserva` Y NO DE `ListaEspera.notificado`,
+ * AUNQUE ESA COLUMNA EXISTA Y PAREZCA HECHA A MEDIDA DE ESTE PROCESSOR.
+ * LEER ESTO ANTES DE "ARREGLARLO".
  * ==========================================================================
  *
  * La columna existe desde la Fase 3A con el comentario "Lo escribira el modulo
@@ -38,29 +45,77 @@ import { NOTIFICACION_LISTA_ESPERA_QUEUE, type DatosNotificacionListaEspera } fr
  * CONSECUENCIA DE INTENTARLO IGUAL, que es la trampa fina: un
  * `updateMany({ where: { id: entradaId }, data: { notificado: true } })`
  * devolveria `count: 0` SIEMPRE. No lanza, no rompe ningun test, y no escribe
- * nada — la columna seguiria en false para siempre y el codigo aparentaria
- * cumplir el comentario de la Fase 3A. Y si encima se escribe como
- * compare-and-set —`where: { id, notificado: false }` mandando solo si
- * `count === 1`, que es la forma CORRECTA de escribir esa columna— el gate que
- * existe para evitar UN duplicado se convierte en un gate que **no deja pasar
- * NINGUN aviso**: cero emails de lista de espera, en silencio y en verde.
+ * nada. Y escrito como compare-and-set —que es la forma CORRECTA de escribir
+ * esa columna— el gate que existe para evitar UN duplicado se convierte en un
+ * gate que **no deja pasar NINGUN aviso**: cero emails de lista de espera, en
+ * silencio y en verde. De ahi que la marca cuelgue de la reserva, que es la
+ * fila que SI sigue viva cuando el worker llega.
  *
- * Asi que la marca vive donde la del hermano: en el propio job, con
- * `job.updateData`. Persiste en Redis, en la clave del job, asi que la ve
- * cualquier intento posterior del MISMO job, que es exactamente el escenario
- * que `attempts: 3` crea.
+ * ==========================================================================
+ * LO QUE CIERRA EL AGUJERO ES EL TERMINO `null` DEL WHERE, NO LA COLUMNA.
+ * ==========================================================================
  *
- * LO QUE ESTA MARCA NO CUBRE son los mismos cuatro agujeros enumerados en
- * `JobDeAviso` de `notificacion-reserva.processor.ts` (dos jobs distintos para
- * el mismo aviso; el mismo job en dos workers a la vez; la marca muere con el
- * job al limpiarse la cola; un job agotado queda en `failed` con la marca
- * puesta). Vale la pena repetir el segundo, porque es el que el CAS habria
- * cerrado: esto es un read-modify-write SIN atomicidad, asi que si el lock del
- * job vence —una pausa larga del event loop, un GC, Redis lento— BullMQ lo
- * redistribuye mientras el primer worker sigue vivo, los dos leen la marca
- * ausente y los dos mandan.
+ *   const marcada = await this.prisma.db.reserva.updateMany({
+ *     where: { id: reserva.id, avisoCupoEn: null },
+ *     data: { avisoCupoEn: new Date() },
+ *   });
+ *   if (marcada.count === 0) return;   // otro ya la marco: este no manda
  *
- * Y DOS COSAS QUE LA MARCA NO DICE, que son el caso FRECUENTE y no el raro:
+ * Postgres resuelve ese `UPDATE ... WHERE id = ? AND "avisoCupoEn" IS NULL` en
+ * UNA sola operacion, con la fila bloqueada mientras dura: comprobar y escribir
+ * no se pueden colar una entre otra. De dos ejecuciones simultaneas, exactamente
+ * UNA se lleva el `count: 1` y manda; la otra recibe `count: 0` y se calla.
+ *
+ * ⚠️ EL TERMINO `avisoCupoEn: null` DEL WHERE NO ES DEFENSIVA DE MAS, Y
+ * QUITARLO NO ES UNA SIMPLIFICACION. Sin el queda un `updateMany` que marca
+ * SIEMPRE y devuelve SIEMPRE `count: 1`: la columna se escribe, la fecha queda
+ * puesta, el codigo aparenta exactamente lo mismo y el comentario sigue
+ * diciendo "compare-and-set" — pero la comprobacion ya no existe y el agujero
+ * vuelve entero. Lo mismo vale para mandar aunque `count === 0`. Por eso hay un
+ * test de DOS EJECUCIONES SIMULTANEAS ("dos workers con el mismo job mandan UN
+ * solo email"): es el que sujeta la propiedad que el CAS existe para dar.
+ *
+ * ⚠️ Y EL TERMINO `id: reserva.id` TAMPOCO ES DEFENSIVA DE MAS. Es el otro
+ * termino del mismo where, y quitarlo no rompe nada visible: el `updateMany`
+ * sigue devolviendo `count: 1` y el aviso sigue saliendo. Lo que cambia es
+ * CUANTAS filas escribe —con el `tenantId` que inyecta la extension, TODAS las
+ * reservas del gimnasio con esa columna en null—, y eso es estrictamente peor
+ * que el agujero que el CAS viene a cerrar: el primer aviso marcaria la tabla
+ * entera y no volveria a salir ninguno, en silencio. La cardinalidad la sujeta
+ * un test hermano del de concurrencia ("marcar una reserva no marca las demas
+ * del gimnasio"), porque ningun test de una sola reserva la puede ver.
+ *
+ * DE QUE FILA HABLA EL JOB: del `reservaId` de su payload, no del par
+ * `(perfilId, turnoId)`. `Reserva` no tiene unique sobre
+ * `(tenantId, turnoId, perfilId)`, asi que ese par no identifica una fila y un
+ * processor que la reconstruyera podria marcar la de otro aviso y callarlo. El
+ * desarrollo esta en el agujero (a) de la cabecera del processor hermano. Aqui
+ * el id ademas estaba a mano desde siempre: `CupoRepartido` ya lo llevaba.
+ *
+ * LOS CUATRO AGUJEROS QUE DEJABA LA MARCA VIEJA —un booleano en el propio job,
+ * `job.updateData({ ...job.data, avisoMarcado: true })`, o sea en Redis— Y EN
+ * QUE QUEDARON. Estan desarrollados en la cabecera del processor hermano; aqui
+ * el resumen:
+ *
+ * a. DOS JOBS DISTINTOS para el mismo aviso. CERRADO: la marca cuelga de la
+ *    reserva, asi que los dos compiten por el mismo CAS y solo uno pasa.
+ *
+ * b. EL MISMO JOB EN DOS WORKERS A LA VEZ. CERRADO, y es el que motivo todo
+ *    esto: `job.updateData` era un read-modify-write SIN atomicidad, asi que si
+ *    el lock del job vencia —una pausa larga del event loop, un GC, Redis
+ *    lento— BullMQ lo redistribuia mientras el primer worker seguia vivo, los
+ *    dos leian la marca ausente y los dos mandaban.
+ *
+ * c. LA MARCA MUERE CON EL JOB al limpiarse la cola. CERRADO: la fecha esta en
+ *    la fila de la reserva.
+ *
+ * d. Un job que agote sus intentos queda en `failed` con la marca puesta, asi
+ *    que un retry desde un panel de Bull no manda nada. SIGUE ABIERTO, y a
+ *    proposito: borrar la marca al fallar reabriria el duplicado. Lo que si
+ *    mejora es el diagnostico, porque ahora la fecha se puede mirar en la fila.
+ *
+ * Y DOS COSAS QUE LA MARCA NO DICE, que son el caso FRECUENTE y no el raro, y
+ * que el CAS no cambia en nada:
  *
  * e. `MensajeroService.avisar` NUNCA LANZA. Si el SMTP esta caido o mal
  *    configurado, este `process` termina bien, el job se completa y la marca se
@@ -68,22 +123,23 @@ import { NOTIFICACION_LISTA_ESPERA_QUEUE, type DatosNotificacionListaEspera } fr
  *    se pierde" es optimista — se pierde SIEMPRE que falle el envio, y el unico
  *    rastro es un `logger.warn` dentro del mensajero. Es deliberado (reintentar
  *    el job entero por un SMTP caido le mandaria el aviso tres veces a quien si
- *    lo recibio), pero la marca no es una garantia de entrega: garantiza que se
- *    intento, una vez.
+ *    lo recibio), pero la fecha de la columna NO ES UNA FECHA DE ENTREGA:
+ *    significa "aqui se intento", una vez.
  *
- * f. EL EMAIL Y EL PUSH FALLAN POR SEPARADO —`avisar` los manda en dos pasos— y
- *    esta marca es un booleano POR JOB, no por canal. Si sale uno y el otro no,
- *    la marca dice "hecho" para los dos y nadie reintenta el que falto. Se
- *    acepta por lo mismo de arriba; queda escrito para que no sorprenda.
+ * f. EL EMAIL Y EL PUSH FALLAN POR SEPARADO —`avisar` los manda en dos pasos—
+ *    y la marca es UNA por aviso, no una por canal. Si sale uno y el otro no, la
+ *    fecha dice "hecho" para los dos y nadie reintenta el que falto. Se acepta
+ *    por lo mismo de arriba; queda escrito para que no sorprenda.
  *
- * COMO SE CIERRA, cuando se pueda migrar: una columna NUEVA en `Reserva` —no
- * en `ListaEspera`, por todo lo de arriba— escrita como compare-and-set. Eso
- * sirve a los DOS processors con el mismo mecanismo, que era lo que se queria
- * conseguir dandole a este una columna propia. Esta pendiente por Docker caido:
- * una migracion que no se puede aplicar ni validar es peor que esta marca, que
- * funciona para lo que tiene que cubrir.
+ * LA VENTANA DEL DESPLIEGUE, que solo existe una vez y conviene no descubrirla
+ * en caliente: los jobs que ya estuvieran en Redis al desplegar esto llevan el
+ * viejo `avisoMarcado: true`, el codigo nuevo lo ignora y su columna esta en
+ * `null`. Con `removeOnFail: 500` guardando fallidos, un retry manual de uno de
+ * esos —desde un panel de Bull— manda un segundo email. Se agota sola en cuanto
+ * la cola rota; si el despliegue coincide con una tanda grande, vaciar los
+ * fallidos viejos antes de reintentar nada.
  */
-type JobDeCupo = Job<DatosNotificacionListaEspera & { avisoMarcado?: true }>;
+type JobDeCupo = Job<DatosNotificacionListaEspera>;
 
 @Processor(NOTIFICACION_LISTA_ESPERA_QUEUE)
 export class NotificacionListaEsperaProcessor extends WorkerHost {
@@ -117,45 +173,42 @@ export class NotificacionListaEsperaProcessor extends WorkerHost {
     // aviso a la entrada de la cola de la que salio el lugar, y sin el los logs
     // de abajo no se pueden cruzar con el `ASIGNADA_DESDE_LISTA` del historial,
     // que guarda ese mismo id en `detalle.desdeListaEspera`.
-    const { tenantId, perfilId, turnoId, entradaId } = job.data;
-
-    // La marca se comprueba ANTES DE TODO: si este job ya mando su email en un
-    // intento anterior, no hay nada que releer ni que decidir. Ver JobDeCupo.
-    if (job.data.avisoMarcado === true) {
-      this.logger.log(
-        `El aviso de cupo del job ${job.id} ya salio en un intento anterior; se omite`,
-      );
-      return;
-    }
+    const { tenantId, reservaId, perfilId, turnoId, entradaId } = job.data;
 
     await runWithTenant(tenantId, async () => {
       // ---------------------------------------------------------------------
-      // 1 y 2. EL PERFIL SE CONTRASTA Y EL ESTADO SE RELEE, en la misma
-      // consulta y contra la RESERVA, no contra la entrada de la cola (que ya
-      // no existe).
+      // 1 y 2. LA FILA QUE EL JOB NOMBRA SE VERIFICA —con su estado—, y se
+      // verifica contra la RESERVA, no contra la entrada de la cola, que ya no
+      // existe (ver JobDeCupo).
       //
-      // EL CONTRASTE: `MensajeroService` manda a quien se le diga, y
-      // `PushService.notificar` confia en el perfilId que recibe. La extension
-      // de aislamiento NO va a atrapar un error aqui, porque filtra por
-      // gimnasio y esto seria un cruce DENTRO del mismo gimnasio: dos alumnos
-      // de la misma cola. Un aviso que llega a la persona equivocada no da
-      // error: llega, y se lee — y este aviso ademas le dice que tiene una
-      // clase que no tiene.
+      // Cada termino de este where exige una cosa distinta, y ninguno sobra:
       //
-      // LA RELECTURA: el payload es una foto del pasado. Entre encolar y
-      // enviar pueden pasar minutos, y en ese rato el alumno pudo cancelar el
-      // lugar que le acababan de dar. Cada termino del where exige una parte
-      // del estado que justifica el aviso:
-      //
-      //   - `perfilId`         -> es SU lugar, no el de otro de la cola.
-      //   - `origen`           -> se lo dio la cola. Una reserva que el alumno
-      //                           hizo por su cuenta no justifica un
-      //                           "se libero un lugar y te lo asignamos".
-      //   - `canceladaEn: null`-> el lugar sigue siendo suyo AHORA.
+      //   - `id`            -> ES ESTE AVISO Y NO OTRO, y es la fila sobre la
+      //                        que se hara el compare-and-set. Viene en el
+      //                        payload (`reservaId`) porque `(perfilId,
+      //                        turnoId)` no identifica una fila: no hay unique
+      //                        sobre esa pareja. Ver JobDeCupo.
+      //   - `perfilId`      -> EL CONTRASTE, y es de seguridad.
+      //                        `MensajeroService` manda a quien se le diga y
+      //                        `PushService.notificar` confia en el perfilId que
+      //                        recibe. La extension de aislamiento NO va a
+      //                        atrapar un error aqui, porque filtra por gimnasio
+      //                        y esto seria un cruce DENTRO del mismo gimnasio:
+      //                        dos alumnos de la misma cola. Un aviso que llega
+      //                        a la persona equivocada no da error: llega, se
+      //                        lee, y ademas le dice que tiene una clase que no
+      //                        tiene.
+      //   - `turnoId`       -> la fila es de la clase que el aviso va a nombrar.
+      //   - `origen`        -> se lo dio la cola. Una reserva que el alumno hizo
+      //                        por su cuenta no justifica un "se libero un lugar
+      //                        y te lo asignamos".
+      //   - `canceladaEn`   -> el lugar sigue siendo suyo AHORA. El payload es
+      //                        una foto del pasado: entre encolar y enviar
+      //                        pueden pasar minutos, y en ese rato el alumno
+      //                        pudo soltar el lugar que le acababan de dar.
       // ---------------------------------------------------------------------
       const reserva = await this.prisma.db.reserva.findFirst({
-        where: { turnoId, perfilId, origen: 'LISTA_ESPERA', canceladaEn: null },
-        orderBy: { createdAt: 'desc' },
+        where: { id: reservaId, turnoId, perfilId, origen: 'LISTA_ESPERA', canceladaEn: null },
       });
 
       if (!reserva) {
@@ -165,22 +218,13 @@ export class NotificacionListaEsperaProcessor extends WorkerHost {
         // causas normales se aprende a ignorar, y entonces el dia que salta por
         // el motivo de verdad no lo mira nadie.
         //
-        // BENIGNA 1: la reserva existio y se cancelo entre el encolado y el
-        // envio. Pasa de verdad —el alumno entra a la app, ve la clase que no
-        // pidio y la suelta antes de que le llegue el correo—, y avisarle de un
-        // lugar que ya solto seria mentirle.
-        //
-        // BENIGNA 2: el turno ya no existe. `Reserva.turno` lleva
-        // `onDelete: Cascade`, asi que borrar el turno se lleva sus reservas y
-        // aqui no queda ninguna. No hay nada que avisar.
-        //
-        // LA QUE SI ES UNA ALARMA: el turno sigue vivo y este perfil nunca tuvo
-        // una reserva de lista de espera en el. O hay un bug en quien encola, o
-        // alguien esta pidiendo que se avise a un tercero. Ese es el caso que la
-        // regla del contraste de perfil existe para poder vigilar.
+        // BENIGNA 1: es su fila, salio de la cola, pero ya no esta activa. Pasa
+        // de verdad —el alumno entra a la app, ve la clase que no pidio y la
+        // suelta antes de que le llegue el correo—, y avisarle de un lugar que
+        // ya solto seria mentirle.
         // -------------------------------------------------------------------
         const cancelada = await this.prisma.db.reserva.findFirst({
-          where: { turnoId, perfilId, origen: 'LISTA_ESPERA' },
+          where: { id: reservaId, turnoId, perfilId, origen: 'LISTA_ESPERA' },
         });
 
         if (cancelada) {
@@ -191,6 +235,26 @@ export class NotificacionListaEsperaProcessor extends WorkerHost {
           return;
         }
 
+        // BENIGNA 1b: es su fila, pero no es la que este aviso describe —otro
+        // turno, u `origen` distinto de LISTA_ESPERA—. El texto del aviso dice
+        // "se libero un lugar y TE LO ASIGNAMOS", y de una reserva que el alumno
+        // hizo por su cuenta eso es falso; peor, taparia el hecho de que el cupo
+        // de verdad se lo quedo otro.
+        const suyaPeroNo = await this.prisma.db.reserva.findFirst({
+          where: { id: reservaId, perfilId },
+        });
+
+        if (suyaPeroNo) {
+          this.logger.log(
+            `La reserva ${reservaId} de ${perfilId} no es el cupo que describe este aviso ` +
+              `(entrada ${entradaId}); se omite (job ${job.id})`,
+          );
+          return;
+        }
+
+        // BENIGNA 2: el turno ya no existe. `Reserva.turno` lleva
+        // `onDelete: Cascade`, asi que borrar el turno se lleva sus reservas y
+        // aqui no queda ninguna. No hay nada que avisar.
         const turnoBorrado =
           (await this.prisma.db.turno.findFirst({ where: { id: turnoId } })) === null;
 
@@ -201,15 +265,34 @@ export class NotificacionListaEsperaProcessor extends WorkerHost {
           return;
         }
 
+        // -------------------------------------------------------------------
+        // LA QUE SI ES UNA ALARMA: la fila existe y es de OTRO alumno. O hay un
+        // bug en quien encola, o alguien esta pidiendo que se avise a un
+        // tercero. Es el caso que el contraste de perfil existe para vigilar.
+        //
         // Con `entradaId`: este es el log que alguien va a ir a investigar, y es
         // el id con el que se cruza con el `ASIGNADA_DESDE_LISTA` del historial
         // (`detalle.desdeListaEspera`) para ver a quien se le dio el cupo de
         // verdad. Un log de alarma sin la clave para investigarlo es media
         // alarma.
-        this.logger.error(
-          `El perfil ${perfilId} no tiene ninguna reserva de lista de espera en el turno ` +
-            `${turnoId}, que sigue existiendo (entrada ${entradaId}); se omite el aviso de ` +
-            `cupo (job ${job.id})`,
+        // -------------------------------------------------------------------
+        const deOtro = await this.prisma.db.reserva.findFirst({ where: { id: reservaId } });
+
+        if (deOtro) {
+          this.logger.error(
+            `La reserva ${reservaId} no es del perfil ${perfilId} que dice el job ` +
+              `(turno ${turnoId}, entrada ${entradaId}); se omite el aviso de cupo ` +
+              `(job ${job.id})`,
+          );
+          return;
+        }
+
+        // Resto: la fila nombrada ya no esta y el turno sigue vivo. Como las
+        // reservas no se borran (la cancelacion es logica) esto no deberia
+        // pasar, pero si pasa no hay nada que avisar ni nada que suplantar.
+        this.logger.log(
+          `La reserva ${reservaId} ya no esta (entrada ${entradaId}); se omite el aviso ` +
+            `de cupo (job ${job.id})`,
         );
         return;
       }
@@ -252,25 +335,51 @@ export class NotificacionListaEsperaProcessor extends WorkerHost {
       }
 
       // ---------------------------------------------------------------------
-      // 3. SE MARCA ANTES DE MANDAR, y ese orden es la mitad que importa.
+      // 3. EL COMPARE-AND-SET, que es el gate de este processor. Ver JobDeCupo
+      // para por que la columna es `Reserva.avisoCupoEn` y no
+      // `ListaEspera.notificado`, y por que es un `updateMany` con el termino
+      // `null` dentro del where y no un `update` a secas.
       //
-      // Al reves —mandar y luego marcar— el reintento de un fallo ocurrido en
-      // medio manda el email por segunda vez, que es justo lo que la marca viene
-      // a evitar. Asi el peor caso es el contrario: si el envio falla despues de
-      // marcar, el aviso SE PIERDE. Es el mismo intercambio que ya se acepto en
-      // `AvisosPendientes`, en `NotificacionesService.encolar` y en el processor
-      // hermano, y por el mismo motivo: perder un aviso molesta; mandar uno de
-      // mas le confirma a alguien una clase que no tiene, y eso no se puede
-      // desandar.
+      // AQUI SE DECIDEN DOS COSAS, Y LAS DOS IMPORTAN:
+      //
+      // LA ATOMICIDAD la pone el `avisoCupoEn: null` del where. Comprobar
+      // "todavia no se aviso" y escribir "ya se aviso" son un unico UPDATE de
+      // Postgres, asi que entre las dos mitades no se puede colar otro worker.
+      // De dos ejecuciones simultaneas, una recibe `count: 1` y manda; la otra
+      // recibe `count: 0` y se calla. Sin ese termino, el `updateMany` marca
+      // siempre, devuelve siempre 1, y los dos mandan.
+      //
+      // EL ORDEN —marcar ANTES de mandar— es la otra mitad. Al reves, el
+      // reintento de un fallo ocurrido en medio manda el email por segunda vez,
+      // que es justo lo que esto viene a evitar. Asi el peor caso es el
+      // contrario: si el envio falla despues de marcar, el aviso SE PIERDE. Es
+      // el mismo intercambio que ya se acepto en `AvisosPendientes`, en
+      // `NotificacionesService.encolar` y en el processor hermano, y por el
+      // mismo motivo: perder un aviso molesta; mandar uno de mas le confirma a
+      // alguien una clase que no tiene, y eso no se puede desandar.
       //
       // Ojo con leer "se marca despues de avisar" en el plan de la Task 9: eso
       // se escribio pensando en la columna `notificado`, que ademas no se puede
-      // usar. Con la marca en el job, despues es sencillamente el orden malo.
+      // usar. Despues es sencillamente el orden malo.
       //
-      // Si `updateData` falla, se propaga sin haber mandado nada: el job se
+      // Si el `updateMany` falla, se propaga sin haber mandado nada: el job se
       // reintenta entero y el alumno recibe su aviso una vez.
       // ---------------------------------------------------------------------
-      await job.updateData({ ...job.data, avisoMarcado: true });
+      const marcada = await this.prisma.db.reserva.updateMany({
+        where: { id: reserva.id, avisoCupoEn: null },
+        data: { avisoCupoEn: new Date() },
+      });
+
+      if (marcada.count === 0) {
+        // Ni error ni rareza: es el gate haciendo su trabajo. O este job ya
+        // mando su aviso en un intento anterior, o otro worker se lo acaba de
+        // llevar. En los dos casos el aviso ya se intento una vez.
+        this.logger.log(
+          `El aviso de cupo de la reserva ${reserva.id} (entrada ${entradaId}) ya estaba ` +
+            `marcado; se omite (job ${job.id})`,
+        );
+        return;
+      }
 
       await this.mensajero.avisar(
         {

@@ -7,7 +7,7 @@ import type { DatosNotificacionListaEspera } from './colas';
 import { NotificacionListaEsperaProcessor } from './notificacion-lista-espera.processor';
 
 type Fila = Record<string, any>;
-type JobDeTest = Job<DatosNotificacionListaEspera & { avisoMarcado?: true }>;
+type JobDeTest = Job<DatosNotificacionListaEspera>;
 
 const GIMNASIO = { id: 'gym-1', nombre: 'Box Fuego', slug: 'box-fuego' };
 
@@ -45,6 +45,13 @@ function cupoDe(perfilId: string, extra: Fila = {}): Fila {
     perfilId,
     origen: 'LISTA_ESPERA',
     canceladaEn: null,
+    // LAS TRES MARCAS, EXPLICITAS Y EN null. No es decoracion del fixture: el
+    // compare-and-set del processor filtra por `avisoCupoEn: null`, y una fila a
+    // la que le falte el campo no lo cumple —`undefined !== null`—. Que esten
+    // aqui es lo que hace que el doble emule el CAS y no otra cosa.
+    avisoConfirmacionEn: null,
+    avisoCancelacionEn: null,
+    avisoCupoEn: null,
     createdAt: new Date('2026-10-01T10:00:00.000Z'),
     ...extra,
   };
@@ -55,8 +62,8 @@ interface Escenario {
   perfiles?: Fila[];
   turnos?: Fila[];
   /** Lo que trae el payload del job, sobre los valores por defecto. */
-  job?: Partial<DatosNotificacionListaEspera & { avisoMarcado?: true }>;
-  /** Cuantas veces revienta `updateData` antes de funcionar. */
+  job?: Partial<DatosNotificacionListaEspera>;
+  /** Cuantas veces revienta el `updateMany` de la marca antes de funcionar. */
   fallosAlMarcar?: number;
   /**
    * Rompe el doble de Prisma A PROPOSITO: le quita el `perfilId` al where de la
@@ -78,9 +85,15 @@ interface Escenario {
  * processor que olvidara `runWithTenant` pasaria en verde aqui y reventaria con
  * `MissingTenantContextError` la primera vez que corriera.
  *
- * El del JOB guarda lo que se le escribe con `updateData`, que es como se
- * comporta el de verdad: esos datos viven en Redis, y el siguiente intento del
- * mismo job los relee de ahi.
+ * Y el doble de Prisma EMULA EL COMPARE-AND-SET de verdad: `updateMany` filtra,
+ * escribe y cuenta en el mismo turno del event loop —su cuerpo no tiene ni un
+ * `await` dentro—, que es exactamente la garantia que da un UPDATE de Postgres
+ * sobre una fila. Sin esa propiedad, el test de los dos workers simultaneos no
+ * probaria nada.
+ *
+ * El del JOB ya no guarda ninguna marca: desde que la idempotencia vive en
+ * `Reserva.avisoCupoEn`, `updateData` no tiene nada que hacer aqui y el doble
+ * revienta si alguien vuelve a llamarlo.
  */
 function crearEscenario(escenario: Escenario = {}) {
   const reservas = escenario.reservas ?? [];
@@ -126,6 +139,28 @@ function crearEscenario(escenario: Escenario = {}) {
           )[0] ?? null
         );
       },
+      /**
+       * EL COMPARE-AND-SET. Entre el filtro y la escritura NO hay ningun
+       * `await`, asi que las dos mitades ocurren en el mismo turno del event
+       * loop y nadie se puede colar en medio: es la misma garantia que da
+       * Postgres al resolver `UPDATE ... WHERE ... IS NULL` en una operacion.
+       *
+       * Gracias a eso el `count` que devuelve significa lo mismo aqui que
+       * alli: 1 = esta ejecucion se llevo la marca, 0 = ya estaba puesta.
+       */
+      async updateMany({ where, data }: { where: Fila; data: Fila }): Promise<{ count: number }> {
+        if (fallos.restantes > 0) {
+          fallos.restantes -= 1;
+          pasos.push('marca-fallida');
+          throw new Error('Postgres rechazo la marca');
+        }
+
+        const alcanzadas = filtrar(reservas, where);
+        for (const fila of alcanzadas) Object.assign(fila, data);
+        if (alcanzadas.length > 0) pasos.push('marca');
+
+        return { count: alcanzadas.length };
+      },
     },
     perfil: {
       async findFirst({ where }: { where: Fila }): Promise<Fila | null> {
@@ -167,19 +202,23 @@ function crearEscenario(escenario: Escenario = {}) {
     id: 'job-1',
     data: {
       tenantId: 'gym-1',
+      // LA FILA QUE ESTE AVISO DESCRIBE. Por defecto, la de Ana: `cupoDe` le
+      // pone `reserva-<perfilId>` de id. Un escenario que quiera probar el
+      // contraste cambia el `perfilId` del payload y deja este id quieto.
+      reservaId: 'reserva-perfil-ana',
       perfilId: 'perfil-ana',
       turnoId: 'turno-1',
       entradaId: 'le-1',
       ...escenario.job,
     },
-    async updateData(nuevos: Fila): Promise<void> {
-      if (fallos.restantes > 0) {
-        fallos.restantes -= 1;
-        pasos.push('marca-fallida');
-        throw new Error('Redis rechazo la actualizacion del job');
-      }
-      pasos.push('marca');
-      job.data = nuevos as JobDeTest['data'];
+    // LA MARCA YA NO VIVE EN EL JOB. Este doble no la guarda: revienta. Si
+    // alguien vuelve a escribirla en Redis, que se entere por un test rojo y no
+    // por dos marcas que un dia discrepan.
+    async updateData(): Promise<void> {
+      pasos.push('marca-en-el-job');
+      throw new Error(
+        'La marca de idempotencia ya no vive en el job: va en Reserva.avisoCupoEn, con CAS',
+      );
     },
   };
 
@@ -299,6 +338,17 @@ describe('NotificacionListaEsperaProcessor', () => {
     });
   });
 
+  it('una reserva que ya no esta con el turno vivo es un log, no una alarma', async () => {
+    // El job nombra una fila que no aparece, y el turno sigue en pie. No hay
+    // nada que avisar y tampoco nada que suplantar.
+    const { processor, job, avisar } = crearEscenario({ reservas: [] });
+
+    await processor.process(job);
+
+    expect(avisar).not.toHaveBeenCalled();
+    expect(alarmado).not.toHaveBeenCalled();
+  });
+
   it('un perfil sin cupo en un turno QUE SIGUE VIVO si es una alarma', async () => {
     // La unica causa de "no hay reserva" que huele a suplantacion.
     const { processor, job } = crearEscenario({
@@ -410,6 +460,55 @@ describe('NotificacionListaEsperaProcessor', () => {
     expect(pasos).toEqual(['marca', 'aviso']);
   });
 
+  it('dos ejecuciones simultaneas del mismo job mandan UN solo email', async () => {
+    // EL TEST QUE DISTINGUE UN COMPARE-AND-SET DE UN UPDATE DISFRAZADO DE CAS,
+    // y el unico. Es el agujero (b) de la cabecera del processor puesto en
+    // codigo: si el lock del job vence —una pausa del event loop, un GC, Redis
+    // lento— BullMQ lo redistribuye mientras el primer worker sigue vivo, y los
+    // dos corren a la vez sobre la misma reserva.
+    //
+    // Los dos `process` arrancan sin await y se intercalan en cada await del
+    // processor, que es justo lo que hacen dos workers de verdad. Lo que decide
+    // el resultado es el `updateMany`: comprueba y escribe en el mismo turno del
+    // event loop, asi que uno se lleva `count: 1` y el otro `count: 0`.
+    //
+    // QUITAR EL TERMINO `avisoCupoEn: null` DEL WHERE, o mandar aunque el count
+    // sea 0, deja este test en rojo con dos avisos. No es el unico que cae —son
+    // tres por processor, con el del reintento y el de la reserva ya marcada—,
+    // pero si el unico que falla por la razon de verdad: los otros dos miran el
+    // estado final, y este mira que no se puedan colar uno entre otro.
+    const { processor, job, avisar } = crearEscenario({ reservas: [cupoDe('perfil-ana')] });
+
+    await Promise.all([processor.process(job), processor.process(job)]);
+
+    expect(avisar).toHaveBeenCalledTimes(1);
+  });
+
+  it('marcar una reserva no marca las demas del gimnasio', async () => {
+    // EL HERMANO DEL TEST DE CONCURRENCIA, y sujeta el OTRO termino del where
+    // del CAS: `id: reserva.id`.
+    //
+    // Quitarlo no rompe nada visible —el `updateMany` sigue devolviendo 1 y el
+    // aviso sigue saliendo— y ningun escenario de una sola reserva lo nota. Lo
+    // que cambia es la CARDINALIDAD: con el `tenantId` que inyecta la extension,
+    // el update alcanza a TODAS las reservas del gimnasio con esa columna en
+    // null, asi que el primer aviso marcaria la tabla entera y no volveria a
+    // salir ninguno, en silencio.
+    //
+    // Por eso hacen falta DOS reservas del mismo gimnasio y no una.
+    const ana = cupoDe('perfil-ana');
+    const beto = cupoDe('perfil-beto');
+    const { processor, job, avisar } = crearEscenario({ reservas: [ana, beto] });
+
+    await processor.process(job);
+
+    expect(avisar).toHaveBeenCalledTimes(1);
+    expect(ana.avisoCupoEn).toBeInstanceOf(Date);
+    // LA LINEA QUE IMPORTA: la de Beto sigue intacta, asi que su aviso todavia
+    // puede salir.
+    expect(beto.avisoCupoEn).toBeNull();
+  });
+
   it('el reintento del mismo job no manda el segundo email', async () => {
     const { processor, job, avisar } = crearEscenario({ reservas: [cupoDe('perfil-ana')] });
 
@@ -419,16 +518,17 @@ describe('NotificacionListaEsperaProcessor', () => {
     expect(avisar).toHaveBeenCalledTimes(1);
   });
 
-  it('si el job muere al marcar, el reintento manda UNA vez y no dos', async () => {
-    // El caso que obliga al orden marcar-antes-de-mandar. Con el orden al reves
-    // —mandar y luego marcar— el primer intento ya habria mandado el email y el
-    // reintento mandaria el segundo, porque la marca nunca llego a escribirse.
+  it('si la marca falla, el reintento manda UNA vez y no dos', async () => {
+    // El caso que obliga al orden marcar-antes-de-mandar, con el fallo inyectado
+    // justo entre las dos cosas. Con el orden al reves —mandar y luego marcar—
+    // el primer intento ya habria mandado el email y el reintento mandaria el
+    // segundo, porque la marca nunca llego a escribirse.
     const { processor, job, avisar } = crearEscenario({
       reservas: [cupoDe('perfil-ana')],
       fallosAlMarcar: 1,
     });
 
-    await expect(processor.process(job)).rejects.toThrow(/Redis rechazo/);
+    await expect(processor.process(job)).rejects.toThrow(/Postgres rechazo la marca/);
     expect(avisar).not.toHaveBeenCalled();
 
     await processor.process(job);
@@ -436,36 +536,70 @@ describe('NotificacionListaEsperaProcessor', () => {
     expect(avisar).toHaveBeenCalledTimes(1);
   });
 
-  it('la marca NO se come el payload', async () => {
-    // `updateData` REEMPLAZA los datos del job, no los mezcla. Escribir
-    // `{ avisoMarcado: true }` a secas en vez de `{ ...job.data, ... }` pasa
-    // todos los demas tests —la segunda vuelta sale igual por el early return—,
-    // pero deja el job en Redis sin tenantId, sin perfilId y sin turnoId: un job
-    // en `failed` asi no se puede diagnosticar desde un panel de Bull, ni saber
-    // a quien se le iba a avisar.
+  it('la marca va a `avisoCupoEn` y deja las otras dos en null', async () => {
+    // LA COLUMNA DE ESTE PROCESSOR Y NO OTRA. Son tres porque una misma reserva
+    // puede generar los tres avisos: el alumno entra por la cola, se le
+    // confirma y despues cancela. Compartir columna con el processor hermano
+    // haria que el primero de los avisos en salir se comiera a los otros.
+    const reserva = cupoDe('perfil-ana');
+    const { processor, job } = crearEscenario({ reservas: [reserva] });
+
+    await processor.process(job);
+
+    // FECHA Y NO BOOLEANO: la columna tiene que poder contestar "cuando", que es
+    // lo que va a preguntar quien atienda a un alumno diciendo que no le llego
+    // nada. Ver el comentario del modelo en schema.prisma.
+    expect(reserva.avisoCupoEn).toBeInstanceOf(Date);
+    expect(reserva.avisoConfirmacionEn).toBeNull();
+    expect(reserva.avisoCancelacionEn).toBeNull();
+  });
+
+  it('avisa del cupo aunque la reserva ya tenga marcada la confirmacion', async () => {
+    // Las tres marcas son independientes: que a esta reserva ya se le haya
+    // confirmado algo no tiene nada que ver con el aviso de "se libero un
+    // lugar". Si este CAS mirara la columna del processor hermano, el aviso no
+    // saldria —sin lanzar y sin romper la forma de nada—.
+    const reserva = cupoDe('perfil-ana', {
+      avisoConfirmacionEn: new Date('2026-10-01T10:00:01.000Z'),
+    });
+    const { processor, job, avisar } = crearEscenario({ reservas: [reserva] });
+
+    await processor.process(job);
+
+    expect(avisar).toHaveBeenCalledTimes(1);
+    expect(reserva.avisoCupoEn).toBeInstanceOf(Date);
+  });
+
+  it('una reserva que ya tiene la marca no manda', async () => {
+    const { processor, job, avisar, pasos } = crearEscenario({
+      reservas: [cupoDe('perfil-ana', { avisoCupoEn: new Date('2026-10-01T10:00:01.000Z') })],
+    });
+
+    await processor.process(job);
+
+    expect(avisar).not.toHaveBeenCalled();
+    // Y no se reescribe la fecha: el CAS no alcanza ninguna fila.
+    expect(pasos).toEqual([]);
+  });
+
+  it('la marca NO se escribe en el job', async () => {
+    // El payload de un job son identificadores y nada mas (ver colas.ts). La
+    // marca vivio ahi hasta la Fase 5B —`job.updateData({ ...job.data,
+    // avisoMarcado: true })`— y de ahi salio, entre otras cosas, porque muere
+    // con el job: `removeOnComplete` o cualquier limpieza de la cola se la
+    // lleva. El doble de `updateData` revienta, asi que esto tambien sujeta que
+    // nadie la devuelva a Redis "por si acaso".
     const { processor, job } = crearEscenario({ reservas: [cupoDe('perfil-ana')] });
 
     await processor.process(job);
 
     expect(job.data).toEqual({
       tenantId: 'gym-1',
+      reservaId: 'reserva-perfil-ana',
       perfilId: 'perfil-ana',
       turnoId: 'turno-1',
       entradaId: 'le-1',
-      avisoMarcado: true,
     });
-  });
-
-  it('un job que ya venia marcado no consulta ni manda', async () => {
-    const { processor, job, avisar, pasos } = crearEscenario({
-      reservas: [cupoDe('perfil-ana')],
-      job: { avisoMarcado: true },
-    });
-
-    await processor.process(job);
-
-    expect(avisar).not.toHaveBeenCalled();
-    expect(pasos).toEqual([]);
   });
 
   // --------------------------------------------------------------------------

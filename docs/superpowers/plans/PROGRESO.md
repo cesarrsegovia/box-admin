@@ -1015,15 +1015,52 @@ no compila, es la proteccion que parece estar puesta.
 - **En una cola diaria, `removeOnComplete: N` son DIAS, no avisos.** Copiar el 500 de las colas de
   eventos no poda nunca, y encima parece que si.
 - **BullMQ interpreta el patron del cron en la zona del worker**, no en la del gimnasio.
+- **`prisma migrate dev` NO regenera el cliente** en Prisma 7 con `prisma.config.ts`. Hace falta
+  `prisma generate` aparte, o la suite no compila y el error no apunta a la migracion.
+- **`prisma format` realinea modelos ajenos.** Tras tocar el schema deja tres o cuatro lineas de diff
+  en modelos que no son los tuyos; hay que revertirlas para que el diff sea solo lo propio.
+- **Un fixture con un `null` puede tapar una mutacion entera.** El test preexistente de CANCELACION no
+  detectaba que el CAS usara la columna equivocada, porque en su escenario `avisoConfirmacionEn` estaba
+  en `null` y el CAS devolvia `count: 1` igual. En produccion toda reserva confirmada ya tiene esa
+  fecha, o sea que la mutacion habria significado **que ninguna cancelacion se avisa nunca, en
+  silencio**. Cuando una mutacion "no rompe nada", mirar el fixture antes que el codigo.
+- **Dos gates solapados esconden el fallo del otro.** Mover el marcado a despues de avisar sobrevivia
+  al test obvio de idempotencia mientras existia ADEMAS el early-return sobre `job.data.avisoMarcado`.
+  Al quedar el CAS como unica decision, la misma mutacion pasa a tirar diez tests.
 
 ## Deuda anotada
 
 - **El recordatorio de vencimiento repetido** (decision 1, arriba).
-- **Las marcas de idempotencia viven en `job.updateData`, o sea en Redis.** Su sitio es una columna de
-  `Reserva`, y hacen falta **tres**: confirmacion, cancelacion y cupo de lista de espera. Y **hay que
-  escribirlas como compare-and-set**, mirando el `count` de un `updateMany` con la condicion en el
-  `where`: con un `update` a secas se cambia la marca de sitio y se lleva el mismo agujero puesto, con
-  apariencia de arreglado. Bloqueado por Docker.
+- ~~Las marcas de idempotencia en Redis~~ — **HECHO el 28/09/2026.** Migracion
+  `20260928200428_fase5b_marcas_de_aviso`: tres columnas `DateTime?` en `Reserva`
+  (`avisoConfirmacionEn`, `avisoCancelacionEn`, `avisoCupoEn`), escritas como compare-and-set
+  (`updateMany` con la condicion `null` en el `where`, y se manda solo si `count === 1`). Cierra los
+  agujeros (a) dos jobs distintos, (b) el mismo job en dos workers a la vez y (c) la marca muere con el
+  job. **Queda abierto (d) a proposito**: un job agotado se queda en `failed` con la marca puesta, asi
+  que un retry manual desde un panel no manda nada — cerrarlo significaria borrar la marca al fallar, y
+  entonces un fallo POSTERIOR al envio vuelve a mandar el email, que es justo lo que la marca existe
+  para evitar. Lo que si mejora es el diagnostico: la fila dice la fecha exacta del intento.
+  Son timestamps y no booleanos porque un `null`/`no null` responde "ya avisamos?" y la fecha responde
+  ademas "cuando?", que es lo que alguien va a querer saber el dia que un alumno diga que no le llego
+  nada. Los dos jobs diarios NO migran: su `gimnasiosHechos` es una marca por gimnasio dentro de una
+  tanda y no cuelga de ninguna reserva.
+
+  **Y dos cosas que la revision encontro y que valen mas que la migracion:**
+
+  - **El CAS tiene DOS terminos que lo sostienen, no uno.** La cabecera protegia el `...En: null` y
+    dejaba el `id: reserva.id` sin red: quitarlo dejaba un `updateMany` que, con el `tenantId` que
+    inyecta la extension, **marca todas las reservas del gimnasio**. Compilaba, pasaba prettier y
+    dejaba 942 tests en verde. En produccion: el primer aviso de confirmacion marcaba la tabla entera
+    y **ningun aviso volvia a salir jamas, en silencio** — estrictamente peor que el agujero que esta
+    migracion viene a cerrar. La causa era que todos los escenarios tenian UNA sola reserva por
+    perfil, asi que nada fijaba la cardinalidad.
+  - **La marca cuelga de una FILA; el job identificaba `(perfil, turno, accion)`.** Como no hay unique
+    sobre `(tenantId, turnoId, perfilId)`, un alumno con dos reservas en el mismo turno rompia la
+    correspondencia: el job de la cancelacion de A, reintentado tarde, encontraba B, marcaba B y
+    mandaba; el job de B recibia `count: 0` y se callaba. **Dos cancelaciones legitimas, un solo
+    email.** Era una regresion nueva —con la marca en Redis cada job tenia la suya— y se cerro
+    metiendo `reservaId` en el payload: ahora el processor **verifica** la fila que el job nombra en
+    vez de elegir una.
 - **`DatosDePlantilla` es un `Record<string, string>` que no comprueba nada.** Una variable mal escrita
   compila y manda un email con el hueco vacio, y ninguna plantilla declara que variables necesita.
 - **Una clave SMTP de menos de 8 caracteres, si viene troceada, se escapa de `motivoSeguro`.** Lo
@@ -1039,7 +1076,7 @@ no compila, es la proteccion que parece estar puesta.
 
 ## Estado al cerrar la sesion
 
-**936 unitarios de la API / 53 suites**, **96 en `shared` / 4**, **149 en la PWA / 16**. `tsc --noEmit`
+**947 unitarios de la API / 53 suites**, **171 e2e / 9 suites**, **96 en `shared` / 4**, **149 en la PWA / 16**. `tsc --noEmit`
 limpio en los tres paquetes, `pnpm build` de la web compila, y Prettier limpio sobre lo que escribe la
 fase.
 

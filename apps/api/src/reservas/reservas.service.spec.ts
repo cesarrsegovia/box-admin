@@ -521,6 +521,9 @@ describe('ReservasService avisa al alumno', () => {
     // que no haga falta ahi no tiene por que estar.
     expect(notificaciones.reservaCambiada).toHaveBeenCalledWith({
       tenantId: 'gym-1',
+      // LA FILA CREADA. Sin este id el worker tendria que buscar "la reserva de
+      // este perfil en este turno", que no identifica una: ver `colas.ts`.
+      reservaId: 'res-1',
       perfilId: 'perf-1',
       turnoId: 'turno-1',
       origen: 'ADMIN',
@@ -535,6 +538,7 @@ describe('ReservasService avisa al alumno', () => {
 
     expect(notificaciones.reservaCambiada).toHaveBeenCalledWith({
       tenantId: 'gym-1',
+      reservaId: 'res-1',
       perfilId: 'perf-1',
       turnoId: 'turno-1',
       origen: 'ADMIN',

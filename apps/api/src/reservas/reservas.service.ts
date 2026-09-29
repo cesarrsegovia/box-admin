@@ -196,6 +196,9 @@ export class ReservasService {
               cambios: [
                 {
                   tenantId: actor.tenantId,
+                  // LA FILA, no solo el par (perfil, turno): es sobre ella que el
+                  // worker hace su compare-and-set. Ver `colas.ts`.
+                  reservaId: creada.id,
                   perfilId: creada.perfilId,
                   turnoId: creada.turnoId,
                   origen: creada.origen,
@@ -284,6 +287,11 @@ export class ReservasService {
               cambios: [
                 {
                   tenantId: actor.tenantId,
+                  // LA FILA CANCELADA, y aqui importa mas que en `crear`: el mismo
+                  // alumno puede haber cancelado, vuelto a reservar y cancelado otra
+                  // vez el mismo turno. Sin el id, el aviso de la primera cancelacion
+                  // podria marcar la fila de la segunda y dejarla sin email.
+                  reservaId: cancelada.id,
                   perfilId: cancelada.perfilId,
                   turnoId: cancelada.turnoId,
                   origen: cancelada.origen,

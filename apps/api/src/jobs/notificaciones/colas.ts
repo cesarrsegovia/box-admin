@@ -11,6 +11,14 @@ export const VENCIMIENTO_PACK_QUEUE = 'vencimiento-pack-queue';
  *
  * REGLA QUE NO SE ROMPE: un payload lleva IDENTIFICADORES Y NADA MAS.
  *
+ * Y ENTRE ESOS IDENTIFICADORES VA EL `reservaId`, que es la fila de la que
+ * cuelga la marca de idempotencia. No es opcional ni redundante con
+ * `(perfilId, turnoId)`: `Reserva` NO tiene unique sobre `(tenantId, turnoId,
+ * perfilId)` —un alumno puede reservar, cancelar y volver a reservar el mismo
+ * turno—, asi que sin el id un processor tendria que ELEGIR una fila entre
+ * varias, y dos jobs distintos podrian elegir la MISMA. El desarrollo esta en
+ * la cabecera de `notificacion-reserva.processor.ts`.
+ *
  * Nunca, bajo ninguna circunstancia, un `DatosSmtp` ni nada que salga de
  * `datosDeEnvio()`. Un job de BullMQ se serializa a Redis en JSON y se queda
  * ahi hasta que caduque: meter la credencial descifrada en el payload la
@@ -39,15 +47,29 @@ export const VENCIMIENTO_PACK_QUEUE = 'vencimiento-pack-queue';
  * puede ejecutarse dos veces con el MISMO payload, y comprobar antes de enviar
  * si el trabajo ya estaba hecho.
  *
+ * DONDE ESTA LA MARCA DE LOS DOS PROCESSORS DE AVISO: en tres columnas
+ * nullable de `Reserva` —`avisoConfirmacionEn`, `avisoCancelacionEn` y
+ * `avisoCupoEn`—, escritas COMO COMPARE-AND-SET (`updateMany` con el termino
+ * `...En: null` en el where, mandando solo si el `count` vale 1). No es un
+ * detalle de estilo: ese termino del where es lo que hace atomica la pareja
+ * comprobar+escribir, y sin el dos workers con el mismo job mandan los dos.
+ * El razonamiento entero esta en la cabecera de cada processor.
+ *
  * OJO CON `ListaEspera.notificado`: esta columna existe y parece ser esa marca,
  * pero NO SIRVE, y los dos processors de aviso lo dicen en su cabecera. La fila
  * se borra en `ListaEsperaService.asignarPrimero`, dentro de la transaccion que
  * crea la reserva, y el aviso se encola despues del commit: cuando el worker
- * llega, no hay fila que marcar. Hoy la marca de los dos vive en el propio job
- * (`job.updateData`), y su sitio definitivo es una columna de `Reserva`.
+ * llega, no hay fila que marcar.
+ *
+ * LOS DOS JOBS DIARIOS (`recordatorio-pago` y `vencimiento-pack`) SON OTRA
+ * COSA: su marca es `gimnasiosHechos` en `job.updateData`, una lista de que
+ * gimnasios ya se procesaron DENTRO de una tanda. No cuelga de ninguna reserva
+ * y se queda donde esta.
  */
 export interface DatosNotificacionReserva {
   tenantId: string;
+  /** La fila que este aviso describe, y sobre la que se hace el compare-and-set. */
+  reservaId: string;
   perfilId: string;
   turnoId: string;
   accion: 'CONFIRMACION' | 'CANCELACION';
@@ -55,6 +77,8 @@ export interface DatosNotificacionReserva {
 
 export interface DatosNotificacionListaEspera {
   tenantId: string;
+  /** La fila que este aviso describe, y sobre la que se hace el compare-and-set. */
+  reservaId: string;
   perfilId: string;
   turnoId: string;
   entradaId: string;

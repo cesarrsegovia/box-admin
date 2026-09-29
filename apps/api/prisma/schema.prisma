@@ -436,6 +436,54 @@ model Reserva {
   canceladaEn     DateTime?
   cancelacionTipo TipoCancelacion?
 
+  // LAS MARCAS DE IDEMPOTENCIA DE LOS AVISOS. null = todavia no se aviso.
+  //
+  // Las escriben los dos processors de notificacion
+  // (`jobs/notificaciones/notificacion-reserva.processor.ts` y
+  // `notificacion-lista-espera.processor.ts`) COMO COMPARE-AND-SET, no con un
+  // `update` a secas:
+  //
+  //   updateMany({ where: { id, avisoConfirmacionEn: null }, data: { ...: new Date() } })
+  //
+  // y solo mandan el aviso si el `count` devuelto es 1. Ese termino `null` en el
+  // where es lo que vuelve atomica la pareja comprobar+escribir dentro de un
+  // unico UPDATE de Postgres; sin el, dos workers con el mismo job leen los dos
+  // la marca ausente y los dos mandan. Quitarlo no rompe nada visible: hay una
+  // mutacion dedicada en la cabecera de cada processor explicando por que.
+  //
+  // SON TRES Y NO UNA porque una misma reserva puede generar los tres avisos:
+  // el alumno entra por la lista de espera (cupo), se le confirma y luego
+  // cancela. Una sola marca dejaria fuera a los otros dos.
+  //
+  // TIMESTAMP Y NO BOOLEANO, a proposito. Un booleano contesta "ya avisamos?",
+  // que es lo unico que el CAS necesita (`null` / `no null` responde igual de
+  // bien). La fecha contesta ademas "cuando?", que es exactamente lo que va a
+  // preguntar quien atienda a un alumno diciendo que no le llego nada: si el
+  // sistema no lo intento nunca, o si lo intento el martes a las 19:04 y el
+  // problema esta en el correo. Cuesta lo mismo de escribir y lo mismo de
+  // comprobar.
+  //
+  // OJO: marcan que se INTENTO el envio, no que se entrego.
+  // `MensajeroService.avisar` no lanza si el SMTP esta caido, asi que la fecha
+  // puede estar puesta sin que el email haya salido. Esta escrito tambien en la
+  // cabecera de los processors.
+  // Y el `id` del where no es menos importante que el termino `null`: sin el, el
+  // updateMany marca TODAS las reservas del gimnasio con esa columna en null
+  // —el tenantId lo inyecta la extension— y no vuelve a salir ningun aviso, en
+  // silencio. Cada processor tiene un test de cardinalidad para eso.
+  //
+  // COMENTARIOS CON `//` Y NO CON `/** */`: `prisma format` reindenta los
+  // bloques de doc y, si uno queda anidado dentro de otro, lo hace crecer una
+  // linea en cada pasada sin que `prisma validate` se queje. El resto del
+  // schema tampoco los usa.
+  //
+  // Aviso de CONFIRMACION de la reserva. Lo escribe el processor de reserva.
+  avisoConfirmacionEn DateTime?
+  // Aviso de CANCELACION de la reserva. Lo escribe el mismo processor.
+  avisoCancelacionEn  DateTime?
+  // Aviso de "se libero un lugar". Lo escribe el processor de lista de espera.
+  avisoCupoEn         DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

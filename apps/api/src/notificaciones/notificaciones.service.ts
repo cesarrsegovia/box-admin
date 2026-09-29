@@ -19,6 +19,7 @@ export interface CupoAsignado {
 
 export interface ReservaCambiada {
   tenantId: string;
+  reservaId: string;
   perfilId: string;
   turnoId: string;
   origen: OrigenReserva;
@@ -41,8 +42,15 @@ export interface ReservaCambiada {
  *
  * Lo que se encola son IDENTIFICADORES Y NADA MAS. Ver el comentario de
  * `colas.ts`: un job vive en Redis serializado en JSON, asi que cualquier cosa
- * que se meta aqui queda escrita en claro. El `reservaId` de `CupoAsignado`, por
- * ejemplo, no viaja: quien lo quiera lo busca.
+ * que se meta aqui queda escrita en claro.
+ *
+ * EL `reservaId` SI VIAJA, y hasta la Fase 5B no lo hacia —el comentario de
+ * aqui decia "quien lo quiera lo busca"—. Buscarla no vale: la marca de
+ * idempotencia de los processors es un compare-and-set sobre UNA FILA, y
+ * `(perfilId, turnoId)` no identifica una —no hay unique sobre esa pareja, y un
+ * alumno puede reservar, cancelar y volver a reservar el mismo turno—. Un
+ * processor que reconstruya la fila puede marcar la de OTRO aviso y callarlo.
+ * Es un identificador, asi que la regla del payload se respeta entera.
  */
 @Injectable()
 export class NotificacionesService {
@@ -56,6 +64,7 @@ export class NotificacionesService {
   async cupoAsignado(evento: CupoAsignado): Promise<void> {
     const datos: DatosNotificacionListaEspera = {
       tenantId: evento.tenantId,
+      reservaId: evento.reservaId,
       perfilId: evento.perfilId,
       turnoId: evento.turnoId,
       entradaId: evento.entradaId,
@@ -76,6 +85,7 @@ export class NotificacionesService {
 
     const datos: DatosNotificacionReserva = {
       tenantId: evento.tenantId,
+      reservaId: evento.reservaId,
       perfilId: evento.perfilId,
       turnoId: evento.turnoId,
       accion: evento.accion,
