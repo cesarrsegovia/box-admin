@@ -15,6 +15,7 @@ import {
 } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { ActualizarHorarioProfesorDto } from './dto/actualizar-horario-profesor.dto';
 import type { CrearHorarioProfesorDto } from './dto/crear-horario-profesor.dto';
 import { resolverProfesorDeFranja } from './resolver-profesor';
@@ -83,7 +84,27 @@ export class HorariosProfesorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly cache: CacheDeStats,
   ) {}
+
+  /**
+   * Tira el cache de reportes del gimnasio. SIEMPRE DESPUES DEL COMMIT.
+   *
+   * ESTE SERVICIO ES EL OCTAVO SITIO DE INVALIDACION, y el plan de la Fase 6A
+   * no lo tenia: `tarifaPorHora` y las franjas horarias entran directo en
+   * `calcularLiquidacion` -> `importes.aPagar` -> `costoProfesoras` ->
+   * `margen`. Subirle la tarifa a una profesora dejaba la caja enseñando un
+   * margen de la tarifa vieja hasta que venciera el TTL. Lo encontro una
+   * revision.
+   *
+   * Sin try/catch: `invalidar` no lanza nunca (ver `CacheDeStats`). Y fuera de
+   * la transaccion, no dentro: si esta aborta y reintenta, una invalidacion de
+   * mas solo cuesta un recalculo, pero un `INCR` hecho desde dentro de una
+   * transaccion que despues se desanda no se desanda con ella.
+   */
+  private async invalidarStats(actor: JwtPayload): Promise<void> {
+    await this.cache.invalidar(actor.tenantId);
+  }
 
   async crear(actor: JwtPayload, dto: CrearHorarioProfesorDto): Promise<HorarioProfesorPublico> {
     this.exigirHorasCoherentes(dto.horaInicio, dto.horaFin);
@@ -139,6 +160,8 @@ export class HorariosProfesorService {
 
       return fila;
     });
+
+    await this.invalidarStats(actor);
 
     return await this.obtener(creado.id);
   }
@@ -228,6 +251,8 @@ export class HorariosProfesorService {
       );
     });
 
+    await this.invalidarStats(actor);
+
     return await this.obtener(id);
   }
 
@@ -263,6 +288,8 @@ export class HorariosProfesorService {
         cliente,
       );
     });
+
+    await this.invalidarStats(actor);
   }
 
   /**

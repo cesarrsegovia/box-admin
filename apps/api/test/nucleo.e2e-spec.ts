@@ -364,7 +364,6 @@ describe('Fase 1 — nucleo operativo (e2e)', () => {
         ),
       );
 
-      console.log('STATUSES:', JSON.stringify(respuestas.map((r) => [r.status, r.text.slice(0, 300)])));
       const creadas = respuestas.filter((r) => r.status === 201);
       const rechazadas = respuestas.filter((r) => r.status === 409);
 

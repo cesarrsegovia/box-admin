@@ -357,10 +357,18 @@ describe('Fase 4 — el profesor como entidad real (e2e)', () => {
     // El motor no genera turno el dia cerrado, asi que dictadas son los otros tres.
     expect(body.minutosDictados).toBe(180);
     expect(body.franjas.find((f: any) => f.cerrada).motivoCierre).toBe('Feriado');
-    // La tarifa viaja resuelta, pero no hay ni un importe.
     expect(body.franjas[0].tarifaPorHora).toBe('1500.00');
     expect(body.franjas[0].origenTarifa).toBe('HORARIO');
-    expect(JSON.stringify(body)).not.toMatch(/importe/i);
+    // Hasta la Fase 6A esta linea afirmaba que NO habia ni un importe. La
+    // afirmacion caduco con la fase: la tarifa que viajaba resuelta ahora se
+    // multiplica, y la liquidacion llega con su dinero calculado. Se invierte en
+    // vez de borrarse para que el endpoint siga teniendo quien lo mire.
+    // Tres horas dictadas a 1500.00 y una cerrada, que se calcula y no se paga.
+    expect(body.importes.dictadas.texto).toBe('4500.00');
+    expect(body.importes.aPagar.texto).toBe('4500.00');
+    expect(body.importes.cerradas.texto).toBe('1500.00');
+    expect(body.importes.contratadasSinDictar.centavos).toBe(0);
+    expect(body.importes.minutosSinTarifa).toBe(0);
   });
 
   it('una profesora sin horarios devuelve ceros, no un error', async () => {

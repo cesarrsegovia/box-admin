@@ -208,4 +208,17 @@ describe('calcularLiquidacion', () => {
     expect(r.franjas.filter((f) => f.dictada)).toHaveLength(1);
     expect(r.minutosDictados).toBe(60);
   });
+
+  it('la liquidacion llega con sus importes ya calculados', () => {
+    // Octubre de 2026 tiene cuatro lunes (5, 12, 19 y 26), asi que son cuatro
+    // horas contratadas a 1500.00 y ninguna dictada.
+    const r = calcularLiquidacion(entrada({ mes: 10, tarifaDelTenant: null }));
+
+    // Sin turnos no hay dictadas, asi que no se paga nada; pero las contratadas
+    // existen y su importe tiene que estar calculado igual.
+    expect(r.importes.aPagar.centavos).toBe(0);
+    expect(r.importes.contratadasSinDictar.centavos).toBe(600_000);
+    expect(r.importes.contratadasSinDictar.texto).toBe('6000.00');
+    expect(r.importes.minutosSinTarifa).toBe(0);
+  });
 });

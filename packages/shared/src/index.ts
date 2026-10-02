@@ -10,3 +10,5 @@ export * from './selfservice.contracts';
 export * from './profesor.contracts';
 export * from './pagos.contracts';
 export * from './comunicacion.contracts';
+export * from './dinero.contracts';
+export * from './stats.contracts';

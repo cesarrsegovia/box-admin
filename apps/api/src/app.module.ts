@@ -32,6 +32,8 @@ import { ReservasModule } from './reservas/reservas.module';
 import { HorariosProfesorModule } from './horarios-profesor/horarios-profesor.module';
 import { RutinasModule } from './rutinas/rutinas.module';
 import { SalasModule } from './salas/salas.module';
+import { CacheModule } from './stats/cache.module';
+import { StatsModule } from './stats/stats.module';
 import { TurnosModule } from './turnos/turnos.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { VacacionesModule } from './vacaciones/vacaciones.module';
@@ -112,6 +114,10 @@ import { VacacionesModule } from './vacaciones/vacaciones.module';
     LiquidacionModule,
     ComprobantesModule,
     PagosModule,
+    // CacheModule antes que StatsModule por legibilidad, no por necesidad: es
+    // global, asi que Nest lo resuelve este donde este.
+    CacheModule,
+    StatsModule,
     PushModule,
     JobsModule,
   ],

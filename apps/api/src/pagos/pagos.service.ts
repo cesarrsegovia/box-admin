@@ -14,6 +14,7 @@ import {
 } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { CrearPagoDto } from './dto/crear-pago.dto';
 import type { EstadoPagoDto } from './dto/estado-pago.dto';
 import { estaAlDia, type PagoParaEstado } from './estado-de-pago';
@@ -77,6 +78,7 @@ export class PagosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly cache: CacheDeStats,
   ) {}
 
   async crear(actor: JwtPayload, dto: CrearPagoDto): Promise<PagoPublico> {
@@ -127,6 +129,23 @@ export class PagosService {
       return creada;
     });
 
+    // DESPUES del commit, nunca dentro de la transaccion. Redis no participa
+    // del rollback de Postgres: una invalidacion de adentro se quedaria hecha
+    // aunque la transaccion abortara, y —peor— si la transaccion se reintenta,
+    // el `incr` corre dos veces. Es la misma clase de error que la Fase 5B
+    // arreglo sacando el encolado de avisos fuera de la transaccion en
+    // `reservas.service.ts`, y se resuelve igual.
+    //
+    // El lado barato del trade-off: invalidar de mas solo cuesta un recalculo.
+    // El caro seria al reves —una caja que no muestra el cobro que se acaba de
+    // registrar— y es exactamente la llamada de soporte que este cache existe
+    // para no provocar.
+    //
+    // SIN try/catch: `invalidar` ya no lanza nunca (ver `CacheDeStats`). Una
+    // segunda capa que se tragara el error solo haria invisible un fallo del
+    // cache sin agregar ni una garantia.
+    await this.cache.invalidar(actor.tenantId);
+
     return aPagoPublico(fila as unknown as FilaPago);
   }
 
@@ -170,6 +189,10 @@ export class PagosService {
         cliente,
       );
     });
+
+    // Anular mueve la caja hacia abajo, asi que invalida igual que registrar.
+    // Post-commit y sin envolver, por los motivos escritos en `crear`.
+    await this.cache.invalidar(actor.tenantId);
 
     const fila = await this.prisma.db.pago.findFirst({ where: { id } });
     return aPagoPublico(fila as unknown as FilaPago);
@@ -234,6 +257,17 @@ export class PagosService {
         cliente,
       );
     });
+
+    // Tambien invalida, y no es un extra: una cortesia mueve `bonificado` y, al
+    // poner o sacar a alguien del dia, el `pendienteEstimado` de la caja.
+    //
+    // Que este metodo no invalidara mientras `crear` y `anular` —sus dos
+    // vecinos en este mismo archivo— si lo hacen seria la asimetria mas facil de
+    // copiar mal: el que escriba el proximo metodo de pagos miraria cualquiera
+    // de los tres con la misma probabilidad.
+    //
+    // Post-commit y sin envolver, por los motivos escritos en `crear`.
+    await this.cache.invalidar(actor.tenantId);
   }
 
   /**

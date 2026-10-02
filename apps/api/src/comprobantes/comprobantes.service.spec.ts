@@ -4,6 +4,7 @@ import { ComprobantesService } from './comprobantes.service';
 import type { AlmacenDeArchivos } from '../almacen/almacen.interface';
 import type { HistorialService } from '../common/historial/historial.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { CacheDeStats } from '../stats/cache-de-stats';
 
 const ALUMNO: JwtPayload = { sub: 'usr-1', tenantId: 'gym-1', rol: 'ALUMNO' };
 const ADMIN: JwtPayload = { sub: 'usr-admin', tenantId: 'gym-1', rol: 'ADMIN_OPERATIVO' };
@@ -49,6 +50,9 @@ function crearServicio() {
     eliminar: jest.fn().mockResolvedValue(undefined),
   };
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
+  // Desde la Fase 6A, aprobar tira el cache de reportes: el pago que nace en la
+  // misma transaccion entra en la caja como cualquier otro.
+  const cache = { invalidar: jest.fn().mockResolvedValue(undefined) };
 
   return {
     pago,
@@ -56,11 +60,14 @@ function crearServicio() {
       { db } as unknown as PrismaService,
       almacen as unknown as AlmacenDeArchivos,
       historial as unknown as HistorialService,
+      cache as unknown as CacheDeStats,
     ),
     comprobante,
     perfil,
     almacen,
     historial,
+    cache,
+    db,
   };
 }
 
@@ -278,18 +285,18 @@ describe('ComprobantesService.aprobar y rechazar', () => {
     comprobante.findFirst.mockResolvedValue({ ...FILA, subidoEn: null });
 
     // Aprobar un comprobante sin archivo seria aprobar la nada.
-    await expect(servicio.aprobar(ADMIN, 'comp-1', { monto: '25000.00', cubreHasta: '2099-12-31' })).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      servicio.aprobar(ADMIN, 'comp-1', { monto: '25000.00', cubreHasta: '2099-12-31' }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('404 si no existe', async () => {
     const { servicio, comprobante } = crearServicio();
     comprobante.findFirst.mockResolvedValue(null);
 
-    await expect(servicio.aprobar(ADMIN, 'comp-9', { monto: '25000.00', cubreHasta: '2099-12-31' })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      servicio.aprobar(ADMIN, 'comp-9', { monto: '25000.00', cubreHasta: '2099-12-31' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('registra la revision en el historial', async () => {
@@ -355,5 +362,63 @@ describe('ComprobantesService.aprobar y el pago', () => {
 
     await expect(servicio.aprobar(ADMIN, 'comp-1', APROBACION)).rejects.toThrow();
     expect(pago.create).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * LA INVALIDACION DEL CACHE DE REPORTES.
+ *
+ * Aprobar es el SEXTO sitio que invalida y el que faltaba en la lista de cinco
+ * de la Task 5. No es un pago "parecido" a los de `PagosService`: es un
+ * `pago.create` sobre la misma tabla, que la caja suma igual. La diferencia con
+ * los otros cinco es que aqui el admin acaba de mirar ese dinero a proposito, y
+ * lo siguiente que hace es abrir la caja.
+ */
+describe('ComprobantesService.aprobar invalida el cache DESPUES del commit', () => {
+  const APROBACION = { monto: '25000.00', cubreHasta: '2099-12-31' };
+
+  it('aprobar invalida el cache del gimnasio del actor', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.aprobar(ADMIN, 'comp-1', APROBACION);
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('nada se invalida mientras la transaccion sigue abierta', async () => {
+    // El pago y la aprobacion nacen juntos a proposito; el `incr` no puede ir
+    // con ellos, porque Redis no se desanda si la transaccion falla.
+    const { servicio, cache, db } = crearServicio();
+
+    let invalidadoDentro = false;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.aprobar(ADMIN, 'comp-1', APROBACION);
+
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechazar NO invalida: no nace ningun pago', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.rechazar(ADMIN, 'comp-1', 'ilegible');
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
+  });
+
+  it('una aprobacion que falla no invalida nada', async () => {
+    const { servicio, cache, comprobante } = crearServicio();
+    comprobante.findFirst.mockResolvedValue(null);
+
+    await expect(servicio.aprobar(ADMIN, 'comp-9', APROBACION)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
   });
 });

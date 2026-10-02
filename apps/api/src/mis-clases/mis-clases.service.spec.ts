@@ -5,6 +5,17 @@ const ACTOR = { sub: 'usuario-fati', tenantId: 't1', rol: 'PROFESOR' } as never;
 
 const historialFalso = { registrar: jest.fn().mockResolvedValue(undefined) } as never;
 
+/**
+ * El cache de reportes. Pasar lista mueve la asistencia y las horas dictadas, o
+ * sea la liquidacion y el margen de la caja, asi que desde la Fase 6A tambien
+ * invalida — y DESPUES del commit.
+ */
+const cacheFalso = { invalidar: jest.fn().mockResolvedValue(undefined) };
+
+beforeEach(() => {
+  cacheFalso.invalidar.mockClear();
+});
+
 function prismaFalso(estado: {
   perfil?: { id: string } | null;
   turnos?: Record<string, unknown>[];
@@ -68,7 +79,7 @@ const RANGO = { desde: '2026-09-01', hasta: '2026-09-30' };
 describe('MisClasesService.misClases', () => {
   it('devuelve solo las clases propias', async () => {
     const db = prismaFalso({ turnos: [TURNO_DE_FATI, TURNO_DE_ANA] });
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     const clases = await servicio.misClases(ACTOR, RANGO);
 
@@ -77,7 +88,7 @@ describe('MisClasesService.misClases', () => {
 
   it('listaPasada es false mientras nadie paso lista', async () => {
     const db = prismaFalso({ turnos: [TURNO_DE_FATI] });
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     const [clase] = await servicio.misClases(ACTOR, RANGO);
 
@@ -89,7 +100,7 @@ describe('MisClasesService.misClases', () => {
     const db = prismaFalso({
       turnos: [{ ...TURNO_DE_FATI, reservas: [{ asistio: true }, { asistio: null }] }],
     });
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     const [clase] = await servicio.misClases(ACTOR, RANGO);
 
@@ -100,7 +111,7 @@ describe('MisClasesService.misClases', () => {
     // Un admin, por ejemplo. No es un error del sistema: sencillamente no tiene
     // una vista de "mis clases" que mostrar.
     const db = prismaFalso({ perfil: null });
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.misClases(ACTOR, RANGO)).rejects.toThrow(NotFoundException);
   });
@@ -114,7 +125,7 @@ describe('MisClasesService.alumnos', () => {
         { perfilId: 'p1', asistio: true, perfil: { usuario: { nombreCompleto: 'Ana Perez' } } },
       ],
     });
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     const alumnos = await servicio.alumnos(ACTOR, 't-fati');
 
@@ -127,7 +138,7 @@ describe('MisClasesService.alumnos', () => {
     // 404 y no 403: confirmar que el turno existe pero es de otra ya seria
     // contar algo de la agenda ajena.
     const db = prismaFalso({ turnos: [TURNO_DE_FATI, TURNO_DE_ANA] });
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.alumnos(ACTOR, 't-ana')).rejects.toThrow(NotFoundException);
   });
@@ -149,7 +160,7 @@ describe('MisClasesService.pasarLista', () => {
 
   it('marca presentes y ausentes en la misma pasada', async () => {
     const db = prismaParaLista([{ perfilId: 'p1' }, { perfilId: 'p2' }, { perfilId: 'p3' }]);
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     await servicio.pasarLista(ACTOR, 't-fati', { presentes: ['p1', 'p3'] }, YA_PASO);
 
@@ -168,7 +179,7 @@ describe('MisClasesService.pasarLista', () => {
     // `notIn: []` es una condicion que Prisma ha resuelto de formas distintas
     // segun la version. Se evita generandola solo cuando hay presentes.
     const db = prismaParaLista([{ perfilId: 'p1' }]);
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     await servicio.pasarLista(ACTOR, 't-fati', { presentes: [] }, YA_PASO);
 
@@ -181,7 +192,7 @@ describe('MisClasesService.pasarLista', () => {
   it('rechaza a alguien que no tiene reserva en esa clase', async () => {
     // Un id equivocado marcaria ausente a media clase en silencio.
     const db = prismaParaLista([{ perfilId: 'p1' }]);
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(
       servicio.pasarLista(ACTOR, 't-fati', { presentes: ['p1', 'fantasma'] }, YA_PASO),
@@ -191,7 +202,7 @@ describe('MisClasesService.pasarLista', () => {
 
   it('no se puede pasar lista de una clase que no empezo', async () => {
     const db = prismaParaLista([{ perfilId: 'p1' }]);
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
     const antesDeEmpezar = new Date('2026-09-07T10:00:00.000Z');
 
     await expect(
@@ -201,11 +212,84 @@ describe('MisClasesService.pasarLista', () => {
 
   it('el turno de otra profesora devuelve 404 antes de escribir nada', async () => {
     const db = prismaFalso({ turnos: [TURNO_DE_FATI, TURNO_DE_ANA] });
-    const servicio = new MisClasesService({ db } as never, historialFalso);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.pasarLista(ACTOR, 't-ana', { presentes: [] }, YA_PASO)).rejects.toThrow(
       NotFoundException,
     );
     expect(db.reserva.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * LA INVALIDACION DEL CACHE DE REPORTES.
+ *
+ * Pasar lista es la escritura que mas reportes mueve: la asistencia, las horas
+ * dictadas de la profesora y, por ahi, el costo de profesoras y el margen de la
+ * caja. Y es la unica de las cinco en la que la invalidacion obligo a cambiar la
+ * forma del metodo: `pasarLista` devolvia desde DENTRO de la transaccion, y
+ * mientras lo hiciera no habia ningun "despues del commit" donde poner la
+ * linea.
+ */
+describe('MisClasesService.pasarLista invalida el cache DESPUES del commit', () => {
+  const YA_PASO = new Date('2026-09-07T20:00:00.000Z');
+
+  function prismaParaLista(reservas: { perfilId: string }[]) {
+    return prismaFalso({
+      turnos: [TURNO_DE_FATI],
+      reservas: reservas.map((r) => ({
+        ...r,
+        asistio: null,
+        perfil: { usuario: { nombreCompleto: r.perfilId } },
+      })),
+    });
+  }
+
+  it('invalida el cache del gimnasio del actor', async () => {
+    const db = prismaParaLista([{ perfilId: 'p1' }]);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
+
+    await servicio.pasarLista(ACTOR, 't-fati', { presentes: ['p1'] }, YA_PASO);
+
+    expect(cacheFalso.invalidar).toHaveBeenCalledWith('t1');
+  });
+
+  it('nada se invalida mientras la transaccion sigue abierta', async () => {
+    const db = prismaParaLista([{ perfilId: 'p1' }]);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
+
+    let invalidadoDentro = false;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      invalidadoDentro = cacheFalso.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.pasarLista(ACTOR, 't-fati', { presentes: ['p1'] }, YA_PASO);
+
+    expect(invalidadoDentro).toBe(false);
+    expect(cacheFalso.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('la lista sigue siendo lo que devuelve el metodo', async () => {
+    // El resultado se calcula dentro de la transaccion y se devuelve despues de
+    // invalidar: mover la linea no puede haberse comido la respuesta.
+    const db = prismaParaLista([{ perfilId: 'p1' }]);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
+
+    const lista = await servicio.pasarLista(ACTOR, 't-fati', { presentes: ['p1'] }, YA_PASO);
+
+    expect(lista.map((alumno) => alumno.perfilId)).toEqual(['p1']);
+  });
+
+  it('una lista rechazada no invalida nada', async () => {
+    const db = prismaParaLista([{ perfilId: 'p1' }]);
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
+
+    await expect(
+      servicio.pasarLista(ACTOR, 't-fati', { presentes: ['p1', 'fantasma'] }, YA_PASO),
+    ).rejects.toThrow(/fantasma/);
+
+    expect(cacheFalso.invalidar).not.toHaveBeenCalled();
   });
 });

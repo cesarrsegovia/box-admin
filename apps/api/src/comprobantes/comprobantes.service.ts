@@ -18,6 +18,7 @@ import {
 import { ALMACEN_DE_ARCHIVOS, type AlmacenDeArchivos } from '../almacen/almacen.interface';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { AprobarComprobanteDto } from './dto/aprobar-comprobante.dto';
 import type { CrearComprobanteDto } from './dto/crear-comprobante.dto';
 
@@ -60,6 +61,7 @@ export class ComprobantesService {
     private readonly prisma: PrismaService,
     @Inject(ALMACEN_DE_ARCHIVOS) private readonly almacen: AlmacenDeArchivos,
     private readonly historial: HistorialService,
+    private readonly cache: CacheDeStats,
   ) {}
 
   async crear(actor: JwtPayload, dto: CrearComprobanteDto): Promise<ComprobanteCreado> {
@@ -225,6 +227,21 @@ export class ComprobantesService {
       return actualizado;
     });
 
+    // APROBAR UN COMPROBANTE ES REGISTRAR UN COBRO, asi que invalida el cache
+    // de reportes igual que `PagosService.crear`: el `pago` que nace ahi arriba
+    // entra en la caja del mes exactamente como uno cargado a mano.
+    //
+    // Es la puerta por la que mas duele olvidarse. El admin acaba de hacer un
+    // gesto deliberado sobre ese dinero —abrir la transferencia, mirarla,
+    // aprobarla— y lo siguiente que hace es mirar la caja. Que no este es la
+    // llamada de soporte de la seccion 8 de la spec, entrando por el unico sitio
+    // que la lista de cinco de la Task 5 no miraba.
+    //
+    // DESPUES del commit y sin try/catch, por lo mismo que esta escrito en
+    // `PagosService.crear`: Redis no participa del rollback de Postgres, e
+    // `invalidar` no lanza nunca.
+    await this.cache.invalidar(actor.tenantId);
+
     return this.aPublico(fila, await this.firmarSiHayArchivo(fila));
   }
 
@@ -266,10 +283,7 @@ export class ComprobantesService {
   }
 
   /** Las dos comprobaciones que comparten aprobar y rechazar. */
-  private async exigirRevisable(
-    cliente: ClientePrismaTx,
-    id: string,
-  ): Promise<FilaComprobante> {
+  private async exigirRevisable(cliente: ClientePrismaTx, id: string): Promise<FilaComprobante> {
     const existente = (await cliente.comprobante.findFirst({
       where: { id },
     })) as FilaComprobante | null;

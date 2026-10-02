@@ -9,6 +9,7 @@ import {
 } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { PasarListaDto } from './dto/pasar-lista.dto';
 
 export interface RangoDeClases {
@@ -41,6 +42,7 @@ export class MisClasesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly cache: CacheDeStats,
   ) {}
 
   /**
@@ -123,7 +125,7 @@ export class MisClasesService {
   ): Promise<AlumnoEnClase[]> {
     const perfil = await this.perfilDelActor(actor);
 
-    return await this.prisma.db.$transaction(async (tx) => {
+    const lista = await this.prisma.db.$transaction(async (tx) => {
       const cliente = tx as ClientePrismaTx;
 
       const turno = await this.exigirTurnoPropio(cliente, turnoId, perfil.id);
@@ -181,6 +183,21 @@ export class MisClasesService {
 
       return await this.listaDeAlumnos(cliente, turnoId);
     });
+
+    // DESPUES del commit, nunca dentro de la transaccion. Pasar lista mueve la
+    // asistencia y las horas dictadas, o sea la liquidacion y el margen de la
+    // caja. Redis no participa del rollback de Postgres: un `incr` de adentro
+    // quedaria hecho aunque el `updateMany` se desandara. Mismo patron que el
+    // encolado post-commit de `reservas.service.ts` desde la Fase 5B.
+    //
+    // Por eso el resultado se guarda en vez de devolverse desde dentro: la
+    // unica forma de invalidar despues del commit es que la transaccion deje de
+    // ser lo ultimo que hace el metodo.
+    //
+    // Sin try/catch: `invalidar` no lanza nunca. Ver `CacheDeStats`.
+    await this.cache.invalidar(actor.tenantId);
+
+    return lista;
   }
 
   /**

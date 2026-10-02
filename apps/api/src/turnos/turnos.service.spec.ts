@@ -50,17 +50,24 @@ function crearServicio() {
     resolverParaFranja: jest.fn().mockResolvedValue(null),
   };
 
+  // El cache de reportes. Un turno mueve la ocupacion, y desde la Task 4 de la
+  // Fase 6A tambien el DINERO: `dictada` depende de que el turno exista.
+  const cache = { invalidar: jest.fn().mockResolvedValue(undefined) };
+
   return {
     servicio: new TurnosService(
       prisma,
       historial as unknown as HistorialService,
       horarios as unknown as HorariosProfesorService,
+      cache as never,
     ),
     turno,
     sala,
     reserva,
     historial,
     horarios,
+    cache,
+    db,
   };
 }
 
@@ -375,5 +382,83 @@ describe('TurnosService.crear con profesora', () => {
     await servicio.crear(ADMIN, ALTA);
 
     expect(turno.create.mock.calls[0]![0].data.profesorId).toBeNull();
+  });
+});
+
+/**
+ * LA INVALIDACION DEL CACHE DE REPORTES.
+ *
+ * El plan de la Fase 6A difirio este servicio a la Task 6 "por ocupacion", y
+ * era cierto mientras la caja no existia. Desde la Task 4 un turno mueve
+ * DINERO: una franja cuenta como `dictada` —y por tanto se paga— porque existe
+ * el turno. Crearlo, borrarlo, correrlo de hora o cambiarle la profesora cambia
+ * `costoProfesoras` y con el el `margen`.
+ */
+describe('TurnosService invalida el cache DESPUES del commit', () => {
+  const ALTA = {
+    salaId: 'sala-1',
+    nombre: 'Pilates',
+    fecha: '2026-10-05',
+    horaInicio: '18:00',
+    horaFin: '19:00',
+    cupo: 10,
+  };
+
+  it('crear invalida el cache del gimnasio del actor', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.crear(ADMIN, ALTA);
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('actualizar invalida: mover la hora cambia los minutos que se pagan', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.actualizar(ADMIN, 'turno-1', { horaFin: '20:00' });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('asignarProfesor invalida: la suplencia cambia a quien se le paga', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.asignarProfesor(ADMIN, 'turno-1', { profesorId: 'prof-2' });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('eliminar invalida: sin turno la franja deja de ser dictada', async () => {
+    const { servicio, cache, reserva } = crearServicio();
+    reserva.count.mockResolvedValue(0);
+
+    await servicio.eliminar(ADMIN, 'turno-1');
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('nada se invalida mientras la transaccion sigue abierta', async () => {
+    const { servicio, cache, db } = crearServicio();
+
+    let invalidadoDentro = false;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.crear(ADMIN, ALTA);
+
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('un borrado rechazado por reservas vivas no invalida nada', async () => {
+    const { servicio, cache, reserva } = crearServicio();
+    reserva.count.mockResolvedValue(3);
+
+    await expect(servicio.eliminar(ADMIN, 'turno-1')).rejects.toThrow(ConflictException);
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
   });
 });

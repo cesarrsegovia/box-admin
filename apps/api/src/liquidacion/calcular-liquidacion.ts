@@ -8,6 +8,7 @@ import {
   type LiquidacionProfesor,
   type OrigenTarifa,
 } from '@boxadmin/shared';
+import { calcularImportes } from './calcular-importes';
 
 export interface HorarioParaLiquidacion {
   salaId: string;
@@ -56,8 +57,10 @@ export interface EntradaLiquidacion {
  * por la tarifa y aplica ajustes— pueda construirse encima sin volver a derivar
  * nada.
  *
- * NO devuelve importes. El calculo en pesos es de la Fase 6; aqui la tarifa
- * viaja ya resuelta para que alli solo haya que multiplicar.
+ * DEVUELVE IMPORTES desde la Fase 6A. El calculo vive en `calcular-importes.ts`,
+ * separado porque es lo unico que determina lo que cobra una persona y merece su
+ * propia tabla de casos. Se llama desde aqui, y no desde un service, para que
+ * TODO el que pida una liquidacion reciba sus importes sin acordarse de sumarlos.
  */
 export function calcularLiquidacion(entrada: EntradaLiquidacion): LiquidacionProfesor {
   const franjas: FranjaDeLiquidacion[] = [];
@@ -157,6 +160,7 @@ export function calcularLiquidacion(entrada: EntradaLiquidacion): LiquidacionPro
     horasDictadas: aHoras(minutosDictados),
     horasCerradas: aHoras(minutosCerrados),
     franjas,
+    importes: calcularImportes(franjas),
   };
 }
 

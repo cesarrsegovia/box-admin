@@ -1,3 +1,5 @@
+import type { Importe } from './dinero.contracts';
+
 // ---------------------------------------------------------------------------
 // Fase 4 — El profesor como entidad real
 // ---------------------------------------------------------------------------
@@ -91,12 +93,40 @@ export interface FranjaDeLiquidacion {
 }
 
 /**
- * Las horas de una profesora en un mes.
+ * Lo que cuesta una liquidacion, por grupo de horas.
  *
- * NO lleva importes: el calculo en pesos —tarifas, ajustes, el "50% base"— es de
- * la Fase 6, y adelantarlo aqui duplicaria logica de reportes en dos sitios.
- * Lo que si lleva es la tarifa YA RESUELTA por franja, para que la Fase 6 solo
- * tenga que multiplicar.
+ * Los tres grupos se calculan SIEMPRE, pero solo `dictadas` se paga: es la
+ * decision de la Fase 6A, tomada con Cesar. Los otros dos viajan porque son la
+ * conversacion que el admin va a tener con la profesora, y porque esconderlos
+ * obligaria a recalcularlos a mano.
+ */
+export interface ImportesDeLiquidacion {
+  dictadas: Importe;
+  contratadasSinDictar: Importe;
+  cerradas: Importe;
+  /** Lo que se paga. Hoy es exactamente `dictadas`. */
+  aPagar: Importe;
+  /**
+   * Minutos de CUALQUIERA de los tres grupos que no entraron en su importe
+   * porque su franja no tenia tarifa ni propia ni del gimnasio.
+   *
+   * Va en el contrato en vez de ignorarse en silencio: un importe al que le
+   * faltan horas y no lo dice es un numero que parece completo y no lo esta.
+   * Mayor que cero significa "falta configurar una tarifa", no "trabajo menos".
+   *
+   * Cubre los tres grupos y no solo `dictadas` porque los otros dos tambien se
+   * muestran con importe: quien lee `cerradas` tiene el mismo derecho a saber
+   * que ese numero esta incompleto.
+   */
+  minutosSinTarifa: number;
+}
+
+/**
+ * Las horas de una profesora en un mes, con sus importes.
+ *
+ * La tarifa viaja YA RESUELTA por franja desde la Fase 4, y desde la Fase 6A
+ * `importes` trae el calculo en pesos hecho sobre ella. Ver
+ * `apps/api/src/liquidacion/calcular-importes.ts`.
  */
 export interface LiquidacionProfesor {
   profesorId: string;
@@ -112,4 +142,5 @@ export interface LiquidacionProfesor {
   horasDictadas: string;
   horasCerradas: string;
   franjas: FranjaDeLiquidacion[];
+  importes: ImportesDeLiquidacion;
 }

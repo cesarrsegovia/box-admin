@@ -24,6 +24,7 @@ import {
   type ReservaCambiada,
 } from '../notificaciones/notificaciones.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { CrearReservaDto } from './dto/crear-reserva.dto';
 import type { ReasignarReservaDto } from './dto/reasignar-reserva.dto';
 import { topeDelPack, ventanaDeConteo } from './ventana-pack';
@@ -86,6 +87,7 @@ export class ReservasService {
     private readonly historial: HistorialService,
     private readonly listaEspera: ListaEsperaService,
     private readonly notificaciones: NotificacionesService,
+    private readonly cache: CacheDeStats,
   ) {}
 
   /**
@@ -213,6 +215,7 @@ export class ReservasService {
       ),
     );
 
+    await this.invalidarStats(actor);
     await this.encolarAvisos(actor, avisos);
 
     return resultado;
@@ -306,9 +309,33 @@ export class ReservasService {
       ),
     );
 
+    await this.invalidarStats(actor);
     await this.encolarAvisos(actor, avisos);
 
     return resultado;
+  }
+
+  /**
+   * Tira el cache de reportes del gimnasio, ya con la transaccion cerrada.
+   *
+   * VA DONDE VA EL ENCOLADO Y POR EL MISMO MOTIVO, que esta explicado entero en
+   * `AvisosPendientes`: `crear` y `cancelar` corren en Serializable con
+   * reintento, Postgres puede abortarlas con 40001 despues de ejecutar el
+   * cuerpo, y Redis no participa de ese rollback. Un `incr` de adentro se
+   * quedaria hecho sobre una transaccion que no existio y el reintento haria
+   * otro.
+   *
+   * La asimetria con el encolado: un aviso fantasma no se puede desandar, pero
+   * una invalidacion de mas solo cuesta un recalculo. Por eso aqui el riesgo
+   * real es el otro —olvidarse— y lo acota el TTL de cinco minutos.
+   *
+   * NO LLEVA try/catch: `invalidar` no lanza nunca (ver `CacheDeStats`), y una
+   * segunda capa que tapara el error haria invisible un fallo del cache sin
+   * agregar ninguna garantia. Es distinto de `encolarAvisos`, cuyo try si hace
+   * falta porque alli protege de que OTRA clase deje de tragarse sus errores.
+   */
+  private async invalidarStats(actor: JwtPayload): Promise<void> {
+    await this.cache.invalidar(actor.tenantId);
   }
 
   /**

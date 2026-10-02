@@ -102,12 +102,23 @@ function prismaFalso(estado: {
 
 const historialFalso = { registrar: jest.fn().mockResolvedValue(undefined) } as never;
 
+/**
+ * El cache de reportes. Un horario mueve `tarifaPorHora` y los minutos de la
+ * franja, o sea `costoProfesoras` y el `margen` de la caja: este servicio es el
+ * octavo sitio de invalidacion de la Fase 6A.
+ */
+const cacheFalso = { invalidar: jest.fn().mockResolvedValue(undefined) };
+
+beforeEach(() => {
+  cacheFalso.invalidar.mockClear();
+});
+
 const PROFESORA = { id: 'fati', usuario: { rol: 'PROFESOR', nombreCompleto: 'Fati' } };
 
 describe('HorariosProfesorService.crear', () => {
   it('rechaza un perfil que no existe', async () => {
     const db = prismaFalso({ perfil: null });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(NotFoundException);
   });
@@ -116,7 +127,7 @@ describe('HorariosProfesorService.crear', () => {
     const db = prismaFalso({
       perfil: { id: 'fati', usuario: { rol: 'ALUMNO', nombreCompleto: 'Ana' } },
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(BadRequestException);
   });
@@ -126,7 +137,7 @@ describe('HorariosProfesorService.crear', () => {
     // puede ni ver, y las dos mitades del sistema dirian cosas distintas sobre
     // la misma clase.
     const db = prismaFalso({ perfil: PROFESORA, salas: ['sala-a'] });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.crear(ACTOR, baseDelAlta({ salaId: 'sala-b' }))).rejects.toThrow(
       /acceso a la sala/i,
@@ -135,7 +146,7 @@ describe('HorariosProfesorService.crear', () => {
 
   it('rechaza horaFin anterior a horaInicio', async () => {
     const db = prismaFalso({ perfil: PROFESORA });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(
       servicio.crear(ACTOR, baseDelAlta({ horaInicio: '19:00', horaFin: '18:00' })),
@@ -144,7 +155,7 @@ describe('HorariosProfesorService.crear', () => {
 
   it('rechaza hasta anterior a desde', async () => {
     const db = prismaFalso({ perfil: PROFESORA });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(
       servicio.crear(ACTOR, baseDelAlta({ desde: '2026-09-30', hasta: '2026-09-01' })),
@@ -168,7 +179,7 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(ConflictException);
   });
@@ -190,7 +201,7 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(ConflictException);
   });
@@ -213,7 +224,7 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).resolves.toMatchObject({
       profesorId: 'fati',
@@ -237,7 +248,7 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(
       servicio.crear(ACTOR, baseDelAlta({ desde: '2026-10-01' })),
@@ -262,7 +273,7 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(/dos salas a la vez/i);
   });
@@ -284,7 +295,7 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).resolves.toMatchObject({
       profesorId: 'fati',
@@ -305,7 +316,7 @@ describe('HorariosProfesorService.eliminar', () => {
       hasta: null,
       activo: true,
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await servicio.eliminar(ACTOR, 'h1');
 
@@ -324,7 +335,7 @@ describe('HorariosProfesorService.eliminar', () => {
       hasta: dia('2026-01-31'),
       activo: true,
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso);
+    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
 
     await servicio.eliminar(ACTOR, 'h1');
 
@@ -332,4 +343,103 @@ describe('HorariosProfesorService.eliminar', () => {
     expect(datos.activo).toBe(false);
     expect(datos.hasta).toBeUndefined();
   });
+});
+
+/**
+ * LA INVALIDACION DEL CACHE DE REPORTES — EL OCTAVO SITIO.
+ *
+ * El plan de la Fase 6A listaba siete y este no estaba. Un horario de profesora
+ * lleva `tarifaPorHora` y define los minutos de cada franja, y las dos cosas
+ * entran directo en `calcularLiquidacion` -> `importes.aPagar` ->
+ * `costoProfesoras` -> `margen`. Sin esto, subirle la tarifa a alguien dejaba
+ * la caja ensenando el margen de la tarifa vieja hasta que venciera el TTL, que
+ * es exactamente la llamada de soporte que el contador de version existe para
+ * que no ocurra.
+ */
+describe('HorariosProfesorService invalida el cache DESPUES del commit', () => {
+  const conProfesora = (): ReturnType<typeof prismaFalso> =>
+    prismaFalso({ perfil: PROFESORA, salas: ['sala-a'] });
+
+  const horarioExistente = {
+    id: 'h1',
+    profesorId: 'fati',
+    salaId: 'sala-a',
+    diaSemana: 1,
+    horaInicio: '18:00',
+    horaFin: '19:00',
+    desde: dia('2026-09-01'),
+    hasta: null,
+    activo: true,
+    // `actualizar` termina llamando a `obtener`, que mapea la fila entera.
+    tarifaPorHora: null,
+  };
+
+  it('crear invalida el cache del gimnasio del actor', async () => {
+    const db = conProfesora();
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
+
+    await servicio.crear(ACTOR, baseDelAlta());
+
+    expect(cacheFalso.invalidar).toHaveBeenCalledWith('t1');
+  });
+
+  it('actualizar invalida: ahi es donde cambia la tarifa', async () => {
+    const db = conProfesora();
+    db.horarioProfesorAsignado.findFirst = jest.fn().mockResolvedValue(horarioExistente);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
+
+    await servicio.actualizar(ACTOR, 'h1', { tarifaPorHora: '2500.00' } as never);
+
+    expect(cacheFalso.invalidar).toHaveBeenCalledWith('t1');
+  });
+
+  it('eliminar invalida: cierra el hasta y con el las horas contratadas', async () => {
+    const db = conProfesora();
+    db.horarioProfesorAsignado.findFirst = jest.fn().mockResolvedValue(horarioExistente);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
+
+    await servicio.eliminar(ACTOR, 'h1');
+
+    expect(cacheFalso.invalidar).toHaveBeenCalledWith('t1');
+  });
+
+  it('nada se invalida mientras la transaccion sigue abierta', async () => {
+    const db = conProfesora();
+
+    let invalidadoDentro = false;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      invalidadoDentro = cacheFalso.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicioDe(db).crear(ACTOR, baseDelAlta());
+
+    expect(invalidadoDentro).toBe(false);
+    expect(cacheFalso.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('un alta rechazada no invalida nada', async () => {
+    const db = prismaFalso({ perfil: null });
+
+    await expect(servicioDe(db).crear(ACTOR, baseDelAlta())).rejects.toThrow(NotFoundException);
+
+    expect(cacheFalso.invalidar).not.toHaveBeenCalled();
+  });
+
+  function servicioDe(db: ReturnType<typeof prismaFalso>): HorariosProfesorService {
+    return new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+  }
 });

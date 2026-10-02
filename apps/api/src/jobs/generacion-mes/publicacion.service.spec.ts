@@ -62,12 +62,17 @@ function crearServicio() {
   const prisma = { db } as unknown as PrismaService;
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
 
+  // Publicar un mes crea turnos con profesora de golpe: desde la Task 4 de la
+  // Fase 6A eso mueve `costoProfesoras` y el `margen` de la caja.
+  const cache = { invalidar: jest.fn().mockResolvedValue(undefined) };
+
   return {
-    servicio: new PublicacionService(prisma, historial as unknown as HistorialService),
+    servicio: new PublicacionService(prisma, historial as unknown as HistorialService, cache as never),
     turno,
     reserva,
     mesCalendario,
     historial,
+    cache,
     db,
   };
 }
@@ -355,5 +360,50 @@ describe('PublicacionService y las etiquetas de profesora', () => {
     });
 
     expect(turno.create.mock.calls[0]![0].data.profesorId).toBe('fati');
+  });
+});
+
+/**
+ * LA INVALIDACION DEL CACHE DE REPORTES.
+ *
+ * El plan de la Fase 6A difirio este sitio a la Task 6 "por ocupacion". Desde
+ * la Task 4 mueve DINERO: publicar un mes crea turnos y les pone profesora, y
+ * una franja se paga porque es `dictada`, o sea porque el turno existe.
+ */
+describe('PublicacionService invalida el cache DESPUES del commit', () => {
+  it('publicar un mes invalida el cache del gimnasio del actor', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.aplicar(ADMIN, 'sala-1', 2099, 10, planVacio());
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('nada se invalida mientras la transaccion sigue abierta', async () => {
+    const { servicio, cache, db } = crearServicio();
+
+    let invalidadoDentro = false;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.aplicar(ADMIN, 'sala-1', 2099, 10, planVacio());
+
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('si el cerrojo ya estaba tomado no se invalida nada', async () => {
+    // No se escribio una sola fila: el otro job es el que va a invalidar cuando
+    // termine. Invalidar igual convertiria a cada perdedor de una carrera en un
+    // recalculo completo de los reportes del gimnasio.
+    const { servicio, cache, mesCalendario } = crearServicio();
+    mesCalendario.updateMany.mockResolvedValue({ count: 0 });
+
+    await servicio.aplicar(ADMIN, 'sala-1', 2099, 10, planVacio());
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
   });
 });

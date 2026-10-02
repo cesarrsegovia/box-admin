@@ -7,6 +7,7 @@ import {
 } from '@boxadmin/shared';
 import { HistorialService } from '../../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../../prisma/prisma.service';
+import { CacheDeStats } from '../../stats/cache-de-stats';
 
 /**
  * ¿Este error significa "la fila ya existia"?
@@ -37,6 +38,7 @@ export class PublicacionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly cache: CacheDeStats,
   ) {}
 
   /**
@@ -54,7 +56,7 @@ export class PublicacionService {
     mes: number,
     plan: PlanDeMes,
   ): Promise<ResumenDelPlan> {
-    return await this.prisma.db.$transaction(async (tx) => {
+    const { resumen, publicado } = await this.prisma.db.$transaction(async (tx) => {
       const cliente = tx as ClientePrismaTx;
 
       // 1. El cerrojo, antes que cualquier escritura.
@@ -70,7 +72,10 @@ export class PublicacionService {
         this.logger.warn(
           `No se tomo el mes ${anio}-${mes} de la sala ${salaId}: otro job lo esta publicando, o no hay fila`,
         );
-        return { turnos: 0, reservas: 0, conflictos: 0, exclusiones: 0 };
+        return {
+          resumen: { turnos: 0, reservas: 0, conflictos: 0, exclusiones: 0 },
+          publicado: false,
+        };
       }
 
       // 2. Los turnos primero: las reservas cuelgan de ellos.
@@ -182,7 +187,25 @@ export class PublicacionService {
         cliente,
       );
 
-      return resumen;
+      return { resumen, publicado: true };
     });
+
+    // LA INVALIDACION DEL CACHE DE REPORTES, DESPUES DEL COMMIT.
+    //
+    // El plan de la Fase 6A difirio este sitio a la Task 6 "por ocupacion", y
+    // era cierto mientras la caja no existia. Publicar un mes crea turnos de
+    // golpe y les pone profesora: desde la Task 4 eso es `dictada`, o sea
+    // `importes.aPagar` -> `costoProfesoras` -> `margen`. Un mes publicado
+    // deja la caja desactualizada hasta el TTL si no se invalida aqui.
+    //
+    // SOLO SI DE VERDAD SE PUBLICO. Cuando el cerrojo no se toma no se escribio
+    // una sola fila, y aunque invalidar de mas sea barato, hacerlo sin motivo
+    // convertiria cada job perdedor de una carrera en un recalculo de todos los
+    // reportes del gimnasio.
+    //
+    // Sin try/catch: `invalidar` no lanza nunca. Ver `CacheDeStats`.
+    if (publicado) await this.cache.invalidar(actor.tenantId);
+
+    return resumen;
   }
 }

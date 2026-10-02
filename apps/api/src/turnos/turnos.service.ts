@@ -14,6 +14,7 @@ import {
 import { HistorialService } from '../common/historial/historial.service';
 import { HorariosProfesorService } from '../horarios-profesor/horarios-profesor.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { ActualizarTurnoDto } from './dto/actualizar-turno.dto';
 import type { AsignarProfesorDto } from './dto/asignar-profesor.dto';
 import type { CrearTurnoDto } from './dto/crear-turno.dto';
@@ -83,7 +84,27 @@ export class TurnosService {
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
     private readonly horarios: HorariosProfesorService,
+    private readonly cache: CacheDeStats,
   ) {}
+
+  /**
+   * Tira el cache de reportes del gimnasio. SIEMPRE DESPUES DEL COMMIT.
+   *
+   * EL PLAN DE LA FASE 6A DIFERIA ESTE SERVICIO A LA TASK 6 "por ocupacion", y
+   * eso era cierto solo mientras la caja no existia. Desde la Task 4 un turno
+   * mueve DINERO: `dictada` depende de que el turno exista, asi que crear,
+   * borrar, mover de hora o cambiarle la profesora a un turno cambia
+   * `importes.aPagar` -> `costoProfesoras` -> `margen`. Lo encontro una
+   * revision, y esperar a la Task 6 habria dejado la caja mintiendo entremedio.
+   *
+   * Sin try/catch: `invalidar` no lanza nunca (ver `CacheDeStats`). Y fuera de
+   * la transaccion: un `INCR` hecho dentro de una que despues se desanda no se
+   * desanda con ella, mientras que una invalidacion de mas solo cuesta un
+   * recalculo.
+   */
+  private async invalidarStats(actor: JwtPayload): Promise<void> {
+    await this.cache.invalidar(actor.tenantId);
+  }
 
   async crear(actor: JwtPayload, dto: CrearTurnoDto): Promise<TurnoPublico> {
     this.exigirHorasCoherentes(dto.horaInicio, dto.horaFin);
@@ -140,6 +161,8 @@ export class TurnosService {
 
       return creado;
     });
+
+    await this.invalidarStats(actor);
 
     // Se relee en vez de componer la respuesta a mano: la fila recien creada no
     // trae la relacion con la profesora, y `profesor` es parte del contrato.
@@ -224,6 +247,12 @@ export class TurnosService {
       );
     });
 
+    // Tambien aqui, aunque el plan solo nombrara crear/eliminar/asignarProfesor:
+    // este metodo mueve `fecha`, `horaInicio` y `horaFin`, o sea los MINUTOS de
+    // la franja dictada. Correr un turno media hora cambia lo que cobra una
+    // persona igual que cambiarle la profesora.
+    await this.invalidarStats(actor);
+
     return this.obtener(id);
   }
 
@@ -266,6 +295,8 @@ export class TurnosService {
       );
     });
 
+    await this.invalidarStats(actor);
+
     return await this.obtener(id);
   }
 
@@ -296,6 +327,8 @@ export class TurnosService {
         cliente,
       );
     });
+
+    await this.invalidarStats(actor);
   }
 
   private exigirHorasCoherentes(inicio: string, fin: string): void {

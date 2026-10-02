@@ -5,6 +5,7 @@ import type { HistorialService } from '../common/historial/historial.service';
 import type { ListaEsperaService } from '../lista-espera/lista-espera.service';
 import type { NotificacionesService } from '../notificaciones/notificaciones.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { CacheDeStats } from '../stats/cache-de-stats';
 
 const ADMIN: JwtPayload = { sub: 'usr-admin', tenantId: 'gym-1', rol: 'ADMIN_OPERATIVO' };
 
@@ -83,6 +84,10 @@ function crearServicio() {
     reservaCambiada: jest.fn().mockResolvedValue(undefined),
     cupoAsignado: jest.fn().mockResolvedValue(undefined),
   };
+  // Desde la Fase 6A, crear y cancelar tiran el cache de reportes del gimnasio:
+  // una reserva mueve la ocupacion y la asistencia. Tambien DESPUES del commit,
+  // y por el mismo motivo que los avisos.
+  const cache = { invalidar: jest.fn().mockResolvedValue(undefined) };
 
   return {
     servicio: new ReservasService(
@@ -90,6 +95,7 @@ function crearServicio() {
       historial as unknown as HistorialService,
       listaEspera as unknown as ListaEsperaService,
       notificaciones as unknown as NotificacionesService,
+      cache as unknown as CacheDeStats,
     ),
     turno,
     perfil,
@@ -97,6 +103,7 @@ function crearServicio() {
     historial,
     listaEspera,
     notificaciones,
+    cache,
     db,
   };
 }
@@ -674,5 +681,80 @@ describe('ReservasService no queda a merced del hook', () => {
     notificaciones.reservaCambiada.mockRejectedValue(new Error('Redis caido'));
 
     await expect(servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE')).resolves.toBeDefined();
+  });
+});
+
+/**
+ * LA INVALIDACION DEL CACHE DE REPORTES.
+ *
+ * Una reserva no mueve la caja, pero si la ocupacion y el denominador de la
+ * asistencia, que son los reportes de la Task 6. Y el cache es uno solo por
+ * gimnasio: el contador de version los invalida a todos de golpe, incluidos los
+ * que todavia no existen.
+ */
+describe('ReservasService invalida el cache de reportes DESPUES del commit', () => {
+  it('crear invalida el cache del gimnasio del actor', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('cancelar invalida tambien', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE');
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('crear: nada se invalida mientras la transaccion sigue abierta', async () => {
+    const { servicio, cache, db } = crearServicio();
+
+    let invalidadoDentro = false;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' });
+
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('crear: un aborto 40001 reintentado invalida UNA sola vez', async () => {
+    // El caso que obliga a que la linea viva fuera: el cuerpo entero corre dos
+    // veces, pero el commit ocurre una. Dentro de la transaccion, el `incr` del
+    // intento abortado quedaria hecho igual, porque Redis no se desanda.
+    const { servicio, cache, db } = crearServicio();
+
+    let intentos = 0;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      intentos += 1;
+      const salida = await fn(db);
+      if (intentos === 1) {
+        throw Object.assign(new Error('could not serialize access'), { code: '40001' });
+      }
+      return salida;
+    });
+
+    await servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' });
+
+    expect(intentos).toBe(2);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('una reserva rechazada por falta de cupo no invalida nada', async () => {
+    const { servicio, cache, reserva } = crearServicio();
+    reserva.count.mockResolvedValue(2); // el turno tiene cupo 2
+
+    await expect(servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' })).rejects.toThrow(
+      ConflictException,
+    );
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
   });
 });
