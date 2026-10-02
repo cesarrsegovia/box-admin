@@ -1268,14 +1268,23 @@ Task 5 encontró que la lista de cinco cubría el dinero y nada más. Los que fa
 no existían todavía, así que entran con la tarea que crea el reporte que los necesita — así cada
 invalidación llega con el test que la justifica, en vez de ser una línea que nadie sabe por qué está:
 
+⚠️ **CORREGIDO: cuatro de estos NO esperan a la Task 6.** Los mandé a la 6 "por ocupación" cuando la
+caja todavía no existía. Desde la Task 4 **ya mueven `costoProfesoras`**, porque una franja cuenta como
+dictada si existe el turno: crear, borrar o reasignar la profesora de un turno cambia lo que se le
+paga, y eso entra en el margen. Lo encontró la revisión de las Tasks 3-5.
+
 | Sitio | Qué reporte mueve | Tarea |
 |---|---|---|
+| `HorariosProfesorService.crear` / los dos `update` | **el margen**: escribe `tarifaPorHora` y las franjas | **5** |
+| `TurnosService.crear` / `actualizar` / `eliminar` | **el margen** (y la ocupación) | **5** |
+| `TurnosService.asignarProfesor` | **el margen**, vía `profesorId` | **5** |
+| `PublicacionService.aplicar` | **el margen** y la ocupación: crea turnos en masa | **5** |
 | `ReservasService.reasignar` | ocupación (mueve una reserva entre turnos) | 6 |
-| `TurnosService.crear` / `actualizar` / `eliminar` | ocupación | 6 |
-| `TurnosService.asignarProfesor` | la liquidación, vía `profesorId` | 6 |
-| `PublicacionService.aplicar` | ocupación: el job del mes crea turnos y reservas en masa | 6 |
 | `UsuariosService.actualizar` | composición y pendiente, si cambia el `packId` | 7 y 8 |
 | `PacksService.actualizar` | el pendiente estimado, si cambia el precio | 7 |
+
+`AusenciasService` **no** hace falta y el plan acierta al no listarlo: `cerrada` depende de que *no*
+haya turno, y como `aPagar = dictadas`, una ausencia no mueve lo que se paga.
 
 `ListaEsperaService.asignarPrimero` **no hace falta**: su único llamador es `ReservasService.cancelar`,
 que ya invalida.
@@ -1288,6 +1297,26 @@ crear es el mismo problema de confianza que la §8 describe para el dinero.
 
 **Files:**
 - Modificar: `apps/api/src/stats/stats.datos.ts`, `stats.service.ts` · `.spec.ts`, `stats.controller.ts`
+- ⚠️ **CORREGIDO: tambien crea `apps/api/src/stats/dto/consulta-operativa.dto.ts`.** La lista no lo
+  traia, y no es opcional: `ConsultaMensualDto` no solo no tiene `salaId`, sino que **su ausencia es
+  la funcionalidad** —el `ValidationPipe` global corre con `forbidNonWhitelisted`, asi que mandarlo
+  da 400, y asi lo exige un caso de la Task 4—. Agregarselo habria roto ese caso y la decision que
+  protege. El DTO nuevo **extiende** al de la caja para no tener dos copias de `@Min(1) @Max(12)`, y
+  solo suma el `salaId`.
+
+⚠️ **LA COBRANZA NO SE ACOTA POR `salaId`, y el plan no lo decia.** Las otras cuatro metricas salen
+de turnos y un `Turno` tiene sala, asi que recortarlas es limpio. Estar al dia es una propiedad del
+alumno y de sus pagos, no de una clase, y un alumno tiene acceso a varias salas a la vez: repartirlo
+exigiria exactamente la atribucion de ingresos que la seccion 3 de la spec borro y que hizo que la
+caja rechazara el `salaId`. Queda escrito en el docblock de `StatsService.operativo` y con un caso
+que fija que mandar `salaId` NO mueve la cobranza, para que sea una decision cubierta y no un olvido
+que un dia alguien "arregle".
+
+⚠️ **LA COBRANZA SE EVALUA AL CIERRE DEL MES, no con el reloj**, y el plan tampoco lo decia. Es la
+misma trampa que `pendienteEstimado` en la Task 4, pero aqui muerde mas fuerte: sin la fecha de
+cierre, `perfilesAlDia` cae en su default `new Date()` y los CUATRO meses del reporte devuelven el
+mismo numero. Una serie trimestral con la cobranza clavada en los cuatro puntos no se lee como un
+bug: se lee como "la cobranza no se mueve". Tiene su caso y su mutacion.
 
 - [ ] **Step 1: Los tests de las definiciones**
 
@@ -1341,6 +1370,19 @@ denominador es cero. **Nunca un `0` que signifique "no se sabe".**
 | Sumar las dos cancelaciones en una sola métrica | `separa la cancelacion recuperable de la definitiva` |
 | Usar el cupo de la sala | `la ocupacion usa el cupo DEL TURNO` |
 | Devolver el trimestre al revés | `del mas viejo al mas nuevo` |
+| La cobranza con el reloj en vez del cierre del mes | `la cobranza de cada mes se evalua al CIERRE de ese mes` |
+| Denominador de cancelación = solo las vivas | `el denominador de la cancelacion son TODAS las reservas` |
+| Descartar los turnos sin reservas de la ocupación | `un turno al que no se anoto nadie SI cuenta en la ocupacion` |
+| Contar las canceladas como ocupación | `las canceladas no ocupan lugar ni cuentan como falta` |
+| Ignorar el `salaId` al traer los turnos | `acota a la sala pedida las metricas que cuentan clases` |
+| Quitar el `invalidar` de `ReservasService.reasignar` | `reasignar invalida el cache del gimnasio del actor` |
+| Moverlo DENTRO de la transacción | `reasignar: nada se invalida mientras la transaccion sigue abierta` |
+
+⚠️ **La mutación "usar el cupo de la sala" NO se podia escribir tal cual.** El codigo correcto no
+consulta `Sala` en ningun momento, asi que la mutacion tuvo que agregar la consulta a
+`Sala.cupoBase` para poder intentarse, y el doble de Prisma de `stats.service.spec.ts` tuvo que
+aprender ese campo (opcional, para no obligar a las Tasks 7 y 8 a ponerlo). Sin eso, el resultado no
+habria sido "no rompio nada" sino "no se pudo intentar", que es otra cosa.
 
 ---
 
@@ -1348,6 +1390,38 @@ denominador es cero. **Nunca un `0` que signifique "no se sabe".**
 
 **Files:**
 - Modificar: `apps/api/src/stats/stats.datos.ts`, `stats.service.ts` · `.spec.ts`, `stats.controller.ts`
+- ⚠️ **CORREGIDO: tambien crea tres archivos de DTO.** `apps/api/src/stats/dto/consulta-turnos-libres.dto.ts`,
+  `apps/api/src/stats/dto/consulta-pagos-pendientes.dto.ts` y `apps/api/src/stats/dto/patron-id.ts`.
+  La lista no los traia y no son opcionales: sin un `@Query()` apuntando a un DTO, Nest **ignora en
+  silencio** los query params, y entonces `?salaId=` en pagos-pendientes vuelve a ser una mentira con
+  codigo 200. `patron-id.ts` existe porque la misma regex la necesitan el `salaId` del operativo, el
+  de los turnos libres y el `perfilId` de la asistencia, y tres copias son tres copias que algun dia
+  discrepan.
+
+⚠️ **`/stats/pagos-pendientes` NO ACEPTA `salaId`, y se quito al implementarlo.** La spec y el plan lo
+pedian. El motivo es el MISMO por el que la caja lo rechaza y por el que la cobranza del operativo no
+se acota: estar al dia es una propiedad del alumno y de sus pagos, un alumno accede a varias salas a
+la vez, y su `pendienteEstimado` es el precio de su pack **entero**, no el de una sala. La misma
+persona apareceria con su deuda completa en la lista de la sala A y en la de la B, y sumar las dos
+listas contaria el mismo peso dos veces: exactamente la atribucion de ingresos que la seccion 3 de la
+spec borro. El DTO queda **vacio** a proposito, para que `forbidNonWhitelisted` devuelva 400 en vez de
+aceptarlo y no hacer nada.
+
+⚠️ **LA FECHA DE EVALUACION DE LOS DOS REPORTES ES HOY, Y AQUI ESO ESTA BIEN.** El plan no lo decia, y
+despues de que la caja y el operativo mintieran dos veces por un `new Date()` por defecto conviene que
+quede escrito por que aqui no es lo mismo: ninguno de estos dos esta indexado por un periodo —no se
+puede pedir "los turnos libres de marzo de 2024" ni "los morosos de marzo"—, asi que "hoy" no se
+esconde debajo de otra fecha prometida; es la pregunta. Consecuencias que SI se implementaron: el dia
+entra en la clave del cache de los dos, el corte de "futuro" es por DIA y no por hora (la hora del
+turno es "local del salon" y el sistema no guarda husos; ver `instanteDelTurno`), y hay un caso que
+fija que dos relojes distintos dan respuestas DISTINTAS en pagos-pendientes, que es el inverso del
+caso de dos relojes de la caja.
+
+⚠️ **Y por eso `/stats/pagos-pendientes` no tiene por que cuadrar al centavo con el
+`pendienteEstimado` de la caja.** Es la misma lista, de la misma funcion pura `pendientesDe`, sobre
+los mismos perfiles: lo unico distinto es la fecha a la que se pregunta quien esta al dia —alli el
+cierre del mes pedido, aqui hoy—. Queda escrito en los dos docblocks para que nadie lo reporte como
+un bug.
 
 - [ ] **Step 1: Los tests**
 
@@ -1410,22 +1484,58 @@ base.
 **Files:**
 - Modificar: `apps/api/src/stats/stats.datos.ts`, `stats.service.ts` · `.spec.ts`, `stats.controller.ts`
 - Crear: `apps/api/src/stats/dto/consulta-rango.dto.ts`
+- ⚠️ **CORREGIDO: tambien toca `apps/api/src/usuarios/usuarios.service.ts` y
+  `apps/api/src/packs/packs.service.ts`** (mas sus `.spec.ts`). Son las dos invalidaciones que estas
+  tasks estrenan, y la lista de archivos no las traia.
 
 - [ ] **Step 1: El DTO del rango**
 
+⚠️ **CORREGIDO: `@IsDateString()` no sirve aqui, y `@IsString()` tampoco para el `perfilId`.**
+
+- `@IsDateString` acepta un ISO 8601 **completo**, asi que `?desde=2026-10-01T12:00:00Z` pasaria la
+  validacion y llegaria al service, donde `desdeFechaISO` lo rechaza con una `FechaInvalidaError` que
+  nadie traduce: un **500 opaco en vez de un 400**. Y ademas los `:` del timestamp entrarian en la
+  clave del cache. Los otros nueve DTOs con fechas del repositorio usan `PATRON_FECHA` desde la Fase 1.
+- El `perfilId` es el mismo tipo de valor que el `salaId` del operativo —texto de la query que entra
+  en una clave de Redis— y la regla "a la clave solo van valores ya validados" no distingue entre un
+  id de sala y uno de perfil.
+
 ```ts
 export class ConsultaRangoDto {
-  @IsDateString()
+  @IsString()
+  @Matches(PATRON_FECHA, { message: 'desde debe tener formato YYYY-MM-DD' })
   desde!: string;
 
-  @IsDateString()
+  @IsString()
+  @Matches(PATRON_FECHA, { message: 'hasta debe tener formato YYYY-MM-DD' })
   hasta!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_LARGO_ID)
+  @Matches(PATRON_ID, { message: 'perfilId debe ser un identificador valido' })
   perfilId?: string;
 }
 ```
+
+⚠️ **EL RANGO TAMBIEN LLEVA TOPE, y el plan no lo pedia.** Es el mismo riesgo que `mesesAdelante`
+escrito con otras palabras: sin tope, un `?desde=2000-01-01&hasta=2099-12-31` recorre todas las
+reservas del gimnasio y el reporte se vuelve una forma comoda de tirar la base. Se recorta a 366 dias
+y **el `hasta` que vuelve en el reporte es el recortado**, nunca el pedido: devolver el pedido seria
+decir que se miro un ano que no se miro. El rango invertido si es un 400, y vive en el service porque
+es una relacion entre dos campos y los validadores de class-validator miran uno solo.
+
+⚠️ **LA COMPOSICION FILTRA POR ROL `ALUMNO`, Y SIN ESO EL REPORTE ES FALSO.** El plan hablaba de
+"perfiles activos" y no lo decia. Una profesora tiene `Perfil` y no tiene pack: sin el filtro cae en
+el grupo "Sin pack" e infla con el personal del gimnasio el reporte que dice cuantos **alumnos** hay
+en cada plan. Hay un caso que lo fija, y la mutacion que quita el filtro lo tira.
+
+⚠️ **`UsuariosService.darDeBaja` TAMBIEN invalida, y el brief solo pedia `actualizar`.** La
+composicion cuenta los perfiles **activos**, asi que una baja le cambia el total y el reparto por pack
+sin que nadie toque un pack ni un pago. Lo destapo una mutacion mal aplicada. `actualizarSalas`, en
+cambio, **no** invalida: a que salas accede un alumno no entra en ningun reporte —los que se acotan
+por sala lo hacen por la sala del TURNO—, y hay un caso que lo fija para que sea una decision y no un
+olvido.
 
 - [ ] **Step 2: Los tests**
 
@@ -1463,6 +1573,80 @@ Los dos endpoints van con `@Roles('ADMIN_OPERATIVO')`.
 | Descartar los alumnos sin pack | `los alumnos sin pack se agrupan aparte` |
 | `porcentaje: 0` para quien no tiene lista pasada | `un alumno sin lista pasada tiene porcentaje null` |
 | Aceptar el rango invertido | `un rango invertido es 400` |
+
+---
+
+## Lo que encontro la revision de las Tasks 6, 7 y 8
+
+Seis cosas, todas corregidas y con su caso y su mutacion.
+
+**1. El denominador de la asistencia del operativo se contradecia con el de por alumno.**
+`metricasDelMes` preguntaba si el TURNO tenia lista pasada y, si la tenia, metia en el denominador
+TODAS sus reservas vivas; `calcularAsistencia` contaba solo `presentes + ausentes`. Una reserva que
+entra **despues** de que la profesora pasara lista —por `reasignar`, por la lista de espera, por un
+alta a mano— se queda con `asistio: null` para siempre, y el turno sigue teniendo lista pasada: esa
+persona entraba como ausencia. Medido sobre el mismo turno y las mismas tres reservas: operativo
+**33,33%**, por alumno **A 100% · B 0% · C null**, agregado real **50%** — mientras los dos docblocks
+afirmaban usar "la MISMA definicion".
+
+Lo que lo delataba: ese alumno sale con `porcentaje: null` en su propio reporte. **El codigo ya sabia
+que ese caso era "no se sabe"** y en el agregado lo contaba como ausencia igual. Es la mutacion que la
+seccion 9.1 declara como la mas peligrosa, en version chica y viviendo dentro del codigo correcto.
+
+El arreglo es **mas simple que lo que habia**: el denominador son las reservas con `asistio !== null`,
+y punto. No hace falta saber si el turno tuvo lista pasada — lo que importa de cada reserva es si
+**esa reserva** fue marcada. Eso unifica las dos definiciones, hace innecesario `listaPasada` para esta
+metrica y conserva lo que importa: un mes sin ninguna lista da denominador cero y `porcentaje: null`.
+`listaPasada` sigue siendo correcto en `mis-clases.service.ts`, donde decide si mostrarle a la
+profesora la lista de un turno —una pregunta sobre el TURNO—; traerlo prestado aqui fue reutilizar una
+regla que contestaba otra cosa.
+
+**2. Un alumno dado de baja desaparecia de la composicion y seguia debiendo en los otros tres.**
+`alumnosActivos()` filtraba `activo: true`; `perfilesConPack()` no filtraba ni por rol ni por `activo`,
+y `darDeBaja` no limpia el `packId`. La misma persona era "no es alumno" para un reporte y "alumno que
+debe" para tres. Lo peor era la cobranza: **decaia para siempre**, porque cada ex-alumno se quedaba en
+el denominador sin poder volver a estar al dia jamas. Un indicador que baja solo es exactamente el
+numero plausible y equivocado que la seccion 6 existe para evitar.
+
+Era una decision que nadie habia tomado, solo heredada. **Tomada: los cuatro reportes usan la misma
+poblacion, alumnos activos.** Recepcion no llama a quien se fue; la cobranza mide a los alumnos que el
+gimnasio TIENE, no a los que tuvo; y el pendiente de la caja de un mes es lo que ese mes quedo sin
+cobrar de su gente, no una deuda historica acumulada. El filtro de rol no es redundante con el de
+pack: `Perfil.packId` es opcional para todos, asi que el dia que alguien le asigne un pack a una
+profesora apareceria en los morosos.
+
+**3. Faltaban cuatro `invalidar`.**
+
+- **`UsuariosService.crear`** — el hueco exacto que los otros vinieron a tapar: el alta suma un perfil
+  al total y al reparto por pack, **y** mete un alumno con pack que no esta al dia en los morosos y en
+  el pendiente de la caja. Es la llamada de soporte del cache con el verbo cambiado: *"di de alta al
+  alumno y no aparece en el panel"*.
+- **`SalasService.actualizar`** — `salaNombre` sale del catalogo en `/stats/turnos-libres`.
+- **`AusenciasService.crear` y `.darDeBaja`** — `liquidacion.datos.ts` lee la tabla `ausencia` desde la
+  Fase 4, asi que un cierre mueve `importes.aPagar`, `costoProfesoras` y el `margen`.
+
+`SalasService.crear`/`darDeBaja` y `UsuariosService.actualizarSalas`
+**no** invalidan, cada uno con su caso que lo fija: una sala nueva no tiene turnos, la que se da de
+baja tampoco tiene ninguno por delante (`exigirSinTurnosFuturos`), y a que salas accede un alumno no
+entra en ningun reporte.
+
+**4. El `mesesAdelante` recortado no volvia en la respuesta**, mientras el `hasta` de asistencia si. El
+codigo daba uno y no lo decia, asi que quien pedia dos anos leia una lista corta como "no hay mas
+turnos" en vez de como "no miramos mas alla". `/stats/turnos-libres` devuelve ahora
+`ReporteTurnosLibres { mesesAdelante, turnos }` en vez de `TurnoLibre[]`.
+
+**5. El docblock de `ConsultaRangoDto` afirmaba de mas.** Decia que un timestamp viajaria a la clave
+del cache, y no viaja: `desdeFechaISO` lanza antes de `cache.recordar`. La otra mitad —el 500 opaco—
+si es cierta y alcanza para justificar `PATRON_FECHA`. Queda solo lo verdadero.
+
+**6. Dos comentarios describian un caso inalcanzable.** El `?? 'todas'` se justificaba con "una sala de
+id vacio compartiria clave", y por HTTP `?salaId=` llega como `''` y lo rechaza `@Matches` con 400. El
+`?? 'todas'` sigue haciendo falta —para `undefined`, que si no se interpola como el texto
+`"undefined"`— pero el motivo escrito no era el real.
+
+**Lo que se miro y se dejo como esta:** la ocupacion puede pasar de 100% si bajan el cupo de un turno
+que ya tiene reservas, y ese es el numero honesto; y el codigo defensivo del pack borrado es
+inofensivo.
 
 ---
 

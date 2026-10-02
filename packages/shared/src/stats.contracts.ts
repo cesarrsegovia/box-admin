@@ -83,6 +83,22 @@ export interface TurnoLibre {
   libres: number;
 }
 
+/**
+ * Los turnos con lugar, y CUANTOS MESES SE MIRARON DE VERDAD.
+ *
+ * `mesesAdelante` no es decorativo y no es el eco del parametro: es el numero
+ * YA RECORTADO. Pedir 24 devuelve 12, porque la respuesta correcta a "dame dos
+ * anos" no es un error sino "te doy uno" — pero sin este campo el reporte daba
+ * uno y no lo decia, y quien pidio dos leia una lista corta como "no hay mas
+ * turnos" en vez de como "no miramos mas alla". Mismo criterio que el `hasta`
+ * de `ReporteAsistencia`, que tambien vuelve recortado.
+ */
+export interface ReporteTurnosLibres {
+  /** Los meses efectivamente mirados. Puede ser menos que los pedidos. */
+  mesesAdelante: number;
+  turnos: TurnoLibre[];
+}
+
 export interface PagoPendiente {
   perfilId: string;
   nombreCompleto: string;

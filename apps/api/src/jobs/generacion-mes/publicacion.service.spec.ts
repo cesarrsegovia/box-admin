@@ -67,7 +67,11 @@ function crearServicio() {
   const cache = { invalidar: jest.fn().mockResolvedValue(undefined) };
 
   return {
-    servicio: new PublicacionService(prisma, historial as unknown as HistorialService, cache as never),
+    servicio: new PublicacionService(
+      prisma,
+      historial as unknown as HistorialService,
+      cache as never,
+    ),
     turno,
     reserva,
     mesCalendario,

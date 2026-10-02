@@ -9,6 +9,7 @@ import {
 } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { CrearAusenciaDto } from './dto/crear-ausencia.dto';
 
 export interface FiltroAusencias {
@@ -42,6 +43,7 @@ export class AusenciasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly cache: CacheDeStats,
   ) {}
 
   async crear(actor: JwtPayload, dto: CrearAusenciaDto): Promise<AusenciaPublica> {
@@ -109,6 +111,17 @@ export class AusenciasService {
       return creada;
     });
 
+    // UN CIERRE MUEVE DINERO, aunque no lo parezca. `liquidacion.datos.ts` lee
+    // la tabla `ausencia` desde la Fase 4: una franja que cae dentro de un
+    // cierre deja de contar, asi que crear o retirar uno cambia
+    // `importes.aPagar` de alguna profesora y con el `costoProfesoras` y el
+    // `margen` de `/stats/caja`. Es el mismo razonamiento por el que
+    // `TurnosService` invalida: lo que decide que horas se pagan tiene que tirar
+    // el cache de la caja.
+    //
+    // Post-commit y sin try/catch. Ver `CacheDeStats`.
+    await this.cache.invalidar(actor.tenantId);
+
     return aAusenciaPublica(ausencia);
   }
 
@@ -162,6 +175,17 @@ export class AusenciasService {
 
       return borrada;
     });
+
+    // UN CIERRE MUEVE DINERO, aunque no lo parezca. `liquidacion.datos.ts` lee
+    // la tabla `ausencia` desde la Fase 4: una franja que cae dentro de un
+    // cierre deja de contar, asi que crear o retirar uno cambia
+    // `importes.aPagar` de alguna profesora y con el `costoProfesoras` y el
+    // `margen` de `/stats/caja`. Es el mismo razonamiento por el que
+    // `TurnosService` invalida: lo que decide que horas se pagan tiene que tirar
+    // el cache de la caja.
+    //
+    // Post-commit y sin try/catch. Ver `CacheDeStats`.
+    await this.cache.invalidar(actor.tenantId);
 
     return aAusenciaPublica(ausencia);
   }

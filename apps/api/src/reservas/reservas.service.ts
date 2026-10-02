@@ -319,11 +319,11 @@ export class ReservasService {
    * Tira el cache de reportes del gimnasio, ya con la transaccion cerrada.
    *
    * VA DONDE VA EL ENCOLADO Y POR EL MISMO MOTIVO, que esta explicado entero en
-   * `AvisosPendientes`: `crear` y `cancelar` corren en Serializable con
-   * reintento, Postgres puede abortarlas con 40001 despues de ejecutar el
-   * cuerpo, y Redis no participa de ese rollback. Un `incr` de adentro se
-   * quedaria hecho sobre una transaccion que no existio y el reintento haria
-   * otro.
+   * `AvisosPendientes`: `crear`, `cancelar` y `reasignar` corren las tres en
+   * Serializable con reintento, Postgres puede abortarlas con 40001 despues de
+   * ejecutar el cuerpo, y Redis no participa de ese rollback. Un `incr` de
+   * adentro se quedaria hecho sobre una transaccion que no existio y el
+   * reintento haria otro.
    *
    * La asimetria con el encolado: un aviso fantasma no se puede desandar, pero
    * una invalidacion de mas solo cuesta un recalculo. Por eso aqui el riesgo
@@ -394,7 +394,7 @@ export class ReservasService {
     // avisa a nadie. La Fase 5B solo pide notificar `crear` y `cancelar`; si
     // aqui hace falta un aviso (y con que plantilla, porque no es ninguna de las
     // que hay) se decide aparte.
-    return this.conReintentoDeCupo(() =>
+    const reasignada = await this.conReintentoDeCupo(() =>
       this.prisma.db.$transaction(
         async (tx) => {
           const cliente = tx as ClientePrismaTx;
@@ -458,6 +458,15 @@ export class ReservasService {
         { isolationLevel: 'Serializable' },
       ),
     );
+
+    // Reasignar no mueve la caja, pero SI la ocupacion: la reserva deja un lugar
+    // libre en un turno y lo ocupa en otro, y los dos turnos pueden estar en
+    // meses o salas distintos. Va aqui y no dentro de la transaccion por lo
+    // mismo que en `crear` y `cancelar` —esta corre en Serializable con
+    // reintento—; el porque entero esta en `invalidarStats`.
+    await this.invalidarStats(actor);
+
+    return reasignada;
   }
 
   /**

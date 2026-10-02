@@ -300,9 +300,9 @@ describe('TurnosService.asignarProfesor', () => {
       new BadRequestException('Fati no tiene acceso a la sala Sala A'),
     );
 
-    await expect(servicio.asignarProfesor(ADMIN, 'turno-1', { profesorId: 'fati' })).rejects.toThrow(
-      /acceso a la sala/i,
-    );
+    await expect(
+      servicio.asignarProfesor(ADMIN, 'turno-1', { profesorId: 'fati' }),
+    ).rejects.toThrow(/acceso a la sala/i);
     expect(turno.update).not.toHaveBeenCalled();
   });
 

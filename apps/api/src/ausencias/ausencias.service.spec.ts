@@ -42,14 +42,77 @@ function crearServicio() {
   };
   const prisma = { db } as unknown as PrismaService;
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
+  // El cache de reportes. Un cierre cambia que horas se pagan, y con ellas el
+  // `costoProfesoras` y el `margen` de la caja.
+  const cache = { invalidar: jest.fn().mockResolvedValue(undefined) };
 
   return {
-    servicio: new AusenciasService(prisma, historial as unknown as HistorialService),
+    servicio: new AusenciasService(
+      prisma,
+      historial as unknown as HistorialService,
+      cache as never,
+    ),
     ausencia,
     sala,
     historial,
+    cache,
+    transaccion: db.$transaction,
   };
 }
+
+/**
+ * LA INVALIDACION QUE AGREGO LA REVISION DE LAS TASKS 7 Y 8.
+ *
+ * UN CIERRE MUEVE DINERO AUNQUE NO LO PAREZCA: `liquidacion.datos.ts` lee esta
+ * tabla desde la Fase 4, y una franja que cae dentro de un cierre deja de
+ * contar. Crear o retirar uno cambia `importes.aPagar` de alguna profesora y con
+ * el el `costoProfesoras` y el `margen` de `/stats/caja`.
+ */
+describe('AusenciasService invalida el cache DESPUES del commit', () => {
+  it('crear invalida el cache del gimnasio del actor', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.crear(ADMIN, BASE);
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('darDeBaja invalida: retirar un cierre devuelve esas horas al pago', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.darDeBaja(ADMIN, 'aus-1');
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('nada se invalida mientras la transaccion sigue abierta', async () => {
+    const { servicio, cache, transaccion, ausencia, sala } = crearServicio();
+
+    let invalidadoDentro = false;
+    transaccion.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn({ ausencia, sala });
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.crear(ADMIN, BASE);
+
+    // Un INCR hecho dentro de una transaccion que despues se desanda no se
+    // desanda con ella: invalidaria un cache que nadie cambio.
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('un cierre rechazado por el rango invertido no invalida nada', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await expect(
+      servicio.crear(ADMIN, { ...BASE, desde: '2026-10-10', hasta: '2026-10-01' }),
+    ).rejects.toThrow();
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
+  });
+});
 
 describe('AusenciasService.crear', () => {
   it('crea un cierre de todo el salon cuando salaId es null', async () => {

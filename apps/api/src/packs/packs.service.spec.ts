@@ -38,15 +38,84 @@ function crearServicio() {
   };
   const prisma = { db } as unknown as PrismaService;
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
+  // El cache de reportes. El precio de un pack es el `pendienteEstimado` de
+  // todos sus alumnos, en la caja y en `/stats/pagos-pendientes`.
+  const cache = { invalidar: jest.fn().mockResolvedValue(undefined) };
 
   return {
-    servicio: new PacksService(prisma, historial as unknown as HistorialService),
+    servicio: new PacksService(prisma, historial as unknown as HistorialService, cache as never),
     pack,
     sala,
     historial,
+    cache,
     transaccion: db.$transaction,
   };
 }
+
+/**
+ * LA INVALIDACION DE LA TASK 7/8 DE LA FASE 6A.
+ *
+ * Cambiar el precio de un pack cambia, sin registrar ningun pago, lo que la
+ * caja dice que falta cobrar y lo que recepcion ve al lado de cada nombre en
+ * `/stats/pagos-pendientes`. Sin el `invalidar`, el panel sigue mostrando el
+ * precio viejo hasta cinco minutos despues de haberlo cambiado.
+ */
+describe('PacksService invalida el cache DESPUES del commit', () => {
+  it('actualizar invalida el cache del gimnasio del actor', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.actualizar(ADMIN, 'pack-1', { precio: '9500.00' });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('nada se invalida mientras la transaccion sigue abierta', async () => {
+    const { servicio, cache, transaccion } = crearServicio();
+
+    let invalidadoDentro = false;
+    transaccion.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn({
+        pack: {
+          findFirst: jest.fn().mockResolvedValue(FILA),
+          update: jest.fn().mockResolvedValue(FILA),
+        },
+      });
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.actualizar(ADMIN, 'pack-1', { precio: '9500.00' });
+
+    // Un INCR hecho dentro de una transaccion que despues se desanda no se
+    // desanda con ella: invalidaria un cache que nadie cambio.
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('un pack inexistente no invalida nada', async () => {
+    const { servicio, cache, pack } = crearServicio();
+    pack.findFirst.mockResolvedValue(null);
+
+    await expect(servicio.actualizar(ADMIN, 'pack-9', { precio: '1.00' })).rejects.toThrow(
+      NotFoundException,
+    );
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
+  });
+
+  it('crear y darDeBaja NO invalidan, y es a proposito', async () => {
+    // Un pack recien creado no lo tiene asignado nadie, y darlo de baja no le
+    // cambia el `packId` ni el precio a ningun perfil: ninguno de los dos mueve
+    // un solo numero de un reporte. Este caso fija la asimetria para que sea una
+    // decision y no un olvido que un dia alguien "arregle".
+    const { servicio, cache } = crearServicio();
+
+    await servicio.crear(ADMIN, { nombre: '4 clases', tipo: 'MENSUAL', clasesPorMes: 4 });
+    await servicio.darDeBaja(ADMIN, 'pack-1');
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
+  });
+});
 
 describe('PacksService.crear', () => {
   it('guarda el precio como Decimal, no como float', async () => {

@@ -110,9 +110,18 @@ function crearServicio() {
     perfilAlDia: jest.fn().mockResolvedValue(false),
     fijarEstado: jest.fn().mockResolvedValue(undefined),
   };
+  // El cache de reportes. Cambiarle el pack a un alumno lo mueve de grupo en la
+  // composicion y le cambia el pendiente estimado; cambiarle el nombre cambia
+  // como lo identifican los tres reportes nuevos.
+  const cache = { invalidar: jest.fn().mockResolvedValue(undefined) };
 
   return {
-    servicio: new UsuariosService(prisma, historial as unknown as HistorialService, pagos as never),
+    servicio: new UsuariosService(
+      prisma,
+      historial as unknown as HistorialService,
+      pagos as never,
+      cache as never,
+    ),
     pagos,
     usuario,
     perfil,
@@ -120,8 +129,130 @@ function crearServicio() {
     usuarioSala,
     pack,
     historial,
+    cache,
   };
 }
+
+/**
+ * LA INVALIDACION DE LA TASK 7/8 DE LA FASE 6A.
+ *
+ * `actualizar` es la unica escritura de este servicio que mueve un reporte, y lo
+ * mueve por tres caminos a la vez: el `packId` cambia de grupo al alumno en la
+ * composicion y le cambia el `pendienteEstimado` sin que entre ni salga un peso,
+ * el `nombreCompleto` es la columna con la que los tres reportes nuevos lo
+ * identifican y por la que ordenan sus listas, y las vigencias entran en quien
+ * esta al dia.
+ */
+describe('UsuariosService invalida el cache DESPUES del commit', () => {
+  it('actualizar invalida el cache del gimnasio del actor', async () => {
+    const { servicio, cache, pack } = crearServicio();
+    pack.findFirst.mockResolvedValue({ id: 'pack-12', tenantId: 'gym-1' });
+
+    await servicio.actualizar(ADMIN, 'usr-9', { packId: 'pack-12' });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('invalida tambien cuando el cambio no es el pack', async () => {
+    // Un `if (dto.packId)` dejaria el panel mostrando el nombre viejo despues de
+    // corregir un apellido mal escrito. El contador de version invalida de mas a
+    // proposito: el peor caso es un recalculo de cinco minutos.
+    const { servicio, cache } = crearServicio();
+
+    await servicio.actualizar(ADMIN, 'usr-9', { nombreCompleto: 'Ana Perez' });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('nada se invalida mientras la transaccion sigue abierta', async () => {
+    const { servicio, cache, perfil, usuario } = crearServicio();
+
+    let invalidadoDentro = false;
+    const db = { usuario, perfil };
+    (
+      servicio as unknown as { prisma: { db: { $transaction: jest.Mock } } }
+    ).prisma.db.$transaction = jest.fn(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.actualizar(ADMIN, 'usr-9', { nombreCompleto: 'Ana Perez' });
+
+    // Un INCR hecho dentro de una transaccion que despues se desanda no se
+    // desanda con ella: invalidaria un cache que nadie cambio.
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('crearAlumno invalida: el alta suma al total Y entra en los morosos', async () => {
+    // EL HUECO EXACTO QUE LOS OTROS CUATRO `invalidar` VINIERON A TAPAR. Un
+    // alumno nuevo suma un perfil al total de la composicion y al reparto por
+    // pack, y ademas entra como alumno con pack que todavia no esta al dia: sale
+    // en `/stats/pagos-pendientes` y en el `pendienteEstimado` de la caja. Es la
+    // llamada de soporte del cache con el verbo cambiado: "di de alta al alumno
+    // y no aparece en el panel".
+    const { servicio, cache } = crearServicio();
+
+    await servicio.crearAlumno(ADMIN, {
+      nombreCompleto: 'Nueva Alumna',
+      email: 'nueva@gym.test',
+      salaIds: ['sala-1'],
+    });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('crearProfesor tambien invalida, sin condicionarlo al rol', async () => {
+    // Hoy no mueve nada —las horas de una profesora salen de sus horarios, que
+    // todavia no tiene— pero el contador invalida de mas a proposito, y un `if`
+    // por rol es un `if` mas por el que colarse. Ver `CacheDeStats`.
+    const { servicio, cache } = crearServicio();
+
+    await servicio.crearProfesor(ADMIN, {
+      nombreCompleto: 'Nueva Profe',
+      email: 'profe@gym.test',
+      salaIds: ['sala-1'],
+    });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('darDeBaja invalida: una baja saca al alumno de la composicion', async () => {
+    // `/stats/composicion-alumnos` cuenta los perfiles ACTIVOS, asi que una baja
+    // le cambia el total y el reparto por pack sin que nadie toque un pack ni un
+    // pago. Lo encontro una mutacion mal aplicada, que dejo el `invalidar` en
+    // tres metodos de este archivo en vez de en uno: de los dos sobrantes, este
+    // resulto que hacia falta de verdad.
+    const { servicio, cache } = crearServicio();
+
+    await servicio.darDeBaja(ADMIN, 'usr-9');
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('actualizarSalas NO invalida, y es a proposito', async () => {
+    // A que salas accede un alumno no entra en ningun reporte: los que se acotan
+    // por sala lo hacen por la sala del TURNO, que es de donde sale una clase, y
+    // ni los morosos ni la composicion ni la asistencia miran `UsuarioSala`.
+    const { servicio, cache } = crearServicio();
+
+    await servicio.actualizarSalas(ADMIN, 'usr-9', { salaIds: ['sala-1'] });
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
+  });
+
+  it('un usuario inexistente no invalida nada', async () => {
+    const { servicio, cache, usuario } = crearServicio();
+    usuario.findFirst.mockResolvedValue(null);
+
+    await expect(servicio.actualizar(ADMIN, 'usr-404', { packId: 'pack-12' })).rejects.toThrow(
+      NotFoundException,
+    );
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
+  });
+});
 
 describe('UsuariosService.crearAlumno', () => {
   it('crea el Usuario con rol ALUMNO y su Perfil', async () => {

@@ -54,6 +54,10 @@ export class CacheRedis implements ClienteDeCache, OnModuleDestroy {
     return this.redis.incr(clave);
   }
 
+  expire(clave: string, segundos: number): Promise<unknown> {
+    return this.redis.expire(clave, segundos);
+  }
+
   async onModuleDestroy(): Promise<void> {
     // `disconnect` y no `quit`: `quit` espera a que la cola de comandos se
     // vacie, y si Redis no esta contestando esa espera es justo el cuelgue que

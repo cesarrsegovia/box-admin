@@ -13,16 +13,54 @@ export const CLIENTE_DE_CACHE = Symbol('CLIENTE_DE_CACHE');
  *
  * Es un puerto, como los de la Fase 5B: permite probar la logica entera sin
  * levantar un Redis, y deja a la vista que de toda la superficie de ioredis
- * aqui se usan exactamente tres metodos.
+ * aqui se usan exactamente cuatro metodos.
  */
 export interface ClienteDeCache {
   get(clave: string): Promise<string | null>;
   set(clave: string, valor: string, modo: 'EX', segundos: number): Promise<unknown>;
   incr(clave: string): Promise<number>;
+  expire(clave: string, segundos: number): Promise<unknown>;
 }
 
+/*
+ * LOS DOS TTL VAN JUNTOS PORQUE UNO DEPENDE DEL OTRO. No se toca ninguno sin
+ * mirar el otro.
+ *
+ * Las claves de datos vencen a los cinco minutos. La de version —el contador
+ * que `invalidar` incrementa— necesitaba un vencimiento tambien: sin el queda
+ * una clave por gimnasio que no expira nunca, y nadie la limpia. Un gimnasio
+ * dado de baja deja la suya para siempre, y en el entorno de pruebas se
+ * acumula una por cada tenant que cualquier corrida haya creado (se encontraron
+ * 758 asi, todas con TTL -1).
+ *
+ * POR QUE PONERLE VENCIMIENTO A LA VERSION NO REABRE NADA, Y DONDE ESTA EL
+ * FILO. Si la clave de version vence, el contador vuelve a cero y una clave de
+ * datos `v0` VIEJA podria volver a servirse. Pero para eso tiene que EXISTIR
+ * una `v0` viva, y solo se escriben `v0` mientras no hay contador: en cuanto un
+ * `invalidar` lo crea, las `v0` quedan huerfanas y mueren a los cinco minutos.
+ * Desde ese `invalidar` hasta que el contador vence pasan treinta dias, asi que
+ * cuando vuelve a cero hace veintinueve dias y pico que la ultima `v0` murio.
+ * No hay nada viejo que servir.
+ *
+ * EL MARGEN ENTRE LOS DOS VALORES *ES* LA GARANTIA. Bajar el de version o subir
+ * el de datos sin mirar el otro reabre el agujero: con un TTL de datos de un
+ * mes y pico, o con una version que venza en minutos, se sirve un numero de una
+ * version que ya no corre. Treinta dias contra cinco minutos deja un margen de
+ * ~8.600x, que es absurdamente holgado a proposito: cualquier retoque razonable
+ * del TTL de datos sigue estando lejisimos del otro, y la clave de un gimnasio
+ * de baja igual desaparece en un mes.
+ *
+ * Y el refresco en cada `invalidar` es parte del arreglo, no un adorno: un
+ * INCR sobre una clave que ya existe NO renueva su TTL. Sin el `expire` de
+ * cada vez, la version de un gimnasio ACTIVO venceria a los treinta dias de su
+ * primera invalidacion por mucho que se siga invalidando.
+ */
+
 /** Cinco minutos. Los reportes no necesitan ser exactos al segundo. */
-const TTL_SEGUNDOS = 300;
+const TTL_DATOS_SEGUNDOS = 300;
+
+/** Treinta dias. Ver arriba: depende de `TTL_DATOS_SEGUNDOS`. */
+const TTL_VERSION_SEGUNDOS = 60 * 60 * 24 * 30;
 
 /**
  * El cache de los reportes: TTL corto mas un contador de version por gimnasio.
@@ -75,7 +113,7 @@ export class CacheDeStats {
     const calculado = await calcular();
 
     try {
-      await this.cliente.set(completa, JSON.stringify(calculado), 'EX', TTL_SEGUNDOS);
+      await this.cliente.set(completa, JSON.stringify(calculado), 'EX', TTL_DATOS_SEGUNDOS);
     } catch (error) {
       this.logger.warn(`No se pudo guardar el cache de ${tenantId}: ${String(error)}`);
     }
@@ -85,8 +123,13 @@ export class CacheDeStats {
 
   /** Tira todo el cache de un gimnasio. NUNCA lanza: ver el comentario de la clase. */
   async invalidar(tenantId: string): Promise<void> {
+    const clave = `stats:${tenantId}:version`;
+
     try {
-      await this.cliente.incr(`stats:${tenantId}:version`);
+      await this.cliente.incr(clave);
+      // SIEMPRE, no solo la primera vez: el INCR de arriba no renueva el TTL de
+      // una clave que ya existe. Ver el bloque de los dos TTL.
+      await this.cliente.expire(clave, TTL_VERSION_SEGUNDOS);
     } catch (error) {
       this.logger.warn(`No se pudo invalidar el cache de ${tenantId}: ${String(error)}`);
     }

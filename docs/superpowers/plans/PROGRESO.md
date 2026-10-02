@@ -1141,3 +1141,198 @@ conviene fijar el `tz` explicitamente en vez de depender de donde corra el conte
 Queda **solo** la migracion de las tres columnas de idempotencia.
 
 Despues, la Fase 6: analitica, web publica y check-in.
+
+---
+
+# Progreso Fase 6A — La analitica
+
+**Spec:** `docs/superpowers/specs/2026-10-01-fase6a-analitica.md`
+**Plan:** `docs/superpowers/plans/2026-10-01-fase6a-analitica.md` (11 tareas, T0-T10)
+
+La Fase 6 del PDF trae tres subsistemas que no comparten modelo ni reglas —analitica, web publica y
+check-in por QR— y solo comparten capitulo. Se partio como la 3 y la 5, y por el mismo motivo: **la
+analitica es lo unico de la fase que toca dinero real de personas.** La 6B tendra el check-in y la web
+publica, que es donde viven los cinco modelos que el PDF propone.
+
+Esta fase **no agrega ni una tabla**. Todo lo que calcula se deriva de datos que ya existen.
+
+- [x] T0 — Los contratos compartidos
+- [x] T1 — `calcularImportes`, la funcion pura
+- [x] T2 — Los importes entran en la liquidacion que ya existe
+- [x] T3 — El cache, con su contador de version
+- [x] T4 — `/stats/caja`
+- [x] T5 — La invalidacion, en sus (ahora) dieciseis sitios
+- [x] T6 — `/stats/operativo`
+- [x] T7 — `/stats/turnos-libres` y `/stats/pagos-pendientes`
+- [x] T8 — `/stats/composicion-alumnos` y `/stats/asistencia`
+- [x] T9 — Los e2e
+- [x] T10 — Verificacion final, README y tracker
+
+## Decisiones cerradas con Cesar
+
+1. **A la profesora se le paga por hora dictada, a tarifa fija.** Lo que el gimnasio cobra a los
+   alumnos es otro asunto. Esto enderezo la fase entera: ver abajo.
+2. **Solo se pagan las dictadas.** Las contratadas sin turno y las cerradas por feriado se calculan y
+   se muestran con su importe, pero no entran en el total a pagar.
+3. **"Gastos" = el costo de las profesoras.** Es el unico costo que el sistema conoce de verdad, y
+   cuadra por construccion porque es el mismo calculo que el reporte individual.
+4. **Los cumpleanios quedan fuera.** Necesitan un `fechaNacimiento` que no existe y capturarlo en tres
+   formularios, o queda vacio para siempre — el error de `Sala.exclusiva` otra vez. Y no son analitica.
+5. **La fase entrega la API, no el panel.** No existe **ninguna** pantalla de admin en el proyecto: la
+   PWA de la 3B es solo del alumno. Un panel seria la primera, con su login, su layout y su navegacion.
+   Los numeros se validan contra datos reales antes de dibujarlos.
+
+## La decision que enderezo la fase
+
+El PDF propone esta formula:
+
+```
+ingresos_totales_alumnos = SUM(Pago.monto) de perfiles cuyas reservas caen en turno
+monto_para_estudio       = ingresos - monto_a_profesora + (50% base) + (horarios sin profesor)
+```
+
+La primera linea **no se puede calcular sin inventar una regla de reparto**: un alumno paga un pack
+mensual y va a clases de varias profesoras, asi que atribuir ese pago a un turno cuenta el mismo peso
+mas de una vez. La tercera suma un porcentaje a una resta de pesos.
+
+Con tarifa fija las tres lineas problematicas **desaparecen**, porque eran piezas de un reparto por
+porcentaje. Y conviene notar que **el checklist del PDF nunca pidio la atribucion**: pide que la
+liquidacion calcule "horas contratadas vs. dictadas y el monto en $". La formula problematica vivia
+solo en la prosa.
+
+Esa decision tuvo consecuencias en cascada que se repitieron toda la fase: **los reportes que cuentan
+clases se pueden partir por sala; los que cuentan dinero, no.** Por eso `/stats/caja` no acepta
+`salaId` —un `Pago` no tiene sala—, `/stats/pagos-pendientes` tampoco, y la cobranza del operativo no
+se acota aunque las otras cuatro metricas si.
+
+## Los errores del plan: veintidos, y el patron que los une
+
+Casi todos son de la misma familia: **una proteccion que parece estar puesta y no lo esta.** No es el
+codigo que no compila; es el comentario que promete, el test que apunta al lado equivocado, o el
+parametro que se acepta y se ignora.
+
+### Los que mentian en verde
+
+- **El valor del test era justo el que el float acierta.** `aCentavos` se probaba con `'1234.56'`, y
+  `1234.56 * 100` da exactamente 123456 en doubles. Barriendo los dos millones de tarifas de dos
+  decimales, **131.252 pierden un centavo** con la version float — el 6,6%, empezando por `0.29`,
+  `0.57`, `1.13`, `1.15`. La regla numero uno de la fase —"nada de coma flotante"— **no estaba fijada
+  por ningun test**.
+- **`maxRetriesPerRequest: null`**, copiado de la configuracion de BullMQ. Es requisito de los comandos
+  bloqueantes, pero en un cache significa que un comando contra un Redis caido **no falla nunca**, y
+  `recordar` —escrito para seguir adelante— se habria quedado esperando en vez de calcular. La linea
+  anulaba el diseno entero del cache, y pasaba en verde **y compilaba**.
+- **`pendienteEstimado` era de hoy, no del mes.** Usaba `new Date()` por defecto dentro de un reporte
+  indexado por `anio/mes` y cacheado como `caja:2026-10`: `caja(2020,3)` y `caja(2099,1)` devolvian el
+  mismo numero. Y el docblock afirmaba "un mes futuro devuelve ceros", que era falso en uno de los cinco.
+- **La cobranza del operativo, lo mismo pero peor**: con `new Date()` los **cuatro meses** del reporte
+  daban el mismo valor, y la serie trimestral se leia como "la cobranza no se mueve". Un numero raro se
+  nota; **una linea de tendencia aplanada, no**.
+- **El denominador de la asistencia se contradecia consigo mismo.** El operativo metia en el
+  denominador todas las reservas vivas de un turno con lista pasada —incluidas las que entraron
+  despues, con `asistio: null`— mientras el reporte por alumno contaba solo las marcadas. Los mismos
+  datos: **33,33% en un reporte y 50% en el otro**, y los dos docblocks afirmando usar "la MISMA
+  definicion". Lo delataba que ese alumno salia con `porcentaje: null` en su propio reporte: **el codigo
+  ya sabia que ese caso era "no se sabe"** y en el agregado lo contaba como ausencia.
+
+### Los que rompian de verdad
+
+- **`aTexto(-1)` devolvia `"0.-1"`**, una cadena que no es un importe. Y el `margen` se pone en rojo en
+  un mes normal. Su propio docblock decia "quien traiga el primer importe en rojo tiene que arreglar
+  esto ANTES" — ese momento era la Task 4.
+- **Un `lte` contra la medianoche del ultimo dia** se comia en silencio todos los cobros del dia 31.
+  Rango semiabierto `[mes, mes+1)`.
+- **`@IsDateString()` aceptaba ISO completo**: `?desde=2026-10-01T12:00:00Z` pasaba la validacion y
+  reventaba al formatear → **500 opaco en vez de 400**.
+- **La composicion contaba profesoras como alumnas.** Una profesora tiene `Perfil` sin pack, asi que
+  caia en "Sin pack" e inflaba el reporte que dice cuantos *alumnos* hay por plan.
+- **Un alumno dado de baja desaparecia de la composicion y seguia debiendo en los otros tres.** La
+  misma persona era "no es alumno" para un reporte y "alumno que debe" para tres — y la cobranza
+  **decaia para siempre** a medida que el gimnasio acumulaba ex-alumnos. Un indicador que baja solo.
+  Resuelto unificando la poblacion: los tres reportes miden alumnos activos.
+- **Faltaban nueve sitios de invalidacion.** La lista empezo en cinco y termino en dieciseis. El que
+  mas dolia era `ComprobantesService.aprobar`: aprobar un comprobante *es* registrar un cobro.
+- **Un parametro que se acepta y se ignora.** `/stats/caja?salaId=` llego a implementarse validandolo,
+  metiendolo en la clave del cache y **sin filtrar nada**. Es una mentira con codigo 200: alguien lo
+  pasa, recibe un numero y cree que es de esa sala.
+
+### Dos instrucciones mias directamente incorrectas
+
+- Pedi una guarda `if (!Number.isInteger(centavos)) throw` y un test para `'1000.555'`. Pero `'1000.555'`
+  da **100555**, que es un entero valido: mi guarda no lo cazaba y **el test que yo mismo pedi habria
+  fallado**. Se resolvio con una guarda de forma.
+- Pedi arreglar el fixture de `un mes sin movimiento` para cazar el bug de `pendienteEstimado`. **No lo
+  habria cazado**: con un perfil sin pagos, "hoy" y "al cierre de 2099" dan los dos lo mismo. Lo caza el
+  test de dos relojes.
+
+## Trampas nuevas
+
+- **`Math.round(x / 60)` pasa por un float.** La division entera va con cociente y resto, y
+  `resto * 2 >= divisor` decidiendo. Y **se agrupa por tarifa antes de multiplicar**: tres franjas de
+  cincuenta minutos dan 249999 centavos redondeando cada una y 250000 redondeando al final.
+- **`.toNumber()` sobre un `Decimal(10,2)` NO pierde nada** —cabe exacto en un double—. Lo que abre es
+  el *camino*: `0.29 * 100` da 28.999999999999996. La regla comprobable no es "nunca `.toNumber()`",
+  es **"nada de float en la conversion a centavos"**.
+- **El `Map` indexado por el string crudo de la tarifa.** `'1000.00'`, `'1000.0'` y `'1000'` son el
+  mismo dinero y eran tres claves: tres franjas de cincuenta minutos daban 249999. Se indexa por
+  centavos.
+- **`new Redis()` en un `useFactory` no lo gestiona Nest**: sobrevive a `app.close()` y deja Jest
+  colgado. Va en una clase con `onModuleDestroy`. (Es el bug de la Fase 0 con BullMQ, otra vez.)
+- **La clave de version del cache no tenia TTL.** Lo encontro el checklist a mano inspeccionando Redis:
+  **758 claves con `TTL -1`**. Ningun test lo ve, porque los tests no miran el Redis real.
+- **Un test de invalidacion con dos instancias de cache no prueba nada**: el `INCR` cae en otro `Map` y
+  el test pasa en verde con la linea borrada. Tiene que ser una sola instancia compartida.
+- **El test de dos relojes, y su version invertida.** Para un reporte indexado por periodo, dos fechas
+  de sistema distintas tienen que dar **el mismo** numero; para uno que pregunta por hoy, tienen que
+  dar **distinto** — ahi un resultado identico significaria que la fecha quedo clavada.
+- **Una mutacion que no se puede escribir es mejor que un test.** "Usar el cupo de la sala" era
+  inexpresable: el codigo correcto **nunca consulta `Sala`**, y hubo que agregar la consulta dentro de
+  la propia mutacion para poder intentarla.
+
+## Cuando una mutacion no rompe nada
+
+Paso ocho veces en esta fase, y el diagnostico fue siempre uno de dos. Conviene distinguirlos antes de
+tocar el codigo:
+
+- **El fixture no distinguia los dos comportamientos** (cinco veces): los dos packs de prueba tenian el
+  mismo precio, el unico valor decimal era de los que el float acierta, la cortesia valia `0.00`. Se
+  arregla el caso, no el codigo.
+- **El caso directamente no existia** (tres veces): nadie habia escrito un test para `cache-redis.ts`,
+  ni para el borde inferior del mes, ni para el post-commit de `cancelar`. Se escribe el test.
+
+## Estado final
+
+**1157 unitarios de la API / 57 suites**, **177 e2e / 10 suites**, **96 en `shared` / 4**, **149 en la
+PWA / 16**. `tsc --noEmit` limpio en los tres paquetes, `pnpm build` de la web compila, y Prettier
+limpio sobre todo lo que escribe la fase.
+
+**Veintisiete mutaciones corridas, veintisiete muertas.** Y el checklist a mano recorrido contra el
+Redis real, que es lo unico que muestra la forma de las claves y el contador de version incrementandose
+(`v0`, `v1`, `v5` del mismo gimnasio).
+
+## Deuda anotada
+
+- **Los cumpleanios**: necesitan `Perfil.fechaNacimiento` y capturarla en tres formularios.
+- **Un libro de gastos**: es contabilidad y es otra fase.
+- **El panel visual**: necesita un frontend de admin, que no existe.
+- **La composicion de un mes pasado usa los packs de HOY.** `Perfil.packId` es el actual y el sistema
+  no guarda historial; inventarlo desde los pagos daria un reparto plausible y equivocado.
+- **La ocupacion puede pasar de 100%** si bajan el cupo de un turno que ya tenia reservas. Es el numero
+  honesto, pero la asimetria con `turnos-libres` —que si contempla el caso— no esta escrita.
+- **El corte de "futuro" en turnos-libres es por DIA, no por hora**, porque el sistema no guarda husos.
+  El error queda en la direccion inofensiva: sobra un turno de esta manana, nunca falta uno de esta
+  tarde.
+- **`VacacionAlumno.devuelveClase`** sigue inerte y lleva cuatro fases de mudanza. **Se reetiqueta a la
+  6B o se borra**: una columna almacenada que no hace nada es el error de `Sala.exclusiva`.
+- **`main.ts` no llama a `enableShutdownHooks()`**, asi que ante un SIGTERM en produccion no corre
+  ningun `onModuleDestroy`. Es preexistente y afecta igual a Prisma, pero esta fase agrega el segundo
+  recurso que depende de ello.
+- **Siguen los archivos que no pasan `prettier --check`** (unos dieciocho en `apps/api/src/**`, mas el
+  README y este tracker). Pendiente el commit de solo formato.
+
+## Siguiente paso
+
+La **6B**: check-in por QR y web publica del salon. Ahi entran los cinco modelos que el PDF propone y
+las dos cosas que esta fase dejo abiertas sobre ellos: que `Asistencia` con `reservaId @unique` choca
+con el `Reserva.asistio` que la Fase 4 ya tiene —serian dos verdades para el mismo hecho—, y que
+`WebSalonConfig.slug @unique` compite con el `Tenant.slug` que ya usan todas las rutas de la PWA.

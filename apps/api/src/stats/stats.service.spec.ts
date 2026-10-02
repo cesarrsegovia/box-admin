@@ -4,6 +4,10 @@ import type { CrearPagoDto } from '../pagos/dto/crear-pago.dto';
 import { PagosService } from '../pagos/pagos.service';
 import { CacheDeStats, type ClienteDeCache } from './cache-de-stats';
 import { ConsultaMensualDto } from './dto/consulta-mensual.dto';
+import { ConsultaOperativaDto } from './dto/consulta-operativa.dto';
+import { ConsultaPagosPendientesDto } from './dto/consulta-pagos-pendientes.dto';
+import { ConsultaRangoDto } from './dto/consulta-rango.dto';
+import { ConsultaTurnosLibresDto } from './dto/consulta-turnos-libres.dto';
 import { StatsDatos } from './stats.datos';
 import { StatsService } from './stats.service';
 
@@ -69,7 +73,14 @@ export interface Tablas {
   usuarios: { id: string; rol: string; nombreCompleto: string; email: string; activo: boolean }[];
   perfiles: { id: string; usuarioId: string; packId: string | null }[];
   packs: { id: string; nombre: string; precio: string | null }[];
-  salas: { id: string; nombre: string }[];
+  /**
+   * `cupoBase` es opcional porque casi ningun caso lo necesita, pero EXISTE en
+   * el schema y tiene que existir aqui: es el cupo de la SALA, el valor por
+   * defecto con el que se crea un turno. Esta en el doble para que la mutacion
+   * "la ocupacion usa el cupo de la sala" se pueda escribir y correr; sin el,
+   * esa mutacion no seria "no rompio nada", seria "no se pudo intentar".
+   */
+  salas: { id: string; nombre: string; cupoBase?: number | null }[];
   /**
    * Solo lo que `ComprobantesService.aprobar` mira. Esta aqui porque aprobar un
    * comprobante CREA UN PAGO, asi que es una de las escrituras que la caja ve.
@@ -238,6 +249,9 @@ function clienteFalso(): { cliente: ClienteDeCache; claves: Map<string, string> 
         claves.set(clave, String(siguiente));
         return siguiente;
       },
+      // El vencimiento de la clave de version no cambia nada de lo que este
+      // archivo prueba; vive en `cache-de-stats.spec.ts`.
+      expire: async () => 1,
     },
   };
 }
@@ -339,6 +353,26 @@ function profesora(id: string): Pick<Tablas, 'usuarios' | 'perfiles'> {
     ],
     perfiles: [{ id, usuarioId: `u-${id}`, packId: null }],
   };
+}
+
+/**
+ * Los `usuarios` de unos perfiles de alumno: rol ALUMNO y en alta.
+ *
+ * HACE FALTA EN TODO FIXTURE QUE TENGA ALUMNOS, y antes de la revision de la
+ * Task 8 no hacia falta en los de la caja ni en los de la cobranza: ese es
+ * justamente el bug que se corrigio. `perfilesConPack()` no miraba el rol ni el
+ * `activo`, asi que un `Perfil` suelto, sin ningun `Usuario` detras, contaba
+ * como alumno que debe. La misma persona era "no es alumno" para la composicion
+ * y "alumno que debe" para los otros tres reportes.
+ */
+function alumnosEnAlta(...usuarioIds: string[]): Tablas['usuarios'] {
+  return usuarioIds.map((id, indice) => ({
+    id,
+    rol: 'ALUMNO',
+    nombreCompleto: `Alumno ${indice + 1}`,
+    email: `${id}@x.io`,
+    activo: true,
+  }));
 }
 
 const OCTUBRE = { anio: 2026, mes: 10 };
@@ -461,6 +495,7 @@ describe('StatsService.caja', () => {
     // verde con el pendiente calculado a dia de hoy, que es justo el bug que se
     // le escapo a la primera version.
     const { servicio } = crear({
+      usuarios: alumnosEnAlta('u-1'),
       perfiles: [{ id: 'debe', usuarioId: 'u-1', packId: 'pack-8' }],
       packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
     });
@@ -538,7 +573,7 @@ describe('StatsService.caja', () => {
         // Al dia: su pago cubre hasta muy adelante.
         pago({ perfilId: 'al-dia', cubreDesde: dia('2020-01-01'), cubreHasta: dia('2099-12-31') }),
       ],
-      usuarios: [],
+      usuarios: alumnosEnAlta('u-1', 'u-2', 'u-3', 'u-4'),
       perfiles: [
         // Su pack cuesta OTRA COSA que el de quien debe, a proposito: con los
         // dos al mismo precio, invertir el filtro de "al dia" daba exactamente
@@ -582,8 +617,13 @@ describe('StatsService.caja', () => {
       pagos: [
         // Cubre octubre de 2026 y nada mas. Visto desde dentro de ese mes esta
         // al dia; visto desde 2027 ya no, pero la caja de octubre no cambia.
-        pago({ perfilId: 'cubre-octubre', cubreDesde: dia('2026-10-01'), cubreHasta: dia('2026-10-31') }),
+        pago({
+          perfilId: 'cubre-octubre',
+          cubreDesde: dia('2026-10-01'),
+          cubreHasta: dia('2026-10-31'),
+        }),
       ],
+      usuarios: alumnosEnAlta('u-1'),
       perfiles: [{ id: 'cubre-octubre', usuarioId: 'u-1', packId: 'pack-8' }],
       packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
     };
@@ -705,6 +745,7 @@ describe('StatsService.caja despues de una escritura', () => {
     // la caja seguiria diciendo que debe 8500 cinco minutos despues de que el
     // admin lo puso al dia a mano.
     const { servicio, pagos } = crear({
+      usuarios: alumnosEnAlta('u-1'),
       perfiles: [{ id: 'alumno-1', usuarioId: 'u-1', packId: 'pack-8' }],
       packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
     });
@@ -790,5 +831,1556 @@ describe('ConsultaMensualDto', () => {
     await expect(pipe.transform({ anio: '2026', mes: '13' }, comoQuery)).rejects.toThrow(
       BadRequestException,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK 6: /stats/operativo
+//
+// LO DIFICIL DE ESTE REPORTE NO SON LAS CONSULTAS, SON LAS DEFINICIONES. Un
+// porcentaje mal definido no da error: da un numero plausible y equivocado, y
+// el admin toma decisiones con el. Por eso casi todos los casos de aqui abajo
+// afirman ademas lo que el numero NO tiene que ser.
+// ---------------------------------------------------------------------------
+
+/** Un turno de octubre en la sala principal; el cupo es lo que cada caso mueve. */
+function turno(parcial: Partial<Tablas['turnos'][number]> = {}): Tablas['turnos'][number] {
+  return {
+    id: 'turno-1',
+    salaId: 'sala-1',
+    fecha: dia('2026-10-05'),
+    horaInicio: '18:00',
+    horaFin: '19:00',
+    cupo: 10,
+    ...parcial,
+  };
+}
+
+/** Una reserva viva, sin lista pasada: el estado en el que nacen todas. */
+function reserva(parcial: Partial<Tablas['reservas'][number]> = {}): Tablas['reservas'][number] {
+  return {
+    id: `res-${Math.random()}`,
+    turnoId: 'turno-1',
+    perfilId: 'alumno-1',
+    canceladaEn: null,
+    cancelacionTipo: null,
+    asistio: null,
+    ...parcial,
+  };
+}
+
+/** La sala de los fixtures, con el cupo que la ocupacion NO tiene que usar. */
+const SALA_PRINCIPAL: Tablas['salas'][number] = { id: 'sala-1', nombre: 'Principal', cupoBase: 10 };
+
+/** Tres alumnos en alta, sin pack: los reportes de clases no miran el pack. */
+const PADRON_DE_ALUMNOS = {
+  usuarios: [
+    { id: 'u-1', rol: 'ALUMNO', nombreCompleto: 'Ana', email: 'ana@x.io', activo: true },
+    { id: 'u-2', rol: 'ALUMNO', nombreCompleto: 'Bruno', email: 'bruno@x.io', activo: true },
+    { id: 'u-3', rol: 'ALUMNO', nombreCompleto: 'Carla', email: 'carla@x.io', activo: true },
+  ],
+  perfiles: [
+    { id: 'a-1', usuarioId: 'u-1', packId: null },
+    { id: 'a-2', usuarioId: 'u-2', packId: null },
+    { id: 'a-3', usuarioId: 'u-3', packId: null },
+  ],
+};
+
+describe('StatsService.operativo: ocupacion', () => {
+  it('la ocupacion usa el cupo DEL TURNO', async () => {
+    // Dos turnos de la MISMA sala con cupos distintos. Es el caso que separa
+    // las dos definiciones: por turno el denominador es 10 + 2 = 12; por sala
+    // seria 10 + 10 = 20, y el porcentaje saldria 20% en vez de 33,33%.
+    const { servicio } = crear({
+      salas: [SALA_PRINCIPAL],
+      turnos: [turno({ id: 'turno-1', cupo: 10 }), turno({ id: 'turno-2', cupo: 2 })],
+      reservas: [
+        reserva({ turnoId: 'turno-1' }),
+        reserva({ turnoId: 'turno-1' }),
+        reserva({ turnoId: 'turno-2' }),
+        reserva({ turnoId: 'turno-2' }),
+      ],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.ocupacion).toEqual({
+      numerador: 4,
+      denominador: 12,
+      porcentaje: 33.33,
+    });
+    // Y lo que NO puede ser: el cupo de la sala daria exactamente esto.
+    expect(operativo.actual.ocupacion.porcentaje).not.toBe(20);
+  });
+
+  it('las canceladas no ocupan lugar ni cuentan como falta', async () => {
+    // Un lugar que se libero no esta ocupado, y quien cancelo no falto. La
+    // cancelada lleva `asistio: false` a proposito: cancelo DESPUES de que le
+    // pasaran lista, que es el unico caso en que la marca sobrevive a la
+    // cancelacion y el unico que distingue las dos definiciones.
+    const { servicio } = crear({
+      turnos: [turno({ cupo: 10 })],
+      reservas: [
+        reserva({ asistio: true }),
+        reserva({ asistio: true }),
+        reserva({
+          asistio: false,
+          canceladaEn: instante('2026-10-04T10:00:00.000Z'),
+          cancelacionTipo: 'RECUPERABLE',
+        }),
+      ],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.ocupacion.numerador).toBe(2);
+    expect(operativo.actual.ocupacion.porcentaje).toBe(20);
+    expect(operativo.actual.asistencia).toEqual({
+      numerador: 2,
+      denominador: 2,
+      porcentaje: 100,
+    });
+  });
+
+  it('un turno al que no se anoto nadie SI cuenta en la ocupacion', async () => {
+    // Una clase vacia ocurrio y nadie la uso: eso es 0% de ese turno, no un
+    // turno que se descarta. Descartarlo subiria la ocupacion del gimnasio cada
+    // vez que una clase se vacia, que es lo contrario de lo que paso.
+    const { servicio } = crear({
+      turnos: [turno({ id: 'turno-1', cupo: 10 }), turno({ id: 'turno-vacio', cupo: 10 })],
+      reservas: [reserva({ turnoId: 'turno-1' }), reserva({ turnoId: 'turno-1' })],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.ocupacion).toEqual({ numerador: 2, denominador: 20, porcentaje: 10 });
+  });
+});
+
+describe('StatsService.operativo: asistencia', () => {
+  it('la asistencia NO cuenta las reservas de turnos sin lista pasada', async () => {
+    // EL CASO MAS PELIGROSO DEL REPORTE. En turno-1 se paso lista: una presente
+    // y una ausente. En turno-2 nadie la paso: dos reservas con `asistio: null`,
+    // que no es "no vinieron" sino "no se sabe".
+    //
+    // La asistencia es 1/2 = 50%. Con el denominador ingenuo —todas las
+    // reservas vivas— seria 1/4 = 25%, un numero plausible y equivocado.
+    const { servicio } = crear({
+      turnos: [turno({ id: 'turno-1' }), turno({ id: 'turno-2' })],
+      reservas: [
+        reserva({ turnoId: 'turno-1', asistio: true }),
+        reserva({ turnoId: 'turno-1', asistio: false }),
+        reserva({ turnoId: 'turno-2', asistio: null }),
+        reserva({ turnoId: 'turno-2', asistio: null }),
+      ],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.asistencia).toEqual({
+      numerador: 1,
+      denominador: 2,
+      porcentaje: 50,
+    });
+    expect(operativo.actual.asistencia.porcentaje).not.toBe(25);
+  });
+
+  it('un mes sin ninguna lista pasada no dice 0%, dice que no se sabe', async () => {
+    // El mes TUVO movimiento —dos reservas sobre un cupo de diez— y eso es lo
+    // que hace util al caso: un 0% de asistencia junto a una ocupacion del 20%
+    // se lee como "se anotaron y no vino ninguno", que es la conclusion con la
+    // que un admin empieza a llamar gente. La verdad es que nadie paso lista.
+    const { servicio } = crear({
+      turnos: [turno({ cupo: 10 })],
+      reservas: [reserva({ asistio: null }), reserva({ asistio: null })],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.asistencia.denominador).toBe(0);
+    expect(operativo.actual.asistencia.porcentaje).toBeNull();
+    // Y NO un cero, que es lo que se veria igual en el panel y significa otra cosa.
+    expect(operativo.actual.asistencia.porcentaje).not.toBe(0);
+    expect(operativo.actual.ocupacion.porcentaje).toBe(20);
+  });
+
+  it('el operativo y el reporte por alumno dan EL MISMO porcentaje', async () => {
+    // EL CASO QUE UNIFICA LAS DOS DEFINICIONES, y que antes de la revision de la
+    // Task 8 fallaba: los dos docblocks afirmaban usar "la MISMA definicion" y
+    // daban numeros distintos sobre exactamente los mismos datos.
+    //
+    // Un turno con lista pasada y TRES reservas: A vino, B falto, y C entro
+    // DESPUES de que la profesora pasara lista —por `reasignar`, por la lista de
+    // espera, por un alta a mano— asi que se quedo con `asistio: null` para
+    // siempre. El turno sigue teniendo lista pasada.
+    //
+    // Con el denominador por TURNO, el operativo metia a C como si hubiera
+    // faltado: 1 de 3 = 33,33%. Por alumno, C sale con `porcentaje: null`
+    // —"no se sabe"—, o sea que el codigo YA SABIA que su caso no se podia
+    // contestar y en el agregado lo contaba como ausencia igual.
+    //
+    // El numero correcto es 1 de 2 = 50%. El arreglo es ademas mas simple que lo
+    // que habia: el denominador son las reservas con `asistio !== null`, y
+    // punto; no hace falta saber si el turno tuvo lista pasada.
+    const DATOS = {
+      ...PADRON_DE_ALUMNOS,
+      turnos: [turno({ id: 't-1' })],
+      reservas: [
+        reserva({ turnoId: 't-1', perfilId: 'a-1', asistio: true }),
+        reserva({ turnoId: 't-1', perfilId: 'a-2', asistio: false }),
+        reserva({ turnoId: 't-1', perfilId: 'a-3' }),
+      ],
+    };
+
+    const operativo = await crear(DATOS).servicio.operativo(ACTOR, OCTUBRE);
+    const porAlumno = await crear(DATOS).servicio.asistencia(ACTOR, {
+      desde: '2026-10-01',
+      hasta: '2026-10-31',
+    });
+
+    expect(operativo.actual.asistencia).toEqual({
+      numerador: 1,
+      denominador: 2,
+      porcentaje: 50,
+    });
+    // Y el agregado de las tres filas por alumno da exactamente eso: 1 presente
+    // sobre 1 presente + 1 ausente. El tercero no suma ni arriba ni abajo.
+    const presentes = porAlumno.alumnos.reduce((total, fila) => total + fila.presentes, 0);
+    const marcadas = porAlumno.alumnos.reduce(
+      (total, fila) => total + fila.presentes + fila.ausentes,
+      0,
+    );
+    expect({ presentes, marcadas }).toEqual({ presentes: 1, marcadas: 2 });
+    expect(porAlumno.alumnos.map((fila) => fila.porcentaje)).toEqual([100, 0, null]);
+  });
+
+  it('basta con que UNA reserva viva tenga la marca para que el turno cuente', async () => {
+    // La misma regla que `MisClasesService` publica como `listaPasada`: pasar
+    // lista escribe todas las reservas del turno de golpe, presentes y
+    // ausentes. Exigir que las tengan TODAS dejaria fuera turnos con la lista
+    // perfectamente pasada en cuanto Prisma devolviera una fila a medio migrar.
+    const { servicio } = crear({
+      turnos: [turno()],
+      reservas: [reserva({ asistio: true }), reserva({ asistio: false })],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.asistencia).toEqual({ numerador: 1, denominador: 2, porcentaje: 50 });
+  });
+});
+
+describe('StatsService.operativo: cancelacion', () => {
+  it('separa la cancelacion recuperable de la definitiva', async () => {
+    // Una de cada una sobre cuatro reservas: 25% y 25%, nunca un 50% junto.
+    // Mezclarlas esconde lo unico accionable que tienen: la recuperable es
+    // alguien que reprograma, la definitiva es alguien que se esta yendo.
+    const { servicio } = crear({
+      turnos: [turno({ cupo: 10 })],
+      reservas: [
+        reserva(),
+        reserva(),
+        reserva({
+          canceladaEn: instante('2026-10-04T10:00:00.000Z'),
+          cancelacionTipo: 'RECUPERABLE',
+        }),
+        reserva({
+          canceladaEn: instante('2026-10-04T11:00:00.000Z'),
+          cancelacionTipo: 'DEFINITIVA',
+        }),
+      ],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.cancelacionRecuperable).toEqual({
+      numerador: 1,
+      denominador: 4,
+      porcentaje: 25,
+    });
+    expect(operativo.actual.cancelacionDefinitiva).toEqual({
+      numerador: 1,
+      denominador: 4,
+      porcentaje: 25,
+    });
+    // Sumarlas en una sola metrica daria 50 en las dos: el 2/4 de "se cancelo
+    // el cincuenta por ciento", que es cierto y no sirve para nada.
+    expect(operativo.actual.cancelacionRecuperable.porcentaje).not.toBe(50);
+    expect(operativo.actual.cancelacionDefinitiva.porcentaje).not.toBe(50);
+  });
+
+  it('el denominador de la cancelacion son TODAS las reservas, no solo las vivas', async () => {
+    // "De todo lo que se anoto, cuanto se cayo". Con solo las vivas en el
+    // denominador, un mes en el que cancelaron todos daria 1/0 y despues 100%
+    // sobre una base que ya no existe.
+    const { servicio } = crear({
+      turnos: [turno({ cupo: 10 })],
+      reservas: [
+        reserva(),
+        reserva({
+          canceladaEn: instante('2026-10-04T10:00:00.000Z'),
+          cancelacionTipo: 'DEFINITIVA',
+        }),
+      ],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.cancelacionDefinitiva.denominador).toBe(2);
+    expect(operativo.actual.cancelacionDefinitiva.porcentaje).toBe(50);
+  });
+});
+
+describe('StatsService.operativo: cobranza', () => {
+  const PADRON = {
+    pagos: [
+      pago({ perfilId: 'al-dia', cubreDesde: dia('2026-10-01'), cubreHasta: dia('2026-10-31') }),
+    ],
+    usuarios: alumnosEnAlta('u-1', 'u-2', 'u-3'),
+    perfiles: [
+      { id: 'al-dia', usuarioId: 'u-1', packId: 'pack-8' },
+      { id: 'debe', usuarioId: 'u-2', packId: 'pack-8' },
+      // Sin pack no contrato nada: no esta ni al dia ni debiendo, no entra.
+      { id: 'sin-pack', usuarioId: 'u-3', packId: null },
+    ],
+    packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
+  };
+
+  it('la cobranza usa estaAlDia, no una columna', async () => {
+    const { servicio, pagos } = crear(PADRON);
+    const espia = jest.spyOn(pagos, 'perfilesAlDia');
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    // Dos con pack, uno cubierto: 50%. El de sin pack no entra en ninguno de
+    // los dos lados, ni arriba ni abajo.
+    expect(operativo.actual.cobranza).toEqual({ numerador: 1, denominador: 2, porcentaje: 50 });
+    // Y pasa por `PagosService.perfilesAlDia`, que desde la 5A es la unica
+    // implementacion de la regla. Una consulta propia aqui seria una segunda
+    // verdad sobre quien debe plata, y la que discrepe es la que nadie mira.
+    expect(espia).toHaveBeenCalled();
+  });
+
+  it('la cobranza de cada mes se evalua al CIERRE de ese mes, no con el reloj', async () => {
+    // Sin la fecha de cierre, `perfilesAlDia` cae en su default `new Date()` y
+    // los CUATRO meses del reporte devuelven el mismo numero. Una serie
+    // trimestral con la cobranza clavada en los cuatro puntos no se lee como un
+    // bug: se lee como "la cobranza no se mueve".
+    //
+    // El reloj se fija lejos de todo para que el default sea distinguible: con
+    // el, los cuatro meses darian 0%.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2030-01-15T09:00:00.000Z'));
+
+    try {
+      const { servicio } = crear({
+        pagos: [
+          pago({
+            perfilId: 'solo-septiembre',
+            cubreDesde: dia('2026-09-01'),
+            cubreHasta: dia('2026-09-30'),
+          }),
+        ],
+        usuarios: alumnosEnAlta('u-1'),
+        perfiles: [{ id: 'solo-septiembre', usuarioId: 'u-1', packId: 'pack-8' }],
+        packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
+      });
+
+      const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+      // Julio y agosto: su pago todavia no empezaba. Septiembre: cubierto.
+      expect(operativo.trimestre.map((mes) => mes.cobranza.porcentaje)).toEqual([0, 0, 100]);
+      // Octubre: su pago ya vencio al cerrar el mes.
+      expect(operativo.actual.cobranza.porcentaje).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('un gimnasio sin nadie con pack no dice 0% de cobranza, dice que no se sabe', async () => {
+    const { servicio } = crear({ turnos: [turno()] });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.cobranza).toEqual({
+      numerador: 0,
+      denominador: 0,
+      porcentaje: null,
+    });
+  });
+});
+
+describe('StatsService.operativo: el trimestre', () => {
+  it('el trimestre trae los TRES meses anteriores, del mas viejo al mas nuevo', async () => {
+    const { servicio } = crear();
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.anio).toBe(2026);
+    expect(operativo.actual.mes).toBe(10);
+    expect(operativo.trimestre.map((mes) => `${mes.anio}-${mes.mes}`)).toEqual([
+      '2026-7',
+      '2026-8',
+      '2026-9',
+    ]);
+  });
+
+  it('enero no es un caso aparte: el trimestre cruza de ano', async () => {
+    const { servicio } = crear();
+
+    const operativo = await servicio.operativo(ACTOR, { anio: 2026, mes: 1 });
+
+    expect(operativo.trimestre.map((mes) => `${mes.anio}-${mes.mes}`)).toEqual([
+      '2025-10',
+      '2025-11',
+      '2025-12',
+    ]);
+  });
+
+  it('cada mes del trimestre trae SUS numeros, no una copia del mes pedido', async () => {
+    // Sin esto, llamar cuatro veces a la funcion con el mismo mes pasa en verde:
+    // los cuatro puntos del grafico serian el mismo numero y nadie lo notaria
+    // hasta que alguien comparase la serie con la realidad.
+    const { servicio } = crear({
+      turnos: [
+        turno({ id: 'de-septiembre', fecha: dia('2026-09-10'), cupo: 10 }),
+        turno({ id: 'de-octubre', fecha: dia('2026-10-10'), cupo: 10 }),
+      ],
+      reservas: [
+        reserva({ turnoId: 'de-septiembre' }),
+        reserva({ turnoId: 'de-octubre' }),
+        reserva({ turnoId: 'de-octubre' }),
+        reserva({ turnoId: 'de-octubre' }),
+      ],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.ocupacion).toEqual({ numerador: 3, denominador: 10, porcentaje: 30 });
+    // Julio y agosto no tuvieron turnos: denominador cero y `null`, no cero.
+    expect(operativo.trimestre[0]?.ocupacion.porcentaje).toBeNull();
+    expect(operativo.trimestre[1]?.ocupacion.porcentaje).toBeNull();
+    expect(operativo.trimestre[2]?.ocupacion).toEqual({
+      numerador: 1,
+      denominador: 10,
+      porcentaje: 10,
+    });
+  });
+
+  it('el turno del ultimo dia del mes es de ese mes, no del siguiente', async () => {
+    const { servicio } = crear({
+      turnos: [
+        turno({ id: 'ultimo-de-octubre', fecha: dia('2026-10-31'), cupo: 4 }),
+        turno({ id: 'primero-de-noviembre', fecha: dia('2026-11-01'), cupo: 100 }),
+      ],
+      reservas: [reserva({ turnoId: 'ultimo-de-octubre' })],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(operativo.actual.ocupacion).toEqual({ numerador: 1, denominador: 4, porcentaje: 25 });
+  });
+});
+
+describe('StatsService.operativo: el salaId', () => {
+  it('acota a la sala pedida las metricas que cuentan clases', async () => {
+    const { servicio } = crear({
+      salas: [SALA_PRINCIPAL, { id: 'sala-2', nombre: 'Funcional' }],
+      turnos: [
+        turno({ id: 'de-sala-1', salaId: 'sala-1', cupo: 10 }),
+        turno({ id: 'de-sala-2', salaId: 'sala-2', cupo: 100 }),
+      ],
+      reservas: [
+        reserva({ turnoId: 'de-sala-1' }),
+        reserva({ turnoId: 'de-sala-2' }),
+        reserva({ turnoId: 'de-sala-2' }),
+      ],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, { ...OCTUBRE, salaId: 'sala-1' });
+
+    // Solo sala-1: 1 reserva sobre un cupo de 10. Sin el filtro serian 3/110.
+    expect(operativo.actual.ocupacion).toEqual({ numerador: 1, denominador: 10, porcentaje: 10 });
+  });
+
+  it('la cobranza NO se acota por sala, y es a proposito', async () => {
+    // Estar al dia es una propiedad del alumno y de sus pagos, no de una clase,
+    // y un alumno tiene acceso a varias salas a la vez: repartirlo exigiria
+    // inventar la misma atribucion que la caja descarta. Queda cubierto con un
+    // caso para que sea una decision y no un olvido que un dia alguien
+    // "arregle" sin darse cuenta de lo que rompe.
+    const comun = {
+      pagos: [
+        pago({ perfilId: 'al-dia', cubreDesde: dia('2026-10-01'), cubreHasta: dia('2026-10-31') }),
+      ],
+      usuarios: alumnosEnAlta('u-1', 'u-2'),
+      perfiles: [
+        { id: 'al-dia', usuarioId: 'u-1', packId: 'pack-8' },
+        { id: 'debe', usuarioId: 'u-2', packId: 'pack-8' },
+      ],
+      packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
+      salas: [SALA_PRINCIPAL],
+      turnos: [turno({ salaId: 'sala-1' })],
+    };
+
+    const sinSala = await crear(comun).servicio.operativo(ACTOR, OCTUBRE);
+    const conSala = await crear(comun).servicio.operativo(ACTOR, { ...OCTUBRE, salaId: 'sala-1' });
+
+    expect(conSala.actual.cobranza).toEqual(sinSala.actual.cobranza);
+    expect(conSala.actual.cobranza.porcentaje).toBe(50);
+  });
+});
+
+describe('StatsService.operativo: el cache', () => {
+  it('la clave lleva el mes y la sala, y el tenant del actor', async () => {
+    const { servicio, claves } = crear({ turnos: [turno()] });
+
+    await servicio.operativo(ACTOR, OCTUBRE);
+    await servicio.operativo(ACTOR, { ...OCTUBRE, salaId: 'sala-1' });
+
+    // Dos claves distintas: el gimnasio entero y una sala no son el mismo
+    // reporte, y servir uno por el otro seria un numero equivocado con un 200.
+    expect([...claves.keys()]).toEqual([
+      'stats:gym-1:v0:operativo:2026-10:todas',
+      'stats:gym-1:v0:operativo:2026-10:sala-1',
+    ]);
+  });
+
+  it('la segunda llamada no vuelve a consultar la base', async () => {
+    const { servicio, db } = crear({ turnos: [turno()], reservas: [reserva()] });
+
+    await servicio.operativo(ACTOR, OCTUBRE);
+    const consultasDeLaPrimera = db.turno.findMany.mock.calls.length;
+    await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(db.turno.findMany).toHaveBeenCalledTimes(consultasDeLaPrimera);
+  });
+
+  it('una reserva nueva se ve en el operativo sin esperar al TTL', async () => {
+    // La misma llamada de soporte que la caja, por la otra puerta: "anote al
+    // alumno y la ocupacion sigue diciendo lo de antes". `ReservasService`
+    // comparte el contador de version, asi que no hay ninguna lista de claves
+    // que mantener.
+    const { servicio, cache, claves } = crear({ turnos: [turno()] });
+
+    await servicio.operativo(ACTOR, OCTUBRE);
+    expect([...claves.keys()]).toEqual(['stats:gym-1:v0:operativo:2026-10:todas']);
+
+    await cache.invalidar('gym-1');
+    await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(claves.has('stats:gym-1:v1:operativo:2026-10:todas')).toBe(true);
+  });
+});
+
+describe('StatsService.operativo: un mes sin nada', () => {
+  it('un mes futuro no es un error: cuatro "no se sabe" y una cobranza real', async () => {
+    const { servicio } = crear({
+      usuarios: alumnosEnAlta('u-1'),
+      perfiles: [{ id: 'debe', usuarioId: 'u-1', packId: 'pack-8' }],
+      packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
+    });
+
+    const operativo = await servicio.operativo(ACTOR, { anio: 2099, mes: 1 });
+
+    for (const metrica of [
+      operativo.actual.ocupacion,
+      operativo.actual.asistencia,
+      operativo.actual.cancelacionRecuperable,
+      operativo.actual.cancelacionDefinitiva,
+    ]) {
+      expect(metrica).toEqual({ numerador: 0, denominador: 0, porcentaje: null });
+    }
+
+    // La cobranza SI tiene respuesta: en 2099 no pago nadie todavia, asi que
+    // nadie esta al dia. Es 0 de 1, no un "no se sabe".
+    expect(operativo.actual.cobranza).toEqual({ numerador: 0, denominador: 1, porcentaje: 0 });
+  });
+});
+
+/**
+ * EL PARAMETRO QUE AQUI SI EXISTE.
+ *
+ * La caja rechaza el `salaId` porque un `Pago` no tiene sala; el operativo lo
+ * acepta porque un `Turno` si. Los dos casos viven juntos a proposito: la
+ * asimetria es la decision, y una decision sin test es una opinion.
+ */
+describe('ConsultaOperativaDto', () => {
+  const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+  const comoQuery = { type: 'query' as const, metatype: ConsultaOperativaDto };
+
+  it('acepta el salaId y hereda la transformacion de anio y mes', async () => {
+    await expect(
+      pipe.transform({ anio: '2026', mes: '10', salaId: 'ckl1abc9' }, comoQuery),
+    ).resolves.toEqual({ anio: 2026, mes: 10, salaId: 'ckl1abc9' });
+  });
+
+  it('el salaId es opcional', async () => {
+    await expect(pipe.transform({ anio: '2026', mes: '10' }, comoQuery)).resolves.toEqual({
+      anio: 2026,
+      mes: 10,
+    });
+  });
+
+  it('400 si el salaId trae un separador de clave de cache', async () => {
+    // El `:` no se escapa al armar la clave. No puede suplantar otro reporte
+    // —entra al final—, pero la regla "a la clave solo van valores validados"
+    // se cumple en el borde o no se cumple.
+    await expect(
+      pipe.transform({ anio: '2026', mes: '10', salaId: 'a:caja:2026-10' }, comoQuery),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('400 si el mes no existe, igual que en la caja', async () => {
+    await expect(
+      pipe.transform({ anio: '2026', mes: '13', salaId: 'sala1' }, comoQuery),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK 7: /stats/turnos-libres y /stats/pagos-pendientes
+//
+// LOS DOS REPORTES SE EVALUAN "HOY", Y ES LA PRIMERA VEZ EN ESTA FASE QUE ESO
+// ESTA BIEN. En la caja y en el operativo, un `new Date()` por defecto era un
+// bug: metia "quien debe hoy" dentro de un reporte indexado por `anio/mes`, y
+// la cobranza salia identica en los cuatro meses del trimestre. Aqui no hay
+// periodo debajo del que esconderse —no se puede pedir "los turnos libres de
+// marzo de 2024" ni "los morosos de marzo"— asi que hoy ES la pregunta. Lo que
+// esta fase aprendio no es "nunca uses el reloj": es "decide la fecha a
+// proposito y escribila". Por eso todos los casos de aqui abajo fijan el reloj
+// y lo dicen, y hay uno que comprueba que el dia entra en la clave del cache.
+// ---------------------------------------------------------------------------
+
+/** Un usuario, que es donde viven el nombre y el email. Alumno y en alta. */
+function usuario(parcial: Partial<Tablas['usuarios'][number]> = {}): Tablas['usuarios'][number] {
+  return {
+    id: 'u-1',
+    rol: 'ALUMNO',
+    nombreCompleto: 'Ana Perez',
+    email: 'ana@gym.test',
+    activo: true,
+    ...parcial,
+  };
+}
+
+/** El `where` de fecha con el que `turno.findMany` fue llamado la primera vez. */
+function rangoPedido(db: ReturnType<typeof prismaFalso>): { gte: Date; lt: Date } {
+  const consulta = db.turno.findMany.mock.calls[0][0] as {
+    where: { fecha: { gte: Date; lt: Date } };
+  };
+  return consulta.where.fecha;
+}
+
+describe('StatsService.turnosLibres', () => {
+  // 2 de octubre de 2026, por la manana. Todo lo de aqui abajo se lee contra
+  // esta fecha; con el reloj real, "futuro" cambiaria de significado cada dia y
+  // la suite empezaria a fallar sola en algun momento de 2027.
+  const HOY = new Date('2026-10-02T09:00:00.000Z');
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(HOY);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('solo futuros y solo con lugar', async () => {
+    const { servicio } = crear({
+      salas: [SALA_PRINCIPAL],
+      turnos: [
+        // Pasado y con lugar: no entra. Lo que sobra en un reporte de "donde
+        // meto a este alumno" no es ruido, es una clase a la que ya no llega.
+        turno({ id: 'ayer', fecha: dia('2026-09-20'), cupo: 5 }),
+        // Futuro y lleno: tampoco. Cupo 2 con 2 reservas vivas.
+        turno({ id: 'lleno', fecha: dia('2026-10-10'), cupo: 2 }),
+        // Futuro y con lugar: el unico que vuelve.
+        turno({ id: 'hay-lugar', fecha: dia('2026-10-12'), cupo: 5 }),
+      ],
+      reservas: [
+        reserva({ turnoId: 'lleno', perfilId: 'a-1' }),
+        reserva({ turnoId: 'lleno', perfilId: 'a-2' }),
+        reserva({ turnoId: 'hay-lugar', perfilId: 'a-1' }),
+      ],
+    });
+
+    const { turnos: libres } = await servicio.turnosLibres(ACTOR, {});
+
+    expect(libres.map((fila) => fila.turnoId)).toEqual(['hay-lugar']);
+    expect(libres[0]).toEqual({
+      turnoId: 'hay-lugar',
+      salaId: 'sala-1',
+      salaNombre: 'Principal',
+      fecha: '2026-10-12',
+      horaInicio: '18:00',
+      horaFin: '19:00',
+      cupo: 5,
+      reservados: 1,
+      libres: 4,
+    });
+  });
+
+  it('una reserva cancelada vuelve a liberar el lugar', async () => {
+    const { servicio } = crear({
+      salas: [SALA_PRINCIPAL],
+      turnos: [turno({ id: 'uno', fecha: dia('2026-10-10'), cupo: 2 })],
+      reservas: [
+        reserva({ turnoId: 'uno', perfilId: 'a-1' }),
+        reserva({
+          turnoId: 'uno',
+          perfilId: 'a-2',
+          canceladaEn: instante('2026-10-01T10:00:00.000Z'),
+          cancelacionTipo: 'RECUPERABLE',
+        }),
+      ],
+    });
+
+    const { turnos: libres } = await servicio.turnosLibres(ACTOR, {});
+
+    // Contar las canceladas como ocupadas esconderia justamente el lugar que se
+    // acaba de liberar, que es el motivo entero de mirar este reporte.
+    expect(libres[0].reservados).toBe(1);
+    expect(libres[0].libres).toBe(1);
+  });
+
+  it('mesesAdelante por defecto es 3', async () => {
+    // SE AFIRMA SOBRE EL `where` QUE RECIBIO EL DOBLE, no sobre el resultado:
+    // con pocos turnos, tres meses y doce devolverian lo mismo y el caso no
+    // probaria nada. Es una de las siete veces de esta fase en que un fixture no
+    // distinguia los dos comportamientos.
+    const { servicio, db } = crear({ salas: [SALA_PRINCIPAL], turnos: [turno()] });
+
+    await servicio.turnosLibres(ACTOR, {});
+
+    expect(rangoPedido(db)).toEqual({ gte: dia('2026-10-02'), lt: dia('2027-01-02') });
+  });
+
+  it('mesesAdelante se topea en 12', async () => {
+    // Pedir 999 no recorre la tabla entera de turnos: el `where` se arma con 12.
+    // Y no es un 400, que es la otra mitad de la decision: la respuesta correcta
+    // a "dame dos anos" es "te doy uno".
+    const { servicio, db } = crear({ salas: [SALA_PRINCIPAL], turnos: [turno()] });
+
+    const reporte = await servicio.turnosLibres(ACTOR, { mesesAdelante: 999 });
+
+    expect(rangoPedido(db)).toEqual({ gte: dia('2026-10-02'), lt: dia('2027-10-02') });
+    // Y LO DICE. Recortar sin avisar deja a quien pidio 999 leyendo una lista
+    // corta como "no hay mas turnos" en vez de como "no miramos mas alla".
+    expect(reporte.mesesAdelante).toBe(12);
+  });
+
+  it('un mesesAdelante por debajo del tope se respeta tal cual', async () => {
+    // El par del caso de arriba: sin el, un service que ignorara el parametro y
+    // usara siempre 12 pasaria el del tope sin inmutarse.
+    const { servicio, db } = crear({ salas: [SALA_PRINCIPAL], turnos: [turno()] });
+
+    await servicio.turnosLibres(ACTOR, { mesesAdelante: 2 });
+
+    expect(rangoPedido(db)).toEqual({ gte: dia('2026-10-02'), lt: dia('2026-12-02') });
+  });
+
+  it('el salaId acota, porque un Turno SI tiene sala', async () => {
+    const DOS_SALAS = {
+      salas: [SALA_PRINCIPAL, { id: 'estudio', nombre: 'Estudio' }],
+      turnos: [
+        turno({ id: 'en-principal', fecha: dia('2026-10-10') }),
+        turno({ id: 'en-estudio', fecha: dia('2026-10-10'), salaId: 'estudio' }),
+      ],
+    };
+
+    const todas = await crear(DOS_SALAS).servicio.turnosLibres(ACTOR, {});
+    const soloEstudio = await crear(DOS_SALAS).servicio.turnosLibres(ACTOR, { salaId: 'estudio' });
+
+    expect(todas.turnos.map((fila) => fila.turnoId)).toEqual(['en-estudio', 'en-principal']);
+    expect(soloEstudio.turnos.map((fila) => fila.turnoId)).toEqual(['en-estudio']);
+    expect(soloEstudio.turnos[0].salaNombre).toBe('Estudio');
+  });
+
+  it('salen en orden de agenda, no en el que vino de la base', async () => {
+    // El orden es fijo y no "el que venga": la respuesta se serializa a JSON y
+    // se guarda en el cache, asi que dos llamadas identicas tienen que dar el
+    // mismo cuerpo byte a byte.
+    const { servicio } = crear({
+      salas: [SALA_PRINCIPAL],
+      turnos: [
+        turno({ id: 'c', fecha: dia('2026-10-20'), horaInicio: '08:00' }),
+        turno({ id: 'b', fecha: dia('2026-10-10'), horaInicio: '19:00' }),
+        turno({ id: 'a', fecha: dia('2026-10-10'), horaInicio: '08:00' }),
+      ],
+    });
+
+    const { turnos: libres } = await servicio.turnosLibres(ACTOR, {});
+
+    expect(libres.map((fila) => fila.turnoId)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('la clave del cache lleva el dia, los meses y la sala', async () => {
+    const { servicio, claves } = crear({ salas: [SALA_PRINCIPAL], turnos: [turno()] });
+
+    await servicio.turnosLibres(ACTOR, { mesesAdelante: 6, salaId: 'sala1' });
+
+    // EL DIA ESTA EN LA CLAVE a proposito: el reporte se evalua con el reloj, y
+    // sin el dia la entrada de hoy seguiria sirviendo manana dentro del TTL.
+    expect([...claves.keys()]).toEqual(['stats:gym-1:v0:turnos-libres:2026-10-02:6:sala1']);
+  });
+
+  it('la segunda llamada no vuelve a consultar la base', async () => {
+    const { servicio, db } = crear({ salas: [SALA_PRINCIPAL], turnos: [turno()] });
+
+    await servicio.turnosLibres(ACTOR, {});
+    const segunda = await servicio.turnosLibres(ACTOR, {});
+
+    expect(segunda.turnos).toHaveLength(1);
+    expect(db.turno.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('StatsService.pagosPendientes', () => {
+  const HOY = new Date('2026-10-15T09:00:00.000Z');
+
+  /**
+   * Tres alumnos: uno cubierto, uno que debe, uno sin plan contratado.
+   *
+   * Es el MISMO padron que usa el caso de la cobranza del operativo, a
+   * proposito: el desglose de este reporte y el `pendienteEstimado` de la caja
+   * salen de la misma funcion pura `pendientesDe`, y mirar los dos sobre los
+   * mismos datos es lo que hace visible si algun dia dejan de corresponderse.
+   */
+  const PADRON = {
+    pagos: [
+      pago({ perfilId: 'al-dia', cubreDesde: dia('2026-10-01'), cubreHasta: dia('2026-10-31') }),
+    ],
+    perfiles: [
+      { id: 'al-dia', usuarioId: 'u-1', packId: 'pack-8' },
+      { id: 'debe', usuarioId: 'u-2', packId: 'pack-8' },
+      { id: 'sin-pack', usuarioId: 'u-3', packId: null },
+    ],
+    usuarios: [
+      usuario({ id: 'u-1', nombreCompleto: 'Ana Perez', email: 'ana@gym.test' }),
+      usuario({ id: 'u-2', nombreCompleto: 'Bruno Diaz', email: 'bruno@gym.test' }),
+      usuario({ id: 'u-3', nombreCompleto: 'Carla Ruiz', email: 'carla@gym.test' }),
+    ],
+    packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(HOY);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('solo los que NO estan al dia', async () => {
+    const { servicio } = crear(PADRON);
+
+    const pendientes = await servicio.pagosPendientes(ACTOR, {});
+
+    expect(pendientes.map((fila) => fila.perfilId)).toEqual(['debe']);
+    expect(pendientes[0].nombreCompleto).toBe('Bruno Diaz');
+    expect(pendientes[0].email).toBe('bruno@gym.test');
+    expect(pendientes[0].packNombre).toBe('8 clases');
+  });
+
+  it('el estimado es el precio del pack', async () => {
+    const { servicio } = crear(PADRON);
+
+    const pendientes = await servicio.pagosPendientes(ACTOR, {});
+
+    expect(pendientes[0].pendienteEstimado).toEqual({ centavos: 850000, texto: '8500.00' });
+  });
+
+  it('un pack sin precio aporta cero, nunca un NaN', async () => {
+    // "A consultar" es un estado legitimo de un pack desde la Fase 1. No saber
+    // cuanto debe alguien no puede romper el reporte de todos los demas.
+    const { servicio } = crear({
+      ...PADRON,
+      packs: [{ id: 'pack-8', nombre: 'A consultar', precio: null }],
+    });
+
+    const pendientes = await servicio.pagosPendientes(ACTOR, {});
+
+    expect(pendientes.map((fila) => fila.pendienteEstimado)).toEqual([
+      { centavos: 0, texto: '0.00' },
+    ]);
+    expect(Number.isNaN(pendientes[0].pendienteEstimado.centavos)).toBe(false);
+    expect(pendientes[0].packNombre).toBe('A consultar');
+  });
+
+  it('un alumno sin pack no aparece', async () => {
+    // No debe nada: no tiene plan contratado. Si apareciera, el reporte de
+    // morosos se llenaria de gente que nunca se anoto a nada.
+    const { servicio } = crear(PADRON);
+
+    const pendientes = await servicio.pagosPendientes(ACTOR, {});
+
+    expect(pendientes.map((fila) => fila.perfilId)).not.toContain('sin-pack');
+  });
+
+  it('cuenta las cancelaciones DEL MES EN CURSO, no las de siempre', async () => {
+    const { servicio } = crear({
+      ...PADRON,
+      turnos: [turno({ id: 't-1' })],
+      reservas: [
+        reserva({
+          turnoId: 't-1',
+          perfilId: 'debe',
+          canceladaEn: instante('2026-10-03T10:00:00.000Z'),
+          cancelacionTipo: 'DEFINITIVA',
+        }),
+        reserva({
+          turnoId: 't-1',
+          perfilId: 'debe',
+          canceladaEn: instante('2026-10-09T10:00:00.000Z'),
+          cancelacionTipo: 'RECUPERABLE',
+        }),
+        // Del mes pasado: no cuenta. "Lo que mas cancelan" es una conducta de
+        // ahora; arrastrar el historico haria que un alumno que se portaba mal
+        // en marzo siguiera encabezando la lista en diciembre.
+        reserva({
+          turnoId: 't-1',
+          perfilId: 'debe',
+          canceladaEn: instante('2026-09-28T10:00:00.000Z'),
+          cancelacionTipo: 'DEFINITIVA',
+        }),
+        // Viva: no es una cancelacion.
+        reserva({ turnoId: 't-1', perfilId: 'debe' }),
+      ],
+    });
+
+    const pendientes = await servicio.pagosPendientes(ACTOR, {});
+
+    expect(pendientes[0].cancelacionesDelMes).toBe(2);
+  });
+
+  it('el reloj SI mueve este reporte, y es correcto que lo mueva', async () => {
+    // El inverso del caso de dos relojes de la caja, y vale la pena tenerlo
+    // escrito: alli dos fechas distintas tenian que dar el MISMO numero, porque
+    // el reporte prometia un mes. Aqui el reporte promete "ahora", asi que el
+    // alumno cubierto hasta el 31 de octubre no debe el 15 de octubre y si debe
+    // el 15 de noviembre. Un resultado identico en las dos fechas significaria
+    // que la fecha de evaluacion quedo clavada en algun lado.
+    jest.setSystemTime(new Date('2026-10-15T09:00:00.000Z'));
+    const enOctubre = await crear(PADRON).servicio.pagosPendientes(ACTOR, {});
+
+    jest.setSystemTime(new Date('2026-11-15T09:00:00.000Z'));
+    const enNoviembre = await crear(PADRON).servicio.pagosPendientes(ACTOR, {});
+
+    expect(enOctubre.map((fila) => fila.perfilId)).toEqual(['debe']);
+    expect(enNoviembre.map((fila) => fila.perfilId)).toEqual(['al-dia', 'debe']);
+  });
+
+  it('la clave del cache lleva el dia en que se evaluo', async () => {
+    const { servicio, claves } = crear(PADRON);
+
+    await servicio.pagosPendientes(ACTOR, {});
+
+    expect([...claves.keys()]).toEqual(['stats:gym-1:v0:pagos-pendientes:2026-10-15']);
+  });
+
+  it('salen en orden alfabetico, no en el que vino de la base', async () => {
+    const { servicio } = crear({
+      ...PADRON,
+      pagos: [],
+      usuarios: [
+        usuario({ id: 'u-1', nombreCompleto: 'Zoe Vega' }),
+        usuario({ id: 'u-2', nombreCompleto: 'Bruno Diaz' }),
+        usuario({ id: 'u-3', nombreCompleto: 'Carla Ruiz' }),
+      ],
+    });
+
+    const pendientes = await servicio.pagosPendientes(ACTOR, {});
+
+    expect(pendientes.map((fila) => fila.nombreCompleto)).toEqual(['Bruno Diaz', 'Zoe Vega']);
+  });
+});
+
+/**
+ * UNA SOLA POBLACION PARA LOS CUATRO REPORTES QUE CUENTAN ALUMNOS.
+ *
+ * `alumnosActivos()` filtraba por rol y por `activo`; `perfilesConPack()` no
+ * filtraba por ninguno de los dos, y `darDeBaja` no limpia el `packId`. La misma
+ * persona era "no es alumno" para la composicion y "alumno que debe" para la
+ * cobranza, el pendiente de la caja y los morosos. Nadie habia tomado esa
+ * decision: estaba heredada.
+ *
+ * LO PEOR ERA LA COBRANZA, QUE DECAIA PARA SIEMPRE: cada ex-alumno se quedaba en
+ * el denominador sin poder volver a estar al dia jamas, asi que el indicador
+ * bajaba solo a medida que el gimnasio acumulaba historia. Un numero que baja
+ * solo es exactamente el numero plausible y equivocado que la seccion 6 existe
+ * para evitar.
+ *
+ * Los casos van juntos aqui, sobre un unico padron, porque lo que se fija es que
+ * los TRES contesten lo mismo sobre la misma persona.
+ */
+describe('StatsService: los dados de baja salen de los cuatro reportes a la vez', () => {
+  /** Dos alumnos con el mismo pack; uno de ellos dado de baja. Nadie pago. */
+  const PADRON = {
+    usuarios: [
+      usuario({ id: 'u-1', nombreCompleto: 'Ana Perez' }),
+      usuario({ id: 'u-2', nombreCompleto: 'Bruno Diaz', activo: false }),
+    ],
+    perfiles: [
+      { id: 'en-alta', usuarioId: 'u-1', packId: 'pack-8' },
+      // `darDeBaja` no le limpia el `packId`: sigue teniendo pack, pero ya no es
+      // alumno del gimnasio.
+      { id: 'se-fue', usuarioId: 'u-2', packId: 'pack-8' },
+    ],
+    packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
+  };
+
+  it('la cobranza no decae con los ex-alumnos', async () => {
+    const { servicio } = crear(PADRON);
+
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    // 0 de 1, no 0 de 2. Con el de baja dentro, el denominador crece con cada
+    // persona que se va y el porcentaje baja solo para siempre.
+    expect(operativo.actual.cobranza).toEqual({
+      numerador: 0,
+      denominador: 1,
+      porcentaje: 0,
+    });
+  });
+
+  it('el pendiente de la caja no arrastra deuda historica', async () => {
+    const { servicio } = crear(PADRON);
+
+    const caja = await servicio.caja(ACTOR, OCTUBRE);
+
+    // 8500 y no 17000: el pendiente de un mes es lo que ESE mes quedo sin cobrar
+    // de su gente, no una deuda acumulada de todo el que paso por el gimnasio.
+    expect(caja.pendienteEstimado.texto).toBe('8500.00');
+  });
+
+  it('recepcion no llama a quien se fue', async () => {
+    const { servicio } = crear(PADRON);
+
+    const pendientes = await servicio.pagosPendientes(ACTOR, {});
+
+    expect(pendientes.map((fila) => fila.perfilId)).toEqual(['en-alta']);
+  });
+
+  it('y la composicion dice lo mismo que los otros tres', async () => {
+    const { servicio } = crear(PADRON);
+
+    const composicion = await servicio.composicionAlumnos(ACTOR, OCTUBRE);
+
+    // Este reporte ya filtraba bien; el caso esta aqui para que los cuatro
+    // numeros se lean juntos y se vea que son el mismo.
+    expect(composicion.totalAlumnos).toBe(1);
+    expect(composicion.porPack).toEqual([
+      { packId: 'pack-8', packNombre: '8 clases', alumnos: 1, porcentaje: 100 },
+    ]);
+  });
+
+  it('una profesora con pack no entra en los morosos', async () => {
+    // El filtro de rol no es redundante con el de pack. Hoy una profesora no
+    // tiene pack y caeria sola, pero nada en el schema lo impide —`Perfil.packId`
+    // es opcional para todos—, y el dia que alguien le asigne uno apareceria
+    // aqui.
+    const { servicio } = crear({
+      ...PADRON,
+      usuarios: [
+        ...PADRON.usuarios,
+        usuario({ id: 'u-9', rol: 'PROFESOR', nombreCompleto: 'Fati' }),
+      ],
+      perfiles: [...PADRON.perfiles, { id: 'prof-1', usuarioId: 'u-9', packId: 'pack-8' }],
+    });
+
+    const pendientes = await servicio.pagosPendientes(ACTOR, {});
+    const operativo = await servicio.operativo(ACTOR, OCTUBRE);
+
+    expect(pendientes.map((fila) => fila.perfilId)).toEqual(['en-alta']);
+    expect(operativo.actual.cobranza.denominador).toBe(1);
+  });
+});
+
+/**
+ * EL PARAMETRO QUE TAMPOCO EXISTE AQUI.
+ *
+ * La spec pedia `/stats/pagos-pendientes?salaId=`. Se quito al implementarlo,
+ * por la MISMA razon que en la caja y que en la cobranza del operativo: estar al
+ * dia es una propiedad del alumno y de sus pagos, un alumno accede a varias
+ * salas a la vez, y su `pendienteEstimado` es el precio de su pack ENTERO. La
+ * misma persona apareceria con su deuda completa en la lista de la sala A y en
+ * la de la B, y sumar las dos listas contaria el mismo peso dos veces.
+ *
+ * El DTO esta VACIO y eso es lo que hace el trabajo: con el `@Query()` del
+ * controller apuntando aqui y el `forbidNonWhitelisted` del ValidationPipe
+ * global, mandarlo da 400. Sin el DTO, Nest lo ignoraria en silencio y
+ * tendriamos una mentira con codigo 200.
+ */
+describe('ConsultaPagosPendientesDto', () => {
+  const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+  const comoQuery = { type: 'query' as const, metatype: ConsultaPagosPendientesDto };
+
+  it('una query vacia pasa limpia', async () => {
+    await expect(pipe.transform({}, comoQuery)).resolves.toEqual({});
+  });
+
+  it('400 si se manda un salaId: los morosos no se parten por sala', async () => {
+    await expect(pipe.transform({ salaId: 'sala1' }, comoQuery)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('400 tambien si se manda un mes: este reporte es de ahora, no de un periodo', async () => {
+    await expect(pipe.transform({ anio: '2026', mes: '10' }, comoQuery)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+});
+
+describe('ConsultaTurnosLibresDto', () => {
+  const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+  const comoQuery = { type: 'query' as const, metatype: ConsultaTurnosLibresDto };
+
+  it('los dos parametros son opcionales', async () => {
+    await expect(pipe.transform({}, comoQuery)).resolves.toEqual({});
+  });
+
+  it('transforma mesesAdelante de string a numero', async () => {
+    await expect(pipe.transform({ mesesAdelante: '6' }, comoQuery)).resolves.toEqual({
+      mesesAdelante: 6,
+    });
+  });
+
+  it('NO rechaza un mesesAdelante por encima del tope: lo topea el service', async () => {
+    // El caso que fija la decision. Un `@Max(12)` aqui daria 400 a quien pida
+    // 24, y la respuesta correcta a "dame dos anos" no es un error, es "te doy
+    // uno". El recorte se comprueba en `mesesAdelante se topea en 12`.
+    await expect(pipe.transform({ mesesAdelante: '999' }, comoQuery)).resolves.toEqual({
+      mesesAdelante: 999,
+    });
+  });
+
+  it('400 si mesesAdelante es cero o negativo', async () => {
+    // Y aqui si es un 400, porque no hay ninguna respuesta razonable que dar:
+    // no existe "mirar hacia atras" en un reporte de turnos futuros.
+    await expect(pipe.transform({ mesesAdelante: '0' }, comoQuery)).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(pipe.transform({ mesesAdelante: '-3' }, comoQuery)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('400 si el salaId trae un separador de clave de cache', async () => {
+    await expect(pipe.transform({ salaId: 'a:caja:2026-10' }, comoQuery)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK 8: /stats/composicion-alumnos y /stats/asistencia
+// ---------------------------------------------------------------------------
+
+describe('StatsService.composicionAlumnos', () => {
+  /** Cuatro alumnos: dos del pack A, uno del B, uno sin pack. */
+  const PADRON = {
+    usuarios: [
+      usuario({ id: 'u-1', nombreCompleto: 'Ana Perez' }),
+      usuario({ id: 'u-2', nombreCompleto: 'Bruno Diaz' }),
+      usuario({ id: 'u-3', nombreCompleto: 'Carla Ruiz' }),
+      usuario({ id: 'u-4', nombreCompleto: 'Diego Sosa' }),
+    ],
+    perfiles: [
+      { id: 'a-1', usuarioId: 'u-1', packId: 'pack-a' },
+      { id: 'a-2', usuarioId: 'u-2', packId: 'pack-a' },
+      { id: 'a-3', usuarioId: 'u-3', packId: 'pack-b' },
+      { id: 'a-4', usuarioId: 'u-4', packId: null },
+    ],
+    packs: [
+      { id: 'pack-a', nombre: '8 clases', precio: '8500.00' },
+      { id: 'pack-b', nombre: '12 clases', precio: '12000.00' },
+    ],
+  };
+
+  it('los porcentajes suman 100', async () => {
+    const { servicio } = crear(PADRON);
+
+    const composicion = await servicio.composicionAlumnos(ACTOR, OCTUBRE);
+
+    expect(composicion.totalAlumnos).toBe(4);
+    expect(composicion.porPack).toEqual([
+      { packId: 'pack-b', packNombre: '12 clases', alumnos: 1, porcentaje: 25 },
+      { packId: 'pack-a', packNombre: '8 clases', alumnos: 2, porcentaje: 50 },
+      { packId: null, packNombre: 'Sin pack', alumnos: 1, porcentaje: 25 },
+    ]);
+    expect(composicion.porPack.reduce((total, fila) => total + fila.porcentaje, 0)).toBe(100);
+  });
+
+  it('los alumnos sin pack se agrupan aparte, no se descartan', async () => {
+    // Descartarlos haria que los porcentajes mintieran sobre el total: los tres
+    // con pack pasarian a ser 33/33/33 de un universo de tres, y el panel diria
+    // que todo el mundo esta en un plan.
+    const { servicio } = crear(PADRON);
+
+    const composicion = await servicio.composicionAlumnos(ACTOR, OCTUBRE);
+
+    const sinPack = composicion.porPack.find((fila) => fila.packId === null);
+    expect(sinPack).toEqual({ packId: null, packNombre: 'Sin pack', alumnos: 1, porcentaje: 25 });
+    // Y el que no tiene pack SIGUE siendo un alumno del gimnasio: entra en el
+    // total y en el consumo.
+    expect(composicion.totalAlumnos).toBe(4);
+    expect(composicion.consumo.map((fila) => fila.perfilId)).toContain('a-4');
+  });
+
+  it('el consumo sale de las reservas, no de un contador', async () => {
+    const { servicio } = crear({
+      ...PADRON,
+      turnos: [turno({ id: 't-1' }), turno({ id: 't-2', fecha: dia('2026-10-07') })],
+      reservas: [
+        reserva({ turnoId: 't-1', perfilId: 'a-1' }),
+        reserva({ turnoId: 't-2', perfilId: 'a-1' }),
+        // Cancelada: no es una clase tomada.
+        reserva({
+          turnoId: 't-2',
+          perfilId: 'a-1',
+          canceladaEn: instante('2026-10-06T10:00:00.000Z'),
+          cancelacionTipo: 'RECUPERABLE',
+        }),
+      ],
+    });
+
+    const composicion = await servicio.composicionAlumnos(ACTOR, OCTUBRE);
+
+    const ana = composicion.consumo.find((fila) => fila.perfilId === 'a-1');
+    expect(ana).toEqual({ perfilId: 'a-1', nombreCompleto: 'Ana Perez', clasesTomadas: 2 });
+    // Y el que no reservo nada sale con cero, no se cae de la lista: "no vino
+    // nunca" es informacion, y es justo la que este reporte busca.
+    expect(composicion.consumo.find((fila) => fila.perfilId === 'a-4')?.clasesTomadas).toBe(0);
+  });
+
+  it('solo cuenta las reservas del mes pedido', async () => {
+    const { servicio } = crear({
+      ...PADRON,
+      turnos: [turno({ id: 'octubre' }), turno({ id: 'noviembre', fecha: dia('2026-11-05') })],
+      reservas: [
+        reserva({ turnoId: 'octubre', perfilId: 'a-1' }),
+        reserva({ turnoId: 'noviembre', perfilId: 'a-1' }),
+      ],
+    });
+
+    const composicion = await servicio.composicionAlumnos(ACTOR, OCTUBRE);
+
+    expect(composicion.consumo.find((fila) => fila.perfilId === 'a-1')?.clasesTomadas).toBe(1);
+  });
+
+  it('una profesora no infla el grupo de los que no tienen pack', async () => {
+    // EL FILTRO DE ROL ES LO QUE SALVA ESTE REPORTE. Una profesora tiene Perfil
+    // y no tiene pack: sin el filtro caeria en "Sin pack" y el reporte que dice
+    // cuantos ALUMNOS hay en cada plan pasaria a contar al personal.
+    const { servicio } = crear({
+      ...PADRON,
+      usuarios: [
+        ...PADRON.usuarios,
+        usuario({ id: 'u-9', rol: 'PROFESOR', nombreCompleto: 'Fati' }),
+      ],
+      perfiles: [...PADRON.perfiles, { id: 'prof-1', usuarioId: 'u-9', packId: null }],
+    });
+
+    const composicion = await servicio.composicionAlumnos(ACTOR, OCTUBRE);
+
+    expect(composicion.totalAlumnos).toBe(4);
+    expect(composicion.porPack.find((fila) => fila.packId === null)?.alumnos).toBe(1);
+    expect(composicion.consumo.map((fila) => fila.perfilId)).not.toContain('prof-1');
+  });
+
+  it('un alumno dado de baja no esta en ningun pack hoy', async () => {
+    const { servicio } = crear({
+      ...PADRON,
+      usuarios: [
+        ...PADRON.usuarios.slice(0, 3),
+        usuario({ id: 'u-4', nombreCompleto: 'Diego Sosa', activo: false }),
+      ],
+    });
+
+    const composicion = await servicio.composicionAlumnos(ACTOR, OCTUBRE);
+
+    expect(composicion.totalAlumnos).toBe(3);
+    expect(composicion.porPack.map((fila) => fila.packId)).toEqual(['pack-b', 'pack-a']);
+  });
+
+  it('un gimnasio sin alumnos no revienta ni divide por cero', async () => {
+    const { servicio } = crear({});
+
+    const composicion = await servicio.composicionAlumnos(ACTOR, OCTUBRE);
+
+    expect(composicion).toEqual({
+      anio: 2026,
+      mes: 10,
+      totalAlumnos: 0,
+      porPack: [],
+      consumo: [],
+    });
+  });
+
+  it('la clave del cache lleva el mes y el tenant del actor', async () => {
+    const { servicio, claves } = crear(PADRON);
+
+    await servicio.composicionAlumnos(ACTOR, OCTUBRE);
+
+    expect([...claves.keys()]).toEqual(['stats:gym-1:v0:composicion:2026-10']);
+  });
+});
+
+describe('StatsService.asistencia', () => {
+  const RANGO = { desde: '2026-10-01', hasta: '2026-10-31' };
+
+  const PADRON = {
+    usuarios: [
+      usuario({ id: 'u-1', nombreCompleto: 'Ana Perez' }),
+      usuario({ id: 'u-2', nombreCompleto: 'Bruno Diaz' }),
+    ],
+    perfiles: [
+      { id: 'a-1', usuarioId: 'u-1', packId: 'pack-a' },
+      { id: 'a-2', usuarioId: 'u-2', packId: 'pack-a' },
+    ],
+    packs: [{ id: 'pack-a', nombre: '8 clases', precio: '8500.00' }],
+  };
+
+  it('un alumno sin lista pasada tiene porcentaje null', async () => {
+    // Dos reservas suyas en el rango, las dos con `asistio: null`. NUNCA 0: un
+    // cero es una respuesta —"no vino a ninguna"— y aqui no hay ninguna
+    // respuesta. Con el cero, el admin lo llama para preguntarle por que falto a
+    // todo cuando lo que paso es que nadie paso lista.
+    const { servicio } = crear({
+      ...PADRON,
+      turnos: [turno({ id: 't-1' }), turno({ id: 't-2', fecha: dia('2026-10-07') })],
+      reservas: [
+        reserva({ turnoId: 't-1', perfilId: 'a-1' }),
+        reserva({ turnoId: 't-2', perfilId: 'a-1' }),
+      ],
+    });
+
+    const reporte = await servicio.asistencia(ACTOR, RANGO);
+
+    expect(reporte.alumnos).toEqual([
+      { perfilId: 'a-1', nombreCompleto: 'Ana Perez', presentes: 0, ausentes: 0, porcentaje: null },
+    ]);
+  });
+
+  it('presentes sobre las reservas con lista pasada, no sobre todas', async () => {
+    const { servicio } = crear({
+      ...PADRON,
+      turnos: [
+        turno({ id: 't-1' }),
+        turno({ id: 't-2', fecha: dia('2026-10-07') }),
+        turno({ id: 't-3', fecha: dia('2026-10-14') }),
+        turno({ id: 't-4', fecha: dia('2026-10-21') }),
+      ],
+      reservas: [
+        reserva({ turnoId: 't-1', perfilId: 'a-1', asistio: true }),
+        reserva({ turnoId: 't-2', perfilId: 'a-1', asistio: true }),
+        reserva({ turnoId: 't-3', perfilId: 'a-1', asistio: false }),
+        // Sin lista: no entra ni arriba ni abajo. Con el denominador ingenuo
+        // serian 2 de 4 (50%) en vez de 2 de 3 (66,67%).
+        reserva({ turnoId: 't-4', perfilId: 'a-1' }),
+      ],
+    });
+
+    const reporte = await servicio.asistencia(ACTOR, RANGO);
+
+    expect(reporte.alumnos[0]).toEqual({
+      perfilId: 'a-1',
+      nombreCompleto: 'Ana Perez',
+      presentes: 2,
+      ausentes: 1,
+      porcentaje: 66.67,
+    });
+  });
+
+  it('una reserva cancelada no cuenta como falta', async () => {
+    const { servicio } = crear({
+      ...PADRON,
+      turnos: [turno({ id: 't-1' }), turno({ id: 't-2', fecha: dia('2026-10-07') })],
+      reservas: [
+        reserva({ turnoId: 't-1', perfilId: 'a-1', asistio: true }),
+        // Cancelada Y marcada como ausente: pasar lista escribe todas las del
+        // turno. Quien cancelo no falto, asi que no entra en el denominador.
+        reserva({
+          turnoId: 't-2',
+          perfilId: 'a-1',
+          asistio: false,
+          canceladaEn: instante('2026-10-06T10:00:00.000Z'),
+          cancelacionTipo: 'RECUPERABLE',
+        }),
+      ],
+    });
+
+    const reporte = await servicio.asistencia(ACTOR, RANGO);
+
+    expect(reporte.alumnos[0]).toEqual({
+      perfilId: 'a-1',
+      nombreCompleto: 'Ana Perez',
+      presentes: 1,
+      ausentes: 0,
+      porcentaje: 100,
+    });
+  });
+
+  it('el perfilId acota a un solo alumno', async () => {
+    const { servicio } = crear({
+      ...PADRON,
+      turnos: [turno({ id: 't-1' })],
+      reservas: [
+        reserva({ turnoId: 't-1', perfilId: 'a-1', asistio: true }),
+        reserva({ turnoId: 't-1', perfilId: 'a-2', asistio: false }),
+      ],
+    });
+
+    const reporte = await servicio.asistencia(ACTOR, { ...RANGO, perfilId: 'a-2' });
+
+    expect(reporte.alumnos.map((fila) => fila.perfilId)).toEqual(['a-2']);
+    expect(reporte.alumnos[0].porcentaje).toBe(0);
+  });
+
+  it('el dia `hasta` entra entero', async () => {
+    // El rango de `StatsDatos` es semiabierto, asi que el service tiene que
+    // pedir `[desde, hasta + 1)`. Un `lte` contra la medianoche del 31 se
+    // comeria los turnos del 31 el dia que esa columna tenga hora.
+    const { servicio, db } = crear({
+      ...PADRON,
+      turnos: [turno({ id: 'el-31', fecha: dia('2026-10-31') })],
+      reservas: [reserva({ turnoId: 'el-31', perfilId: 'a-1', asistio: true })],
+    });
+
+    const reporte = await servicio.asistencia(ACTOR, RANGO);
+
+    expect(rangoPedido(db)).toEqual({ gte: dia('2026-10-01'), lt: dia('2026-11-01') });
+    expect(reporte.alumnos[0].presentes).toBe(1);
+  });
+
+  it('un rango invertido es 400', async () => {
+    // Y no una lista vacia: `desde > hasta` no es una pregunta rara, es una
+    // pregunta mal escrita, y contestarla con `[]` la deja pasar por "este
+    // alumno no vino nunca".
+    const { servicio } = crear(PADRON);
+
+    await expect(
+      servicio.asistencia(ACTOR, { desde: '2026-10-31', hasta: '2026-10-01' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('un rango de un solo dia NO es un rango invertido', async () => {
+    // El par del caso de arriba: con un `>=` en vez de un `>` en la comprobacion,
+    // pedir la asistencia de un martes concreto devolveria un 400.
+    const { servicio } = crear({
+      ...PADRON,
+      turnos: [turno({ id: 't-1', fecha: dia('2026-10-05') })],
+      reservas: [reserva({ turnoId: 't-1', perfilId: 'a-1', asistio: true })],
+    });
+
+    const reporte = await servicio.asistencia(ACTOR, {
+      desde: '2026-10-05',
+      hasta: '2026-10-05',
+    });
+
+    expect(reporte.alumnos[0].presentes).toBe(1);
+  });
+
+  it('un rango descomunal se recorta a un ano, y el reporte lo dice', async () => {
+    // Mismo criterio que el tope de `mesesAdelante`: recortar y contestar es
+    // mejor respuesta que un 400, y sin tope un rango de diez anos recorre todas
+    // las reservas del gimnasio. El `hasta` que vuelve es el RECORTADO: devolver
+    // el pedido seria decir que se miro un ano que no se miro.
+    const { servicio, db } = crear(PADRON);
+
+    const reporte = await servicio.asistencia(ACTOR, {
+      desde: '2026-01-01',
+      hasta: '2036-01-01',
+    });
+
+    expect(reporte.hasta).toBe('2027-01-01');
+    expect(rangoPedido(db)).toEqual({ gte: dia('2026-01-01'), lt: dia('2027-01-02') });
+  });
+
+  it('salen en orden alfabetico, no en el que vino de la base', async () => {
+    const { servicio } = crear({
+      ...PADRON,
+      usuarios: [
+        usuario({ id: 'u-1', nombreCompleto: 'Zoe Vega' }),
+        usuario({ id: 'u-2', nombreCompleto: 'Bruno Diaz' }),
+      ],
+      turnos: [turno({ id: 't-1' })],
+      reservas: [
+        reserva({ turnoId: 't-1', perfilId: 'a-1', asistio: true }),
+        reserva({ turnoId: 't-1', perfilId: 'a-2', asistio: true }),
+      ],
+    });
+
+    const reporte = await servicio.asistencia(ACTOR, RANGO);
+
+    expect(reporte.alumnos.map((fila) => fila.nombreCompleto)).toEqual(['Bruno Diaz', 'Zoe Vega']);
+  });
+
+  it('un alumno sin ninguna reserva en el rango no aparece', async () => {
+    // Listarlo con tres ceros seria afirmar algo que no se midio.
+    const { servicio } = crear({
+      ...PADRON,
+      turnos: [turno({ id: 't-1' })],
+      reservas: [reserva({ turnoId: 't-1', perfilId: 'a-1', asistio: true })],
+    });
+
+    const reporte = await servicio.asistencia(ACTOR, RANGO);
+
+    expect(reporte.alumnos.map((fila) => fila.perfilId)).toEqual(['a-1']);
+  });
+
+  it('la clave del cache lleva el rango y el alumno', async () => {
+    const { servicio, claves } = crear(PADRON);
+
+    await servicio.asistencia(ACTOR, { ...RANGO, perfilId: 'a1' });
+
+    expect([...claves.keys()]).toEqual(['stats:gym-1:v0:asistencia:2026-10-01:2026-10-31:a1']);
+  });
+});
+
+describe('ConsultaRangoDto', () => {
+  const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+  const comoQuery = { type: 'query' as const, metatype: ConsultaRangoDto };
+
+  it('acepta las dos fechas y el perfilId opcional', async () => {
+    await expect(
+      pipe.transform({ desde: '2026-10-01', hasta: '2026-10-31' }, comoQuery),
+    ).resolves.toEqual({ desde: '2026-10-01', hasta: '2026-10-31' });
+  });
+
+  it('400 si falta una de las dos fechas', async () => {
+    await expect(pipe.transform({ desde: '2026-10-01' }, comoQuery)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('400 si la fecha trae hora', async () => {
+    // `@IsDateString()` —lo que pedia el plan— aceptaria esto, y llegaria al
+    // service, donde `desdeFechaISO` lo rechaza con una excepcion que nadie
+    // traduce: un 500 opaco en vez de un 400. (Los `:` de la hora NO llegarian a
+    // la clave del cache, aunque el docblock lo dijera: `desdeFechaISO` lanza
+    // antes de `cache.recordar`. Lo comprobo una revision.)
+    await expect(
+      pipe.transform({ desde: '2026-10-01T12:00:00Z', hasta: '2026-10-31' }, comoQuery),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('400 si el perfilId trae un separador de clave de cache', async () => {
+    await expect(
+      pipe.transform(
+        { desde: '2026-10-01', hasta: '2026-10-31', perfilId: 'a:caja:2026-10' },
+        comoQuery,
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('400 si se manda un salaId: la asistencia es del alumno, no de una sala', async () => {
+    await expect(
+      pipe.transform({ desde: '2026-10-01', hasta: '2026-10-31', salaId: 'sala1' }, comoQuery),
+    ).rejects.toThrow(BadRequestException);
   });
 });

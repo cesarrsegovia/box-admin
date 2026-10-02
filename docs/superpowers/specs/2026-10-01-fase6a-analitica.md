@@ -172,6 +172,26 @@ tabla entera de turnos y el reporte se convierte en una forma cómoda de tirar l
 pendiente es **estimado** y el campo se llama así — es el precio del pack del alumno, no una deuda
 calculada, porque el sistema no lleva cuenta corriente.
 
+### 6.1 Dos reportes de pendientes que NO cuadran entre sí, a propósito
+
+`CajaDelMes.pendienteEstimado` y `/stats/pagos-pendientes` usan la misma lista, la misma función pura
+y los mismos perfiles. Lo único que cambia es **la fecha de evaluación**, y por eso dan números
+distintos. No es un bug:
+
+- **La caja evalúa al cierre del mes pedido.** Está indexada por `anio/mes`, así que un número de "hoy"
+  metido ahí sería un intruso: pedir marzo de 2020 devolvería el pendiente de esta mañana. Es un hecho
+  histórico que no cambia al volver a pedirlo mañana.
+- **`/stats/pagos-pendientes` evalúa HOY**, porque no está indexado por período: la pregunta *es* "a
+  quién llamo ahora". Saber quién debía el 31 de octubre no sirve para llamar a nadie en noviembre.
+
+Forzarlos a coincidir haría que uno de los dos mintiera. Está escrito en los dos docblocks para que no
+se reporte como descuadre.
+
+Y cada uno lleva su test de dos relojes, **invertidos entre sí**: en la caja, dos fechas de sistema
+distintas tienen que dar el **mismo** número; en pagos-pendientes, tienen que dar números **distintos**
+—quien paga hasta el 31 de octubre no debe el 15 de octubre y sí el 15 de noviembre—, porque ahí un
+resultado idéntico significaría que la fecha quedó clavada.
+
 ## 7. Los endpoints
 
 | Método | Ruta | Rol |

@@ -709,6 +709,50 @@ describe('ReservasService invalida el cache de reportes DESPUES del commit', () 
     expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
   });
 
+  // LOS DOS QUE FALTABAN. `cancelar` era el unico de los sitios de invalidacion
+  // sin un caso que fijara el POST-COMMIT: con solo el de arriba, mover la
+  // linea dentro de la transaccion pasa en verde, lo que significa que la
+  // posicion —que es la decision entera— no estaba cubierta. Lo encontro una
+  // revision moviendola y viendo que no rompia nada.
+  it('cancelar: nada se invalida mientras la transaccion sigue abierta', async () => {
+    const { servicio, cache, db } = crearServicio();
+
+    let invalidadoDentro = false;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE');
+
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancelar: un aborto 40001 reintentado invalida UNA sola vez', async () => {
+    // `cancelar` corre en Serializable con reintento igual que `crear`: el
+    // cuerpo entero puede ejecutarse dos veces y el commit ocurrir una. Un
+    // `incr` hecho desde dentro quedaria hecho igual, porque Redis no se
+    // desanda con la transaccion de Postgres.
+    const { servicio, cache, db } = crearServicio();
+
+    let intentos = 0;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      intentos += 1;
+      const salida = await fn(db);
+      if (intentos === 1) {
+        throw Object.assign(new Error('could not serialize access'), { code: '40001' });
+      }
+      return salida;
+    });
+
+    await servicio.cancelar(ADMIN, 'reserva-1', 'RECUPERABLE');
+
+    expect(intentos).toBe(2);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
   it('crear: nada se invalida mientras la transaccion sigue abierta', async () => {
     const { servicio, cache, db } = crearServicio();
 
@@ -745,6 +789,73 @@ describe('ReservasService invalida el cache de reportes DESPUES del commit', () 
 
     expect(intentos).toBe(2);
     expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  // REASIGNAR, que es el sitio que trae la Task 6. Mover una reserva de turno no
+  // toca un solo peso, pero mueve la OCUPACION: libera un lugar en un turno y
+  // ocupa otro, y los dos turnos pueden estar en meses o salas distintos. Sin
+  // esta invalidacion, el panel de ocupacion queda cinco minutos mostrando una
+  // clase llena que ya no lo esta.
+  it('reasignar invalida el cache del gimnasio del actor', async () => {
+    const { servicio, cache, turno } = crearServicio();
+    turno.findFirst.mockResolvedValue({ ...TURNO, id: 'turno-2', cupo: 5 });
+
+    await servicio.reasignar(ADMIN, 'res-1', { turnoId: 'turno-2' });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('reasignar: nada se invalida mientras la transaccion sigue abierta', async () => {
+    const { servicio, cache, turno, db } = crearServicio();
+    turno.findFirst.mockResolvedValue({ ...TURNO, id: 'turno-2', cupo: 5 });
+
+    let invalidadoDentro = false;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn(db);
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.reasignar(ADMIN, 'res-1', { turnoId: 'turno-2' });
+
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('reasignar: un aborto 40001 reintentado invalida UNA sola vez', async () => {
+    // `reasignar` tambien corre en Serializable con reintento —el cupo del
+    // destino es la misma carrera que en `crear`—, asi que el cuerpo entero
+    // puede ejecutarse dos veces con un solo commit. Un `incr` de adentro
+    // quedaria hecho igual, porque Redis no se desanda con Postgres.
+    const { servicio, cache, turno, db } = crearServicio();
+    turno.findFirst.mockResolvedValue({ ...TURNO, id: 'turno-2', cupo: 5 });
+
+    let intentos = 0;
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      intentos += 1;
+      const salida = await fn(db);
+      if (intentos === 1) {
+        throw Object.assign(new Error('could not serialize access'), { code: '40001' });
+      }
+      return salida;
+    });
+
+    await servicio.reasignar(ADMIN, 'res-1', { turnoId: 'turno-2' });
+
+    expect(intentos).toBe(2);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('una reasignacion rechazada por falta de cupo no invalida nada', async () => {
+    const { servicio, cache, turno, reserva } = crearServicio();
+    turno.findFirst.mockResolvedValue({ ...TURNO, id: 'turno-2', cupo: 2 });
+    reserva.count.mockResolvedValue(2); // el destino ya esta lleno
+
+    await expect(servicio.reasignar(ADMIN, 'res-1', { turnoId: 'turno-2' })).rejects.toThrow(
+      ConflictException,
+    );
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
   });
 
   it('una reserva rechazada por falta de cupo no invalida nada', async () => {

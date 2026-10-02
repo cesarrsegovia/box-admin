@@ -1,5 +1,6 @@
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import * as argon2 from 'argon2';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
@@ -274,4 +275,51 @@ export async function esperarEmails(
       'Si la bandeja esta vacia, lo mas probable es que el processor no este registrado ' +
       'o que Redis no responda.',
   );
+}
+
+export interface AdminOperativoDeTest {
+  usuarioId: string;
+  token: string;
+  email: string;
+}
+
+/**
+ * Da de alta un ADMIN_OPERATIVO y devuelve su token.
+ *
+ * Se inserta con el cliente base porque NO HAY ENDPOINT que cree uno: el alta
+ * de usuarios solo hace alumnos y profesores, y `/auth/register` fija
+ * ADMIN_SALON y ademas rechaza el segundo usuario del gimnasio. Mismo camino
+ * que auth.e2e-spec.ts usa para fabricar un ALUMNO desde la Fase 0, y el mismo
+ * que comunicacion.e2e-spec.ts resolvio en local para la 5B.
+ *
+ * El login va DESPUES de crear la fila, y no al reves, porque el rol viaja
+ * dentro del JWT: un token emitido antes seguiria diciendo lo de antes.
+ */
+export async function crearAdminOperativo(
+  app: INestApplication,
+  prisma: PrismaService,
+  gimnasio: GimnasioDeTest,
+  opciones: { email?: string; nombre?: string } = {},
+): Promise<AdminOperativoDeTest> {
+  const email =
+    opciones.email ?? `operativo-${Date.now()}-${Math.random().toString(36).slice(2)}@test.io`;
+  const password = 'Password123!';
+  const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
+
+  const usuario = await prisma.base.usuario.create({
+    data: {
+      tenantId: gimnasio.tenantId,
+      nombreCompleto: opciones.nombre ?? 'Ope Rativa',
+      email,
+      passwordHash,
+      rol: 'ADMIN_OPERATIVO',
+    },
+  });
+
+  const login = await request(app.getHttpServer())
+    .post('/auth/login')
+    .send({ tenantSlug: gimnasio.slug, email, password })
+    .expect(200);
+
+  return { usuarioId: usuario.id, token: login.body.accessToken, email };
 }

@@ -3,6 +3,7 @@ import { comienzoDeHoyUtc, rolAlcanza, type JwtPayload, type SalaPublica } from 
 import type { Prisma, Sala } from '@prisma/client';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { ActualizarSalaDto } from './dto/actualizar-sala.dto';
 import type { CrearSalaDto } from './dto/crear-sala.dto';
 
@@ -55,6 +56,7 @@ export class SalasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly cache: CacheDeStats,
   ) {}
 
   async crear(actor: JwtPayload, dto: CrearSalaDto): Promise<SalaPublica> {
@@ -139,6 +141,20 @@ export class SalasService {
 
       return actualizada;
     });
+
+    // EL NOMBRE DE LA SALA VIAJA EN `/stats/turnos-libres`, como `salaNombre`:
+    // sale del catalogo, no del turno. Renombrar "Estudio" a "Sala 2" deja el
+    // reporte mostrando el nombre viejo durante cinco minutos, que es la clase
+    // de detalle que hace que todo el panel quede marcado como poco confiable.
+    //
+    // `crear` y `darDeBaja` NO invalidan, y la asimetria es deliberada: una sala
+    // recien creada no tiene turnos, y `exigirSinTurnosFuturos` garantiza que la
+    // que se da de baja tampoco tiene ninguno por delante — ninguna de las dos
+    // mueve una fila de ningun reporte. Un PATCH con `activa: false` pasa por
+    // aqui y por esa misma proteccion, asi que invalida de mas y no de menos.
+    //
+    // Post-commit y sin try/catch. Ver `CacheDeStats`.
+    await this.cache.invalidar(actor.tenantId);
 
     return aSalaPublica(sala);
   }

@@ -118,7 +118,11 @@ const PROFESORA = { id: 'fati', usuario: { rol: 'PROFESOR', nombreCompleto: 'Fat
 describe('HorariosProfesorService.crear', () => {
   it('rechaza un perfil que no existe', async () => {
     const db = prismaFalso({ perfil: null });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(NotFoundException);
   });
@@ -127,7 +131,11 @@ describe('HorariosProfesorService.crear', () => {
     const db = prismaFalso({
       perfil: { id: 'fati', usuario: { rol: 'ALUMNO', nombreCompleto: 'Ana' } },
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(BadRequestException);
   });
@@ -137,7 +145,11 @@ describe('HorariosProfesorService.crear', () => {
     // puede ni ver, y las dos mitades del sistema dirian cosas distintas sobre
     // la misma clase.
     const db = prismaFalso({ perfil: PROFESORA, salas: ['sala-a'] });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(servicio.crear(ACTOR, baseDelAlta({ salaId: 'sala-b' }))).rejects.toThrow(
       /acceso a la sala/i,
@@ -146,7 +158,11 @@ describe('HorariosProfesorService.crear', () => {
 
   it('rechaza horaFin anterior a horaInicio', async () => {
     const db = prismaFalso({ perfil: PROFESORA });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(
       servicio.crear(ACTOR, baseDelAlta({ horaInicio: '19:00', horaFin: '18:00' })),
@@ -155,7 +171,11 @@ describe('HorariosProfesorService.crear', () => {
 
   it('rechaza hasta anterior a desde', async () => {
     const db = prismaFalso({ perfil: PROFESORA });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(
       servicio.crear(ACTOR, baseDelAlta({ desde: '2026-09-30', hasta: '2026-09-01' })),
@@ -179,7 +199,11 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(ConflictException);
   });
@@ -201,7 +225,11 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(ConflictException);
   });
@@ -224,7 +252,11 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).resolves.toMatchObject({
       profesorId: 'fati',
@@ -248,7 +280,11 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(
       servicio.crear(ACTOR, baseDelAlta({ desde: '2026-10-01' })),
@@ -273,7 +309,11 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).rejects.toThrow(/dos salas a la vez/i);
   });
@@ -295,7 +335,11 @@ describe('HorariosProfesorService.crear', () => {
         },
       ],
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await expect(servicio.crear(ACTOR, baseDelAlta())).resolves.toMatchObject({
       profesorId: 'fati',
@@ -316,7 +360,11 @@ describe('HorariosProfesorService.eliminar', () => {
       hasta: null,
       activo: true,
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await servicio.eliminar(ACTOR, 'h1');
 
@@ -335,7 +383,11 @@ describe('HorariosProfesorService.eliminar', () => {
       hasta: dia('2026-01-31'),
       activo: true,
     });
-    const servicio = new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
 
     await servicio.eliminar(ACTOR, 'h1');
 

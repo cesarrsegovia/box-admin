@@ -3,6 +3,7 @@ import { Prisma, type Pack } from '@prisma/client';
 import { rolAlcanza, type JwtPayload, type PackPublico } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { ActualizarPackDto } from './dto/actualizar-pack.dto';
 import type { CrearPackDto } from './dto/crear-pack.dto';
 
@@ -38,6 +39,7 @@ export class PacksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
+    private readonly cache: CacheDeStats,
   ) {}
 
   async crear(actor: JwtPayload, dto: CrearPackDto): Promise<PackPublico> {
@@ -158,6 +160,30 @@ export class PacksService {
 
       return actualizado;
     });
+
+    // EL PRECIO DE UN PACK ES EL `pendienteEstimado` DE TODOS SUS ALUMNOS.
+    // Subir "8 clases" de 8500 a 9500 cambia en el acto lo que la caja dice que
+    // falta cobrar y lo que `/stats/pagos-pendientes` le muestra a recepcion al
+    // lado de cada nombre; y cambiarle el nombre cambia el `packNombre` de ese
+    // reporte y el de la composicion. Sin este `invalidar`, el panel sigue
+    // mostrando el precio viejo hasta cinco minutos despues de haberlo
+    // cambiado, que es exactamente la llamada de soporte que el contador de
+    // version existe para evitar.
+    //
+    // No se condiciona a que el precio haya cambiado de verdad: comprobarlo
+    // seria un `if` mas por el que colarse, y el precio de equivocarse hacia el
+    // otro lado es un recalculo de cinco minutos. El contador invalida de mas a
+    // proposito; ver `CacheDeStats`.
+    //
+    // `crear` y `darDeBaja` NO invalidan, y la asimetria es deliberada: un pack
+    // recien creado no lo tiene asignado nadie, y darlo de baja no le cambia el
+    // `packId` a ningun perfil ni el precio a ninguno. Ninguno de los dos mueve
+    // un solo numero de un reporte.
+    //
+    // Post-commit y sin try/catch, como en los demas sitios: `invalidar` no
+    // lanza nunca (ver `CacheDeStats`), y un INCR hecho dentro de una
+    // transaccion que despues se desanda no se desanda con ella.
+    await this.cache.invalidar(actor.tenantId);
 
     return aPackPublico(pack);
   }

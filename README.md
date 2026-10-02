@@ -1206,13 +1206,13 @@ cobro es contable**.
 
 ### Los cinco endpoints
 
-| Método | Ruta | Rol |
-|---|---|---|
-| POST | `/pagos` | `ADMIN_OPERATIVO` |
-| GET | `/pagos?perfilId=&desde=&hasta=` | `ADMIN_OPERATIVO` |
-| PATCH | `/pagos/:id/anular` | `ADMIN_SALON` |
-| PATCH | `/usuarios/:id/estado-pago` | `ADMIN_OPERATIVO` |
-| PATCH | `/comprobantes/:id/aprobar` | `ADMIN_OPERATIVO` |
+| Método | Ruta                             | Rol               |
+| ------ | -------------------------------- | ----------------- |
+| POST   | `/pagos`                         | `ADMIN_OPERATIVO` |
+| GET    | `/pagos?perfilId=&desde=&hasta=` | `ADMIN_OPERATIVO` |
+| PATCH  | `/pagos/:id/anular`              | `ADMIN_SALON`     |
+| PATCH  | `/usuarios/:id/estado-pago`      | `ADMIN_OPERATIVO` |
+| PATCH  | `/comprobantes/:id/aprobar`      | `ADMIN_OPERATIVO` |
 
 El rango de `GET /pagos` filtra por **cuándo entró el dinero**, no por el periodo que cubre. Son dos
 preguntas distintas y la de la caja es la primera.
@@ -1371,6 +1371,123 @@ del processor, que ya abre su contexto de gimnasio.
 
 Para el push en la PWA, ver [Las notificaciones push](#las-notificaciones-push) en la sección de la
 Fase 3B.
+
+## Estadísticas — Fase 6A
+
+Siete reportes de solo lectura sobre datos que ya existen. No agregan ni una tabla: si un reporte
+pareciera necesitarla, sería señal de que está inventando un dato en vez de leerlo.
+
+| Método | Ruta                                                                               | Rol               |
+| ------ | ---------------------------------------------------------------------------------- | ----------------- |
+| GET    | `/stats/caja?anio=&mes=`                                                           | `ADMIN_SALON`     |
+| GET    | `/liquidacion/:profesorId?anio=&mes=` — existe desde la Fase 4, ahora con importes | `ADMIN_SALON`     |
+| GET    | `/stats/operativo?anio=&mes=&salaId=`                                              | `ADMIN_OPERATIVO` |
+| GET    | `/stats/turnos-libres?salaId=&mesesAdelante=`                                      | `ADMIN_OPERATIVO` |
+| GET    | `/stats/pagos-pendientes`                                                          | `ADMIN_OPERATIVO` |
+| GET    | `/stats/composicion-alumnos?anio=&mes=`                                            | `ADMIN_OPERATIVO` |
+| GET    | `/stats/asistencia?desde=&hasta=&perfilId=`                                        | `ADMIN_OPERATIVO` |
+
+**Los reportes de dinero piden `ADMIN_SALON`.** Mismo criterio que la Fase 5A fijó para los pagos:
+registrar un cobro es operativo, mirar el margen del salón y lo que cobra cada profesora no lo es.
+
+### La liquidación: solo se pagan las horas dictadas
+
+La Fase 4 separó las horas en tres grupos; esta fase les pone precio. **Se paga lo dictado**, incluidas
+las clases donde cancelaron todos, porque la profesora fue igual. Las contratadas sin turno y las
+cerradas por un feriado se calculan y se devuelven con su importe —son la conversación que el admin va
+a tener con ella— pero no entran en el total a pagar.
+
+El dinero se calcula en **centavos enteros**, sin coma flotante en ningún punto: la tarifa llega como
+string con dos decimales, se convierte a centavos, y la única división —por 60— se hace con aritmética
+entera y redondea media unidad hacia arriba.
+
+Y **se agrupa por tarifa antes de multiplicar**. Tres franjas de cincuenta minutos a mil pesos dan
+249999 centavos redondeando cada una y 250000 redondeando al final. El centavo se lo lleva una persona.
+
+Si alguna franja no tiene tarifa ni propia ni del gimnasio, sus minutos salen en `minutosSinTarifa`:
+un importe al que le faltan horas y no lo dice es un número que parece completo y no lo está.
+
+### La caja: cuatro números que no se mezclan
+
+`cobrado` (sin cortesías) · `bonificado` (las cortesías, aparte) · `costoProfesoras` · `margen`.
+
+Las cortesías van separadas porque `CORTESIA` es un método de pago normal y nada obliga a que su monto
+sea cero: sumarlas haría que un mes en el que el gimnasio regaló cuotas apareciera como facturación.
+
+`costoProfesoras` sale de la misma liquidación que el reporte individual, así que **cuadra por
+construcción**. Es también la respuesta a "gastos": es el único costo que el sistema conoce de verdad.
+
+⚠️ **`cobrado` es caja y `costoProfesoras` es devengado.** Los pagos se cuentan por cuándo entró el
+dinero; el costo, por las clases de ese mes. Un alumno que paga octubre el 28 de septiembre entra en
+la caja de septiembre. Es la base correcta para "cuánto entró este mes", pero el margen puede verse
+raro si alguien cobra muy adelantado.
+
+### Por qué la caja no acepta `salaId`
+
+Un `Pago` no tiene sala. Repartirlo entre salas sería atribuir ingresos a turnos, que cuenta el mismo
+peso más de una vez; y acotar solo el costo daría un margen que resta el costo de una sala a lo cobrado
+de todas. Aceptar el parámetro e ignorarlo sería peor que no tenerlo: **una mentira con código 200**.
+
+`/stats/operativo` sí lo lleva, porque un `Turno` tiene sala. La regla es: los reportes que cuentan
+clases se pueden partir por sala, los que cuentan dinero no.
+
+### El denominador honesto de la asistencia
+
+**La asistencia se calcula sobre las reservas efectivamente marcadas** (`asistio` distinto de `null`),
+no sobre todas. Si nadie pasó lista, eso no es "no vino nadie": es "no se sabe", y el reporte lo dice
+devolviendo `porcentaje: null` con el denominador en cero.
+
+Con el denominador ingenuo, un mes sin listas pasadas mostraría 0% de asistencia y el admin concluiría
+que se le está yendo la gente.
+
+Por eso todos los porcentajes viajan como `{ numerador, denominador, porcentaje }`: sin la fracción a
+la vista, un 0% y un "no hay datos" se ven igual.
+
+Las cancelaciones van **separadas en recuperable y definitiva**: mezclarlas esconde lo único
+accionable, porque la recuperable es alguien que reprograma y la definitiva es alguien que se va.
+
+### Los dos pendientes que no cuadran entre sí, a propósito
+
+`CajaDelMes.pendienteEstimado` y `/stats/pagos-pendientes` usan la misma lista y la misma función. Lo
+único que cambia es **cuándo se evalúan**, y por eso dan números distintos:
+
+- La caja evalúa **al cierre del mes pedido**: está indexada por período, así que un número de hoy
+  metido ahí sería un intruso. Pedir marzo de 2020 devolvería el pendiente de esta mañana.
+- `/stats/pagos-pendientes` evalúa **hoy**, porque la pregunta _es_ "a quién llamo ahora". Saber quién
+  debía el 31 de octubre no sirve para llamar a nadie en noviembre.
+
+Los dos son estimados y el campo se llama así: es el precio del pack, no una deuda calculada, porque
+el sistema no lleva cuenta corriente.
+
+### El caché
+
+Los reportes se cachean en Redis con TTL corto más **un contador de versión por gimnasio**. Cualquier
+escritura que mueva un reporte hace `INCR` sobre ese contador, y eso deja huérfanas todas las claves
+viejas de ese gimnasio de golpe.
+
+**Por qué un contador y no una lista de claves a borrar:** con una lista, el día que alguien agregue un
+reporte nuevo se olvida de sumarlo y ese reporte queda desactualizado para siempre. Con el contador, un
+reporte nuevo queda invalidado correctamente sin que nadie lo recuerde.
+
+Las dos defensas fallan hacia el mismo lado: **olvidarse un `invalidar` cuesta cinco minutos de atraso,
+no un reporte mal para siempre.** El TTL es la red del contador y el contador es la precisión que el
+TTL no da.
+
+Nada de esto puede romper un reporte: si Redis no contesta, se calcula igual —un panel que devuelve 500
+porque el caché está caído es peor que uno lento— e `invalidar` **nunca lanza**, porque se llama dentro
+del servicio que registra un pago y un Redis caído no puede convertir un cobro válido en un 500.
+
+### Lo que esta fase NO trae
+
+**El panel visual.** No existe ninguna pantalla de admin en el proyecto: la PWA es solo del alumno. Un
+panel sería la primera, con su login, su layout y su navegación, y eso es una fase entera. Esta entrega
+la API, que es el orden correcto: un gráfico bonito sobre un número equivocado es peor que ningún
+gráfico.
+
+**Los cumpleaños**, que necesitan una fecha de nacimiento que no existe y capturarla en tres
+formularios. **Un libro de gastos**, que es contabilidad. Y **la composición de un mes pasado usa los
+packs de hoy**, porque el sistema no guarda historial de planes: inventarlo desde los pagos daría un
+reparto plausible y equivocado.
 
 ## Tests
 

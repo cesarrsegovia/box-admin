@@ -12,9 +12,16 @@ import { CacheDeStats, type ClienteDeCache } from './cache-de-stats';
  */
 function clienteFalso() {
   const datos = new Map<string, string>();
+  /** Segundos de vida pedidos por clave. `undefined` = sin vencimiento, el TTL -1 de Redis. */
+  const vencimientos = new Map<string, number>();
 
   const set = jest.fn(async (clave: string, valor: string) => {
     datos.set(clave, valor);
+  });
+
+  const expire = jest.fn(async (clave: string, segundos: number) => {
+    vencimientos.set(clave, segundos);
+    return 1;
   });
 
   const cliente: ClienteDeCache = {
@@ -25,9 +32,10 @@ function clienteFalso() {
       datos.set(clave, String(siguiente));
       return siguiente;
     },
+    expire,
   };
 
-  return { cliente, datos, set };
+  return { cliente, datos, set, expire, vencimientos };
 }
 
 /** Los tres casos de "Redis caido" loguean un warn. Se silencia como en la 5B. */
@@ -110,6 +118,50 @@ describe('CacheDeStats', () => {
     expect([...datos.keys()]).toEqual(['stats:gym-1:v0:caja:2026-10']);
   });
 
+  /**
+   * La clave de version era el UNICO punto del diseno sin vencimiento: en el
+   * Redis real quedaron 758 claves `stats:<tenant>:version` con TTL -1, una por
+   * cada gimnasio que cualquier corrida haya creado, y nada las limpia.
+   *
+   * El numero va a mano y no leyendo la constante a proposito: con la constante
+   * importada, bajarla a cinco minutos —que es justo lo que reabre el agujero
+   * de servir un `v0` viejo— seguiria en verde.
+   */
+  it('invalidar le pone vencimiento a la clave de version', async () => {
+    const { cliente, expire, vencimientos } = clienteFalso();
+
+    await new CacheDeStats(cliente).invalidar('gym-1');
+
+    expect(expire).toHaveBeenCalledWith('stats:gym-1:version', 2_592_000);
+    expect(vencimientos.get('stats:gym-1:version')).toBe(2_592_000);
+  });
+
+  /**
+   * EL MODO DE FALLO QUE NO SE VE SOLO. Poner el vencimiento unicamente cuando
+   * el INCR devuelve 1 —la primera invalidacion— es la forma natural de
+   * escribirlo mal, y el caso de arriba la deja pasar entera.
+   *
+   * Y es el peor de los dos: un INCR sobre una clave que ya existe NO renueva
+   * su TTL, asi que la version de un gimnasio ACTIVO venceria a los treinta
+   * dias de la primera invalidacion por mucho que se siguiera invalidando. El
+   * gimnasio muerto quedaria limpio y el vivo seria el que se rompe.
+   */
+  it('invalidar REFRESCA el vencimiento, no lo pone solo la primera vez', async () => {
+    const { cliente, expire, vencimientos } = clienteFalso();
+    const cache = new CacheDeStats(cliente);
+
+    await cache.invalidar('gym-1');
+    // Pasan los treinta dias: Redis se lleva el vencimiento (y, con el, la
+    // clave). Lo que importa es que la SEGUNDA invalidacion lo vuelva a poner.
+    vencimientos.delete('stats:gym-1:version');
+
+    await cache.invalidar('gym-1');
+
+    expect(expire).toHaveBeenCalledTimes(2);
+    expect(expire).toHaveBeenLastCalledWith('stats:gym-1:version', 2_592_000);
+    expect(vencimientos.get('stats:gym-1:version')).toBe(2_592_000);
+  });
+
   it('si el cache falla al leer, el reporte sale igual', async () => {
     callarElLogger();
     const roto: ClienteDeCache = {
@@ -118,6 +170,7 @@ describe('CacheDeStats', () => {
       },
       set: async () => {},
       incr: async () => 1,
+      expire: async () => 1,
     };
 
     await expect(
@@ -133,6 +186,7 @@ describe('CacheDeStats', () => {
         throw new Error('Redis caido');
       },
       incr: async () => 1,
+      expire: async () => 1,
     };
 
     await expect(new CacheDeStats(roto).recordar('gym-1', 'caja', async () => 'ok')).resolves.toBe(
@@ -180,6 +234,7 @@ describe('CacheDeStats', () => {
         datos.set(clave, valor);
       },
       incr: async () => 1,
+      expire: async () => 1,
     };
 
     await expect(
@@ -196,6 +251,24 @@ describe('CacheDeStats', () => {
       get: async () => null,
       set: async () => {},
       incr: async () => {
+        throw new Error('Redis caido');
+      },
+      expire: async () => 1,
+    };
+
+    await expect(new CacheDeStats(roto).invalidar('gym-1')).resolves.toBeUndefined();
+  });
+
+  // La misma promesa, para el comando que agrego el vencimiento de la version:
+  // `expire` es una llamada mas dentro del POST de un pago, y un Redis que
+  // contesta el INCR pero no el EXPIRE no puede tumbar el cobro tampoco.
+  it('invalidar NUNCA lanza, aunque falle el vencimiento de la version', async () => {
+    callarElLogger();
+    const roto: ClienteDeCache = {
+      get: async () => null,
+      set: async () => {},
+      incr: async () => 1,
+      expire: async () => {
         throw new Error('Redis caido');
       },
     };

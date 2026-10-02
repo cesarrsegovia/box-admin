@@ -22,6 +22,7 @@ import {
 import { HistorialService } from '../common/historial/historial.service';
 import { PagosService } from '../pagos/pagos.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
+import { CacheDeStats } from '../stats/cache-de-stats';
 import type { EstadoPagoDto } from '../pagos/dto/estado-pago.dto';
 import type { ActualizarSalasDto } from './dto/actualizar-salas.dto';
 import type { ActualizarUsuarioDto } from './dto/actualizar-usuario.dto';
@@ -71,6 +72,7 @@ export class UsuariosService {
     private readonly prisma: PrismaService,
     private readonly historial: HistorialService,
     private readonly pagos: PagosService,
+    private readonly cache: CacheDeStats,
   ) {}
 
   crearAlumno(actor: JwtPayload, dto: CrearAlumnoDto): Promise<AltaUsuarioRespuesta> {
@@ -208,6 +210,22 @@ export class UsuariosService {
       );
     });
 
+    // CAMBIARLE EL PACK A UN ALUMNO LO MUEVE DE GRUPO EN LA COMPOSICION Y LE
+    // CAMBIA EL PENDIENTE ESTIMADO, en la caja y en `/stats/pagos-pendientes`:
+    // el estimado es el precio del pack que tiene, asi que pasarlo de "4 clases"
+    // a "12 clases" cambia lo que debe sin que se registre ningun pago.
+    //
+    // NO SE CONDICIONA A QUE VENGA UN `packId`, aunque sea el campo que mas
+    // mueve. Este mismo metodo escribe el `nombreCompleto`, que es la columna
+    // con la que los tres reportes nuevos identifican a cada persona y por la
+    // que ordenan sus listas, y las vigencias, que entran en el calculo de quien
+    // esta al dia. Un `if (dto.packId)` dejaria un panel mostrando el nombre
+    // viejo despues de corregir un apellido mal escrito, que es la clase de
+    // detalle que hace que todo el panel quede marcado como poco confiable.
+    //
+    // Post-commit y sin try/catch, como en los demas sitios. Ver `CacheDeStats`.
+    await this.cache.invalidar(actor.tenantId);
+
     const actualizado = await this.buscarConRelaciones(id);
     return aUsuarioDetalle(
       actualizado,
@@ -317,6 +335,15 @@ export class UsuariosService {
       );
     });
 
+    // UNA BAJA SACA AL ALUMNO DE LA COMPOSICION, y por eso este metodo tambien
+    // invalida. `/stats/composicion-alumnos` cuenta los perfiles ACTIVOS —es lo
+    // que "perfiles activos" significa en el contrato—, asi que dar de baja a
+    // alguien le cambia el total y el reparto por pack sin que nadie toque un
+    // pack ni un pago.
+    //
+    // Post-commit y sin try/catch, como en los demas sitios. Ver `CacheDeStats`.
+    await this.cache.invalidar(actor.tenantId);
+
     const actualizado = await this.buscarConRelaciones(id);
     return aUsuarioDetalle(
       actualizado,
@@ -406,6 +433,22 @@ export class UsuariosService {
 
       return { usuario, perfil };
     });
+
+    // EL ALTA ES EL HUECO EXACTO QUE LOS OTROS CUATRO `invalidar` VINIERON A
+    // TAPAR, y era el que faltaba. Un alumno nuevo suma un perfil al total de
+    // `/stats/composicion-alumnos` y al reparto por pack, Y ADEMAS entra como
+    // alumno con pack que todavia no esta al dia: aparece en
+    // `/stats/pagos-pendientes` y en el `pendienteEstimado` de la caja. Es la
+    // misma llamada de soporte que motivo el cache entero, con el verbo
+    // cambiado: "di de alta al alumno y no aparece en el panel".
+    //
+    // Invalida tambien para un PROFESOR, sin condicionarlo al rol: dar de alta
+    // una profesora no mueve nada hoy —sus horas salen de los horarios, que
+    // todavia no tiene—, pero el contador invalida de mas a proposito y un `if`
+    // mas es un `if` mas por el que colarse. Ver `CacheDeStats`.
+    //
+    // Post-commit y sin try/catch, como los demas sitios.
+    await this.cache.invalidar(actor.tenantId);
 
     const datos: UsuarioConPerfil = { ...creado, salas, pack };
 

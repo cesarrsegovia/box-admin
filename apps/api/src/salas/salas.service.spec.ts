@@ -48,14 +48,75 @@ function crearServicio() {
 
   const prisma = { db } as unknown as PrismaService;
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
+  // El cache de reportes. El nombre de la sala viaja en `/stats/turnos-libres`.
+  const cache = { invalidar: jest.fn().mockResolvedValue(undefined) };
 
   return {
-    servicio: new SalasService(prisma, historial as unknown as HistorialService),
+    servicio: new SalasService(prisma, historial as unknown as HistorialService, cache as never),
     sala,
     turno,
     historial,
+    cache,
+    transaccion: db.$transaction,
   };
 }
+
+/**
+ * LA INVALIDACION QUE AGREGO LA REVISION DE LAS TASKS 7 Y 8.
+ *
+ * `/stats/turnos-libres` publica `salaNombre`, y ese nombre sale del CATALOGO,
+ * no del turno: renombrar una sala deja el reporte mostrando el nombre viejo
+ * hasta cinco minutos despues.
+ */
+describe('SalasService invalida el cache DESPUES del commit', () => {
+  it('actualizar invalida el cache del gimnasio del actor', async () => {
+    const { servicio, cache } = crearServicio();
+
+    await servicio.actualizar(ADMIN, 'sala-1', { nombre: 'Sala B' });
+
+    expect(cache.invalidar).toHaveBeenCalledWith('gym-1');
+  });
+
+  it('nada se invalida mientras la transaccion sigue abierta', async () => {
+    const { servicio, cache, transaccion, sala } = crearServicio();
+
+    let invalidadoDentro = false;
+    transaccion.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const salida = await fn({ sala });
+      invalidadoDentro = cache.invalidar.mock.calls.length > 0;
+      return salida;
+    });
+
+    await servicio.actualizar(ADMIN, 'sala-1', { nombre: 'Sala B' });
+
+    // Un INCR hecho dentro de una transaccion que despues se desanda no se
+    // desanda con ella: invalidaria un cache que nadie cambio.
+    expect(invalidadoDentro).toBe(false);
+    expect(cache.invalidar).toHaveBeenCalledTimes(1);
+  });
+
+  it('una sala inexistente no invalida nada', async () => {
+    const { servicio, cache, sala } = crearServicio();
+    sala.findFirst.mockResolvedValue(null);
+
+    await expect(servicio.actualizar(ADMIN, 'sala-x', { nombre: 'Otra' })).rejects.toThrow();
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
+  });
+
+  it('crear y darDeBaja NO invalidan, y es a proposito', async () => {
+    // Una sala recien creada no tiene turnos, y `exigirSinTurnosFuturos`
+    // garantiza que la que se da de baja tampoco tiene ninguno por delante:
+    // ninguna de las dos mueve una fila de ningun reporte. El caso fija la
+    // asimetria para que sea una decision y no un olvido.
+    const { servicio, cache } = crearServicio();
+
+    await servicio.crear(ADMIN, { nombre: 'Sala nueva' });
+    await servicio.darDeBaja(ADMIN, 'sala-1');
+
+    expect(cache.invalidar).not.toHaveBeenCalled();
+  });
+});
 
 describe('SalasService.crear', () => {
   it('crea la sala y deja rastro en el historial', async () => {
