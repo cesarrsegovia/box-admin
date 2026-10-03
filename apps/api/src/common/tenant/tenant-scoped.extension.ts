@@ -31,6 +31,7 @@ export const MODELOS_CON_TENANT = [
   // primaria, igual que `ConfiguracionSMTP`: a la extension solo le importa que
   // la columna exista para poder inyectarla en el where.
   'ConfigCheckInQR',
+  'Asistencia',
   'WebSalonConfig',
   'Testimonio',
   'PreguntaFrecuente',
