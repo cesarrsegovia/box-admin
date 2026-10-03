@@ -565,6 +565,39 @@ describe('Fase 2 — motor de recurrencia (e2e)', () => {
         },
       ]);
     });
+
+    it('devuelveClase ya no se puede mandar en el alta', async () => {
+      // Cambio de contrato VISIBLE de la Fase 6B: las clases perdidas no se
+      // devuelven, decidido con Cesar. El ValidationPipe global corre con
+      // forbidNonWhitelisted, asi que mandar el campo es 400 y no un valor
+      // ignorado en silencio. Que duela aqui es justo lo que se quiere: un
+      // cliente viejo se entera en el acto en vez de creer que sigue pidiendo
+      // algo que el sistema dejo de hacer.
+      const salaId = await crearSala({ cupoBase: 5 });
+      const alumno = await crearAlumno([salaId]);
+
+      await request(servidor)
+        .post('/vacaciones-alumnos')
+        .set(auth(gym.adminToken))
+        .send({
+          perfilId: alumno.perfilId,
+          desde: MARTES[1],
+          hasta: MARTES[1],
+          devuelveClase: true,
+        })
+        .expect(400);
+    });
+
+    it('y el alta sin ese campo sigue funcionando, sin devolverlo', async () => {
+      // El acompanante del anterior: sin el, el 400 podria venir de que el
+      // alta este rota por cualquier otra razon.
+      const salaId = await crearSala({ cupoBase: 5 });
+      const alumno = await crearAlumno([salaId]);
+
+      const creada = await crearVacacion(alumno.perfilId, MARTES[1], MARTES[1]);
+
+      expect(Object.keys(creada)).not.toContain('devuelveClase');
+    });
   });
 
   // 7 — El job corre en background -----------------------------------------

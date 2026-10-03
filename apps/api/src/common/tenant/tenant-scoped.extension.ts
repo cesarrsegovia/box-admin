@@ -27,6 +27,13 @@ export const MODELOS_CON_TENANT = [
   'ConfiguracionSMTP',
   'PlantillaEmail',
   'SuscripcionPush',
+  // Fase 6B. `ConfigCheckInQR` y `WebSalonConfig` llevan el tenantId como clave
+  // primaria, igual que `ConfiguracionSMTP`: a la extension solo le importa que
+  // la columna exista para poder inyectarla en el where.
+  'ConfigCheckInQR',
+  'WebSalonConfig',
+  'Testimonio',
+  'PreguntaFrecuente',
 ] as const;
 
 /** Modelos que se aíslan a través de una relación: modelo -> campo de relación. */

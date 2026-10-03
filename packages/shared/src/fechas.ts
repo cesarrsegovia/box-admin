@@ -89,6 +89,80 @@ export function instanteDelTurno(fecha: Date, hora: string): Date {
 }
 
 /**
+ * El instante UTC que corresponde a un reloj de pared de una zona.
+ *
+ * `instanteDelTurno` construye el instante EN UTC, lo que equivale a decir que
+ * el gimnasio vive en UTC. Para comparar contra fechas eso da igual —un turno
+ * del 5 de octubre es del 5 de octubre en todas partes— y por eso seis fases
+ * funcionaron sin esto. Pero el check-in compara una hora del dia contra el
+ * reloj, con una ventana de quince minutos: la de una clase de las 18:00 seria
+ * [17:45, 18:15] UTC, o sea [14:45, 15:15] en Argentina, y el alumno que llega
+ * a su clase quedaria tres horas afuera.
+ *
+ * NO se resta un desfase fijo: se le pregunta a `Intl`, que conoce los cambios
+ * de horario de verano. Una resta de "menos tres horas" acierta en julio y
+ * falla en noviembre, y el fallo es invisible hasta que alguien no puede marcar
+ * presente un lunes.
+ *
+ * DONDE SE USA: la ventana del check-in y el patron del cron. En ningun otro
+ * sitio. Las fechas del sistema siguen en UTC.
+ */
+export function instanteEnZona(fecha: Date, hora: string, zona: string): Date {
+  if (!esHoraValida(hora)) {
+    throw new FechaInvalidaError(`Hora invalida: ${hora}. Se espera HH:MM en 24 h.`);
+  }
+
+  const [horas, minutos] = hora.split(':').map(Number);
+
+  // Se parte de la interpretacion ingenua —ese reloj de pared como si fuera
+  // UTC— y se corrige con el desfase que la zona tenia EN ESE INSTANTE. Dos
+  // pasadas, porque el desfase puede cambiar justo en el salto de horario: la
+  // primera aterriza en el instante equivocado cuando el ingenuo cae del otro
+  // lado del salto, y la segunda lo corrige con el desfase que de verdad regia.
+  const ingenuo = Date.UTC(
+    fecha.getUTCFullYear(),
+    fecha.getUTCMonth(),
+    fecha.getUTCDate(),
+    horas,
+    minutos,
+  );
+
+  const primerIntento = ingenuo - desfaseDeZona(new Date(ingenuo), zona);
+
+  return new Date(ingenuo - desfaseDeZona(new Date(primerIntento), zona));
+}
+
+/** Milisegundos que `zona` esta por delante de UTC en ese instante. */
+function desfaseDeZona(instante: Date, zona: string): number {
+  // `en-CA` da `YYYY-MM-DD, HH:MM:SS`, que `Date.parse` entiende tras cambiar
+  // la coma por una T. Es la forma estandar de sacarle a Intl un desfase sin
+  // depender de una tabla propia de husos.
+  //
+  // ⚠️ `hourCycle: 'h23'` Y NO `hour12: false`, que es la trampa de esta
+  // funcion: con `hour12: false` el ciclo que sale es h24 y la medianoche se
+  // formatea "24:00", no "00:00". `Date.parse('2026-10-05T24:00:00Z')` es
+  // valido y vale el dia SIGUIENTE a medianoche, asi que el desfase sale con 24
+  // horas de error y la funcion devuelve un dia corrido —o un `Invalid Date`
+  // cuando la segunda pasada arrastra el error—. Pasa cada vez que el reloj de
+  // la zona cae en la hora de medianoche, que no es un borde raro: en UTC es
+  // sencillamente la hora "00:00".
+  const formato = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zona,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  const comoSiFueraUtc = Date.parse(`${formato.format(instante).replace(', ', 'T')}Z`);
+
+  return comoSiFueraUtc - instante.getTime();
+}
+
+/**
  * Minutos entre dos horas "HH:MM" del mismo dia.
  *
  * No contempla cruzar la medianoche —devuelve un negativo y quien llame

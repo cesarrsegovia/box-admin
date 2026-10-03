@@ -13,7 +13,6 @@ const FILA = {
   desde: new Date('2026-10-05T00:00:00.000Z'),
   hasta: new Date('2026-10-12T00:00:00.000Z'),
   motivo: 'Viaje',
-  devuelveClase: true,
   createdAt: new Date(),
 };
 
@@ -101,22 +100,31 @@ describe('VacacionesService.crear', () => {
     await expect(servicio.crear(ADMIN, BASE)).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('devuelveClase se almacena tal cual, aunque en esta fase no se aplique', async () => {
+  it('la respuesta ya no lleva devuelveClase, y el create tampoco lo escribe', async () => {
+    // Cambio de contrato VISIBLE de la Fase 6B: las clases perdidas no se
+    // devuelven. Los dos tests que vivian aqui afirmaban que el campo se
+    // almacenaba tal cual y que por defecto era `true`; se sustituyen por su
+    // contrario, no se ablandan.
+    //
+    // El `toEqual` es sobre el objeto ENTERO a proposito: con un
+    // `objectContaining`, devolver el campo volveria a pasar. Y la
+    // comprobacion de `Object.keys` va aparte porque `toEqual` ignora las
+    // claves cuyo valor es `undefined`, que es justo la forma en que el campo
+    // podria reaparecer sin que nadie lo notara.
     const { servicio, vacacionAlumno } = crearServicio();
-    vacacionAlumno.create.mockResolvedValue({ ...FILA, devuelveClase: false });
 
-    const creada = await servicio.crear(ADMIN, { ...BASE, devuelveClase: false });
+    const creada = await servicio.crear(ADMIN, BASE);
 
-    expect(vacacionAlumno.create.mock.calls[0][0].data.devuelveClase).toBe(false);
-    expect(creada.devuelveClase).toBe(false);
-  });
-
-  it('devuelveClase es true por defecto', async () => {
-    const { servicio, vacacionAlumno } = crearServicio();
-
-    await servicio.crear(ADMIN, BASE);
-
-    expect(vacacionAlumno.create.mock.calls[0][0].data.devuelveClase).toBe(true);
+    expect(creada).toEqual({
+      id: 'vac-1',
+      tenantId: 'gym-1',
+      perfilId: 'perf-1',
+      desde: '2026-10-05',
+      hasta: '2026-10-12',
+      motivo: 'Viaje',
+    });
+    expect(Object.keys(creada)).not.toContain('devuelveClase');
+    expect(Object.keys(vacacionAlumno.create.mock.calls[0][0].data)).not.toContain('devuelveClase');
   });
 });
 

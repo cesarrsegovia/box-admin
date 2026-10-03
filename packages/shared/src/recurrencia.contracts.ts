@@ -26,8 +26,6 @@ export interface VacacionPublica {
   desde: string;
   hasta: string;
   motivo: string | null;
-  /** Se almacena y NO se aplica en la Fase 2. Ver D3 del spec. */
-  devuelveClase: boolean;
 }
 
 export interface AusenciaPublica {

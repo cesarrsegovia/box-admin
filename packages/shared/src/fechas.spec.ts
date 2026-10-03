@@ -6,6 +6,7 @@ import {
   comparaHoras,
   fechaLegible,
   instanteDelTurno,
+  instanteEnZona,
   minutosEntreHoras,
 } from './fechas';
 
@@ -83,6 +84,108 @@ describe('instanteDelTurno', () => {
 
     expect(() => instanteDelTurno(fecha, '25:00')).toThrow(FechaInvalidaError);
     expect(() => instanteDelTurno(fecha, '8:00')).toThrow(FechaInvalidaError);
+  });
+});
+
+describe('instanteEnZona', () => {
+  it('las 18:00 en Buenos Aires son las 21:00 UTC', () => {
+    const r = instanteEnZona(
+      new Date('2026-10-05T00:00:00.000Z'),
+      '18:00',
+      'America/Argentina/Buenos_Aires',
+    );
+
+    expect(r.toISOString()).toBe('2026-10-05T21:00:00.000Z');
+  });
+
+  it('en UTC la hora es la misma', () => {
+    const r = instanteEnZona(new Date('2026-10-05T00:00:00.000Z'), '18:00', 'UTC');
+
+    expect(r.toISOString()).toBe('2026-10-05T18:00:00.000Z');
+  });
+
+  /**
+   * EL CASO QUE JUSTIFICA NO HACERLO A MANO. Madrid pasa de UTC+2 a UTC+1 el
+   * ultimo domingo de octubre. Una resta fija de horas da bien en una fecha y
+   * mal en la otra; `Intl` conoce la regla.
+   */
+  it('respeta el cambio de horario de verano', () => {
+    const zona = 'Europe/Madrid';
+    const antes = instanteEnZona(new Date('2026-10-20T00:00:00.000Z'), '12:00', zona);
+    const despues = instanteEnZona(new Date('2026-11-10T00:00:00.000Z'), '12:00', zona);
+
+    expect(antes.toISOString()).toBe('2026-10-20T10:00:00.000Z');
+    expect(despues.toISOString()).toBe('2026-11-10T11:00:00.000Z');
+  });
+
+  /**
+   * LA SEGUNDA PASADA DE CORRECCION, FIJADA. Ninguno de los casos de arriba la
+   * distingue de una sola pasada, asi que sin este test se podria borrar y la
+   * suite seguiria verde.
+   *
+   * Madrid atrasa el reloj el 25 de octubre de 2026 a las 03:00 locales, que
+   * son las 01:00 UTC. Un turno de las 01:00 de la manana de ese dia todavia es
+   * CEST (UTC+2), asi que cae a las 23:00 UTC del dia anterior. Con UNA sola
+   * pasada, la interpretacion ingenua —01:00 UTC— aterriza justo en el instante
+   * del salto y lee el desfase de DESPUES (UTC+1), devolviendo las 00:00 UTC:
+   * una hora de mas. El 29 de marzo es el mismo error en la direccion contraria.
+   *
+   * Es un caso por anio y por zona, de los que aparecen un domingo de madrugada
+   * y nadie reproduce.
+   */
+  it('un turno a la hora exacta del salto usa el desfase que regia entonces', () => {
+    const zona = 'Europe/Madrid';
+
+    expect(instanteEnZona(new Date('2026-10-25T00:00:00.000Z'), '01:00', zona).toISOString()).toBe(
+      '2026-10-24T23:00:00.000Z',
+    );
+    expect(instanteEnZona(new Date('2026-03-29T00:00:00.000Z'), '01:30', zona).toISOString()).toBe(
+      '2026-03-29T00:30:00.000Z',
+    );
+  });
+
+  /**
+   * LA HORA DE MEDIANOCHE NO PUEDE SER LAS 24. `Intl` con `hour12: false`
+   * formatea la medianoche como "24:00" —ciclo h24—, y `Date.parse` de un
+   * "...T24:00:00Z" devuelve el dia SIGUIENTE a medianoche, no el mismo a las
+   * cero. El desfase sale con 24 horas de error y la funcion devuelve un dia
+   * entero corrido, o un `Invalid Date` cuando la segunda pasada lo arrastra.
+   *
+   * Por eso la implementacion pide `hourCycle: 'h23'` y no `hour12: false`.
+   * Estos tres casos son los que caen si alguien los intercambia.
+   */
+  it('la medianoche del reloj de la zona no corre el dia', () => {
+    // UTC a las 00:00: el instante ingenuo ya cae en la hora de medianoche.
+    expect(instanteEnZona(new Date('2026-10-05T00:00:00.000Z'), '00:00', 'UTC').toISOString()).toBe(
+      '2026-10-05T00:00:00.000Z',
+    );
+
+    // Buenos Aires a las 00:00: el instante correcto son las 03:00 UTC, pero la
+    // primera pasada consulta el desfase en un instante que en Argentina es
+    // medianoche.
+    expect(
+      instanteEnZona(
+        new Date('2026-10-05T00:00:00.000Z'),
+        '00:00',
+        'America/Argentina/Buenos_Aires',
+      ).toISOString(),
+    ).toBe('2026-10-05T03:00:00.000Z');
+
+    // Madrid a las 00:30 del dia del salto: aqui la version con `hour12: false`
+    // no devolvia un dia corrido sino directamente un `Invalid Date`.
+    expect(
+      instanteEnZona(new Date('2026-10-25T00:00:00.000Z'), '00:30', 'Europe/Madrid').toISOString(),
+    ).toBe('2026-10-24T22:30:00.000Z');
+  });
+
+  it('una zona que no existe lanza', () => {
+    expect(() =>
+      instanteEnZona(new Date('2026-10-05T00:00:00.000Z'), '18:00', 'Marte/Olympus'),
+    ).toThrow();
+  });
+
+  it('una hora invalida lanza, igual que instanteDelTurno', () => {
+    expect(() => instanteEnZona(new Date('2026-10-05T00:00:00.000Z'), '25:00', 'UTC')).toThrow();
   });
 });
 

@@ -5,11 +5,24 @@ import { RegistroDeCrones } from './registro-de-crones';
 
 type Opciones = Record<string, any>;
 
-function crearEscenario(bandera: string | undefined) {
+const ZONA_POR_DEFECTO = 'America/Argentina/Buenos_Aires';
+
+function crearEscenario(bandera: string | undefined, zona: string = ZONA_POR_DEFECTO) {
   const recordatorio = jest.fn().mockResolvedValue(undefined);
   const vencimiento = jest.fn().mockResolvedValue(undefined);
 
-  const config = { get: jest.fn().mockReturnValue(bandera) } as unknown as ConfigService;
+  // El doble responde POR CLAVE y no con un valor unico, que es lo que hacia
+  // antes de que esta clase leyera dos variables. Con el `mockReturnValue` de
+  // antes, un escenario con la bandera en '1' le habria devuelto '1' tambien a
+  // ZONA_HORARIA y el cron se habria registrado con `tz: '1'` en verde.
+  const valores: Record<string, string | undefined> = {
+    JOBS_RECURRENTES: bandera,
+    ZONA_HORARIA: zona,
+  };
+
+  const config = {
+    get: jest.fn((clave: string) => valores[clave]),
+  } as unknown as ConfigService;
 
   return {
     registro: new RegistroDeCrones(
@@ -103,8 +116,8 @@ describe('RegistroDeCrones', () => {
 
     // El patron viaja como opciones de repeticion del PLANIFICADOR (segundo
     // argumento), no dentro de las opciones del job.
-    expect(recordatorio.mock.calls[0]?.[1]).toEqual({ pattern: '0 9 * * *' });
-    expect(vencimiento.mock.calls[0]?.[1]).toEqual({ pattern: '0 9 * * *' });
+    expect(recordatorio.mock.calls[0]?.[1]).toEqual({ pattern: '0 9 * * *', tz: ZONA_POR_DEFECTO });
+    expect(vencimiento.mock.calls[0]?.[1]).toEqual({ pattern: '0 9 * * *', tz: ZONA_POR_DEFECTO });
     expect(opcionesDe(recordatorio).repeat).toBeUndefined();
     expect(opcionesDe(vencimiento).repeat).toBeUndefined();
   });
@@ -176,12 +189,51 @@ describe('RegistroDeCrones', () => {
     expect((vencimiento.mock.calls[0]?.[2] as Opciones).data).toEqual({});
   });
 
-  it('lee la bandera de JOBS_RECURRENTES y de ninguna otra variable', async () => {
+  it('lee la bandera de JOBS_RECURRENTES', async () => {
     const { registro } = crearEscenario('1');
     const config = (registro as unknown as { config: { get: jest.Mock } }).config;
 
     await registro.onModuleInit();
 
     expect(config.get).toHaveBeenCalledWith('JOBS_RECURRENTES');
+  });
+
+  // --------------------------------------------------------------------------
+  // LA ZONA (Fase 6B). `0 9 * * *` sin `tz` son las nueve del proceso que corre
+  // el worker: en un contenedor pelado, 09:00 UTC, o sea las 6 de la manana en
+  // Argentina. El recordatorio de pago le llegaba al alumno de madrugada.
+  // --------------------------------------------------------------------------
+
+  it('el cron lleva la zona del despliegue, no la del worker', async () => {
+    const { registro, recordatorio, vencimiento } = crearEscenario('1');
+
+    await registro.onModuleInit();
+
+    expect(recordatorio.mock.calls[0]?.[1]).toMatchObject({ tz: ZONA_POR_DEFECTO });
+    expect(vencimiento.mock.calls[0]?.[1]).toMatchObject({ tz: ZONA_POR_DEFECTO });
+  });
+
+  it('la zona sale de ZONA_HORARIA, no de una constante de este archivo', async () => {
+    // Con la zona hardcodeada el test de arriba pasaria igual. Este fija que el
+    // valor viene de la configuracion: se le da otra y tiene que viajar esa.
+    const { registro, recordatorio, vencimiento } = crearEscenario('1', 'Europe/Madrid');
+    const config = (registro as unknown as { config: { get: jest.Mock } }).config;
+
+    await registro.onModuleInit();
+
+    expect(config.get).toHaveBeenCalledWith('ZONA_HORARIA');
+    expect(recordatorio.mock.calls[0]?.[1]).toMatchObject({ tz: 'Europe/Madrid' });
+    expect(vencimiento.mock.calls[0]?.[1]).toMatchObject({ tz: 'Europe/Madrid' });
+  });
+
+  it('el patron sigue siendo las nueve: lo que cambio es de donde', async () => {
+    // Para que quede claro que esta fase NO movio la hora. Si alguien decide
+    // algun dia cambiarla, que sea una decision y no un efecto de haber tocado
+    // la zona.
+    const { registro, recordatorio } = crearEscenario('1');
+
+    await registro.onModuleInit();
+
+    expect(recordatorio.mock.calls[0]?.[1]).toMatchObject({ pattern: '0 9 * * *' });
   });
 });

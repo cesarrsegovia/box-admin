@@ -14,6 +14,8 @@ const ENTORNO_COMPLETO = {
   APP_ENCRYPTION_KEY: '0'.repeat(64),
   EMAIL_TIPO: 'memoria',
   PUSH_TIPO: 'memoria',
+  // Anadida en la Fase 6B: la zona horaria del despliegue.
+  ZONA_HORARIA: 'America/Argentina/Buenos_Aires',
 };
 
 const VARIABLES_REQUERIDAS = [
@@ -28,6 +30,7 @@ const VARIABLES_REQUERIDAS = [
   'APP_ENCRYPTION_KEY',
   'EMAIL_TIPO',
   'PUSH_TIPO',
+  'ZONA_HORARIA',
 ];
 
 describe('validarEntorno', () => {
@@ -239,5 +242,39 @@ describe('validarEntorno — comunicacion', () => {
         VAPID_PRIVATE_KEY: '',
       }),
     ).not.toThrow();
+  });
+});
+
+describe('validarEntorno — zona horaria', () => {
+  it('acepta una zona IANA con region y ciudad', () => {
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, ZONA_HORARIA: 'America/Argentina/Buenos_Aires' }),
+    ).not.toThrow();
+  });
+
+  it('acepta UTC', () => {
+    // Es la zona de un contenedor pelado y la que usan los tests: tiene que ser
+    // una configuracion valida, no un caso degenerado.
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, ZONA_HORARIA: 'UTC' })).not.toThrow();
+  });
+
+  it('rechaza una zona que el runtime no conoce', () => {
+    // Lo que esta validacion existe para atrapar: el proceso muere al arrancar
+    // en vez de dar un RangeError a mitad del primer check-in de un lunes.
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, ZONA_HORARIA: 'Marte/Olympus' })).toThrow(
+      /ZONA_HORARIA/,
+    );
+  });
+
+  it('rechaza un nombre de ciudad suelto, que es el error de tipeo probable', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, ZONA_HORARIA: 'Buenos_Aires' })).toThrow(
+      /ZONA_HORARIA/,
+    );
+  });
+
+  it('el mensaje dice que forma se esperaba', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, ZONA_HORARIA: 'Marte/Olympus' })).toThrow(
+      /America\/Argentina\/Buenos_Aires/,
+    );
   });
 });

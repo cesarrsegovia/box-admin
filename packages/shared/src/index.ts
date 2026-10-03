@@ -12,3 +12,5 @@ export * from './pagos.contracts';
 export * from './comunicacion.contracts';
 export * from './dinero.contracts';
 export * from './stats.contracts';
+export * from './checkin.contracts';
+export * from './web-salon.contracts';

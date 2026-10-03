@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { PATRON_FECHA } from '@boxadmin/shared';
 
 export class CrearVacacionDto {
@@ -17,11 +17,8 @@ export class CrearVacacionDto {
   @MaxLength(200)
   motivo?: string;
 
-  /**
-   * Se almacena y NO se aplica en la Fase 2: con el conteo derivado de clases,
-   * no generar la reserva ya equivale a no gastarla. Ver D3 del spec.
-   */
-  @IsOptional()
-  @IsBoolean()
-  devuelveClase?: boolean;
+  // NO hay `devuelveClase`. Se borro en la Fase 6B: las clases perdidas no se
+  // devuelven. Y como el ValidationPipe global corre con forbidNonWhitelisted,
+  // mandarlo ahora es un 400 y no un campo ignorado en silencio, que es lo que
+  // se quiere de un cambio de contrato visible.
 }

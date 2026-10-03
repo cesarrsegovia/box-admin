@@ -5,28 +5,38 @@ import type { Queue } from 'bullmq';
 import { RECORDATORIO_PAGO_QUEUE, VENCIMIENTO_PACK_QUEUE } from './colas';
 
 /**
- * Todos los dias a las 9:00 **EN LA ZONA HORARIA DEL WORKER**, que no es la del
- * gimnasio ni la de nadie en particular. Leerlo como "las nueve de la manana" es
- * el error facil, y hoy es un error de verdad:
+ * Todos los dias a las 9:00 **EN LA ZONA DEL DESPLIEGUE**: el patron viaja con
+ * el `tz` de `ZONA_HORARIA` desde la Fase 6B. Antes eran las 9:00 del proceso
+ * que corre el worker, que no es la de nadie en particular —un contenedor no
+ * trae zona, asi que en produccion eran las 09:00 UTC, o sea **las 6 de la
+ * manana en Argentina**: el recordatorio de pago le llegaba al alumno de
+ * madrugada—.
  *
- * - Un cron de BullMQ sin `tz` se interpreta en la zona del proceso que corre el
- *   worker. Este proyecto trabaja las fechas en UTC de punta a punta (ver
- *   `fechas.ts` en `@boxadmin/shared`) y los contenedores no traen zona, asi que
- *   en produccion esto es 09:00 UTC.
- * - 09:00 UTC son **las 6 de la manana en Argentina**. Es decir: tal como esta,
- *   el recordatorio de pago le llega al alumno de madrugada.
- * - Y la otra mitad, que no es la hora del correo sino QUE DIA SE CALCULA: si el
- *   contenedor NO corre en UTC, el cron dispara a las 09:00 LOCALES mientras
- *   `comienzoDeHoyUtc` —que es quien define la ventana de vencimiento— sigue
- *   razonando en UTC. Con un huso bastante adelantado (09:00 en Tokio son las
- *   00:00 UTC del mismo dia; mas al este, del dia siguiente) las dos nociones de
- *   "hoy" dejan de coincidir y la ventana se corre un dia.
+ * LA DECISION YA NO ESTA PENDIENTE. Lo que la 5B dejo preguntado era "que hora
+ * y en que zona"; la hora siguen siendo las nueve, y la zona es la del
+ * despliegue. Lo que faltaba era que fueran las nueve DE ALGUN LADO.
  *
- * NO SE ARREGLA AQUI A PROPOSITO: que hora y en que zona salen estos correos es
- * una decision de producto, no de este archivo, y esta preguntada. Cuando se
- * decida, el sitio es el segundo argumento de `upsertJobScheduler`:
- * `{ pattern: PATRON_DIARIO, tz: '<Zona/Ciudad>' }`. Mientras tanto queda
- * escrito para que nadie de por hecho lo que no es.
+ * QUE ARREGLA EL `tz` Y QUE NO:
+ *
+ * - Arregla a que hora sale el correo, cambios de horario de verano incluidos:
+ *   quien resuelve el patron es cron-parser con esa zona, no una resta fija de
+ *   horas. Es la misma razon por la que `instanteEnZona` le pregunta a `Intl`.
+ * - NO cambia QUE DIA SE CALCULA, y es deliberado: la ventana de vencimiento la
+ *   define `comienzoDeHoyUtc`, que razona en UTC como todas las fechas del
+ *   sistema. Con una zona bastante adelantada respecto de UTC las dos nociones
+ *   de "hoy" podrian dejar de coincidir y la ventana se correria un dia (en
+ *   Tokio, las 09:00 locales son las 00:00 UTC del mismo dia; mas al este, del
+ *   dia anterior). Con UTC-3, que es lo que hay, las 09:00 locales son las
+ *   12:00 UTC del MISMO dia y no hay desacuerdo posible. Queda escrito por si
+ *   algun dia la zona se mueve al este.
+ *
+ * ANADIR ESTE `tz` FUE SEGURO GRACIAS A LA MIGRACION DE LA 5B, y no es casual:
+ * con el `add(..., { repeat })` viejo la zona es parte de la clave del
+ * repetible, asi que este mismo cambio habria creado un cron NUEVO dejando el
+ * viejo disparando —dos tandas de correo masivo al dia, para siempre, sin un
+ * solo sintoma—. `upsertJobScheduler` esta cifrado solo por su
+ * `jobSchedulerId`, asi que actualiza el planificador en su sitio. El detalle
+ * esta en `registrar()`.
  */
 const PATRON_DIARIO = '0 9 * * *';
 
@@ -89,9 +99,16 @@ export class RegistroDeCrones implements OnModuleInit {
       return;
     }
 
-    await this.registrar(this.recordatorio, 'recordatorio-pago-diario');
-    await this.registrar(this.vencimiento, 'vencimiento-pack-diario');
-    this.logger.log(`Jobs diarios registrados con el patron ${PATRON_DIARIO}`);
+    // `validarEntorno` la exige al arrancar y comprueba que `Intl` la conoce,
+    // asi que aqui no puede faltar: un despliegue sin ella no levanta. Lo que
+    // SI importa saber es que pasaria si alguien la sacara de las requeridas
+    // —`tz: undefined` es un `tz` ausente para BullMQ, y el cron volveria en
+    // silencio a la zona del worker, que es exactamente el bug de arriba—.
+    const zona = this.config.get<string>('ZONA_HORARIA') as string;
+
+    await this.registrar(this.recordatorio, 'recordatorio-pago-diario', zona);
+    await this.registrar(this.vencimiento, 'vencimiento-pack-diario', zona);
+    this.logger.log(`Jobs diarios registrados con el patron ${PATRON_DIARIO} en la zona ${zona}`);
   }
 
   /**
@@ -103,10 +120,16 @@ export class RegistroDeCrones implements OnModuleInit {
    * se arma —`getRepeatConcatOptions`, en `bullmq/dist/cjs/classes/repeat.js`—
    * como `nombre:jobId:endDate:tz:patron`. **El patron y la `tz` son parte de la
    * clave**, y un `add` solo hace upsert de SU clave. Consecuencia: el dia que
-   * alguien cambie la hora —o anada el `tz` que la cabecera de `PATRON_DIARIO`
-   * recomienda anadir— nace un repetible nuevo Y EL VIEJO SIGUE DISPARANDO. Dos
-   * tandas de correo masivo al dia, para siempre, sin un solo sintoma en el
-   * codigo ni en el log: los dos crones son validos y los dos hacen su trabajo.
+   * alguien cambie la hora —o anada una `tz`, que es justo lo que hizo la Fase
+   * 6B— nace un repetible nuevo Y EL VIEJO SIGUE DISPARANDO. Dos tandas de
+   * correo masivo al dia, para siempre, sin un solo sintoma en el codigo ni en
+   * el log: los dos crones son validos y los dos hacen su trabajo.
+   *
+   * Y NO ES UN EJEMPLO INVENTADO: el `tz` de abajo se le anadio a un cron que
+   * ya existia. Alla donde este registro ya hubiera corrido, con la API vieja
+   * habria nacido un segundo repetible y el primero habria seguido disparando;
+   * con esta, el planificador se actualiza en su sitio. La migracion de la 5B
+   * se hizo para que este cambio fuera seguro.
    *
    * `upsertJobScheduler` esta cifrado SOLO por su `jobSchedulerId`, que es el
    * primer argumento, asi que cambiar patron o zona actualiza el planificador en
@@ -119,10 +142,10 @@ export class RegistroDeCrones implements OnModuleInit {
    * sean, actualice este y no cree otro. Tampoco es el id de cada ejecucion:
    * `createNextJob` le pone a cada iteracion `repeat:<hash>:<millis>`.
    */
-  private async registrar(cola: Queue, planificador: string): Promise<void> {
+  private async registrar(cola: Queue, planificador: string, zona: string): Promise<void> {
     await cola.upsertJobScheduler(
       planificador,
-      { pattern: PATRON_DIARIO },
+      { pattern: PATRON_DIARIO, tz: zona },
       {
         name: 'diario',
         // Un job diario no tiene gimnasio —los recorre todos— y su reloj es el

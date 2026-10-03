@@ -18,6 +18,7 @@ const VARIABLES_REQUERIDAS = [
   'APP_ENCRYPTION_KEY',
   'EMAIL_TIPO',
   'PUSH_TIPO',
+  'ZONA_HORARIA',
 ] as const;
 
 /**
@@ -98,6 +99,29 @@ export function validarEntorno(config: Record<string, unknown>): Record<string, 
   const push = config.PUSH_TIPO;
   if (push !== 'memoria' && push !== 'web-push') {
     throw new Error(`PUSH_TIPO debe ser "memoria" o "web-push", no ${JSON.stringify(push)}.`);
+  }
+
+  // La zona horaria del despliegue (Fase 6B). Una zona mal escrita tiene que
+  // matar el proceso aqui, no fallar en el primer check-in de un lunes a la
+  // manana: `instanteEnZona` se la pasa a `Intl`, que lanza RangeError, y ese
+  // error apareceria a mitad de una peticion de un alumno.
+  //
+  // No hay lista de zonas que comparar —seria una tabla propia que envejece—:
+  // la prueba es intentar usarla contra el mismo `Intl` que la va a usar luego.
+  // Asi lo que acepta la validacion y lo que acepta el runtime es, por
+  // construccion, lo mismo.
+  //
+  // LIMITE, y es lo importante: esta zona NO entra en la aritmetica de fechas
+  // del sistema, que sigue en UTC de punta a punta. Se usa en dos sitios y nada
+  // mas: la ventana del check-in y el patron del cron de los jobs diarios.
+  const zona = config.ZONA_HORARIA;
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: zona as string });
+  } catch {
+    throw new Error(
+      `ZONA_HORARIA no es una zona IANA valida: ${JSON.stringify(zona)}. ` +
+        'Se espera algo como America/Argentina/Buenos_Aires o UTC.',
+    );
   }
 
   // JOBS_RECURRENTES enciende los dos crones diarios, que son el UNICO camino

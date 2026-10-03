@@ -17,7 +17,6 @@ export function aVacacionPublica(vacacion: VacacionAlumno): VacacionPublica {
     desde: aFechaISO(vacacion.desde),
     hasta: aFechaISO(vacacion.hasta),
     motivo: vacacion.motivo,
-    devuelveClase: vacacion.devuelveClase,
   };
 }
 
@@ -49,9 +48,6 @@ export class VacacionesService {
           desde: desdeFechaISO(dto.desde),
           hasta: desdeFechaISO(dto.hasta),
           motivo: dto.motivo ?? null,
-          // Se almacena y NO se aplica en esta fase: con el conteo derivado de
-          // clases, no generar la reserva ya equivale a no gastarla.
-          devuelveClase: dto.devuelveClase ?? true,
         },
       });
 

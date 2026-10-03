@@ -76,6 +76,12 @@ model Tenant {
   plantillasEmail   PlantillaEmail[]
   suscripcionesPush SuscripcionPush[]
 
+  configCheckInQR     ConfigCheckInQR?
+  asistencias         Asistencia[]
+  webSalonConfig      WebSalonConfig?
+  testimonios         Testimonio[]
+  preguntasFrecuentes PreguntaFrecuente[]
+
   @@map("tenants")
 }
 
@@ -334,6 +340,10 @@ model Pack {
 
   perfiles         Perfil[]
   clavesInvitacion ClaveInvitacion[]
+  // Inversa de WebSalonConfig.planDestacado: el pack que la landing publica
+  // destaca. Lista y no opcional-unico porque Prisma no sabe que solo puede
+  // haber una WebSalonConfig por gimnasio; lo garantiza su `tenantId @id`.
+  webSalonConfigs  WebSalonConfig[]
 
   // Destino de la FK compuesta de Perfil.pack. Ver Usuario.
   @@unique([tenantId, id])
@@ -487,6 +497,15 @@ model Reserva {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// La evidencia del check-in, si la reserva paso por el. Opcional porque la
+  /// profesora que pasa lista escribe `asistio` sin dejar fila.
+  asistencia Asistencia?
+
+  // Destino de la FK compuesta de Asistencia. Es lo que permite que la base
+  // —y no el codigo— impida que una asistencia apunte a la reserva de otro
+  // gimnasio. No habia hecho falta hasta ahora porque nadie referenciaba una
+  // reserva; el patron es el mismo que el de Pack, Perfil, Sala y Turno.
+  @@unique([tenantId, id])
   @@index([tenantId, turnoId])
   @@index([tenantId, perfilId])
   @@map("reservas")
@@ -582,10 +601,12 @@ model VacacionAlumno {
   hasta  DateTime @db.Date
   motivo String?
 
-  // Se almacena y NO se aplica en esta fase. Con el conteo derivado de la Fase 1,
-  // no generar la reserva ya equivale a no gastar la clase, asi que no hay nada
-  // que devolver. Queda para cuando exista facturacion o creditos (Fase 5).
-  devuelveClase Boolean @default(true)
+  // NO hay `devuelveClase`. Se borro en la Fase 6B, decidido con Cesar: las
+  // clases perdidas no se devuelven. El campo se almacenaba sin aplicarse y
+  // llevaba cuatro fases de mudanza. El mecanismo real para darle una clase a
+  // alguien es `Perfil.clasesExtra`, que esta vivo: `ventana-pack.ts` hace
+  // `base + clasesExtra`. Si algun dia hay que devolver clases, lo que falta es
+  // decidir quien lo incrementa, no una columna nueva aqui.
 
   createdAt DateTime @default(now())
 
@@ -948,4 +969,138 @@ model SuscripcionPush {
   // una migracion mas. El dia que alguien limpie indices, este sobra.
   @@index([tenantId, perfilId])
   @@map("suscripciones_push")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 6B: check-in por QR y web publica
+// ---------------------------------------------------------------------------
+
+model ConfigCheckInQR {
+  // `tenantId` como clave primaria, igual que ConfiguracionSMTP: hay una fila
+  // por gimnasio o no hay ninguna, y la base lo garantiza sin un unique aparte.
+  tenantId String @id
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// Ventana alrededor del INICIO del turno. Un gimnasio sin fila usa estos
+  /// mismos quince minutos: la ausencia de configuracion no puede ser un
+  /// check-in roto.
+  minutosAntes   Int @default(15)
+  minutosDespues Int @default(15)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("config_checkin_qr")
+}
+
+/// Como se marco la asistencia. Enum y no String, igual que MetodoPago y
+/// OrigenReserva: un string admite "qr", "QR" y "Qr" y los tres acaban en la
+/// misma tabla sin que nada avise.
+enum OrigenAsistencia {
+  QR
+  MANUAL
+}
+
+model Asistencia {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// FK COMPUESTA, no simple: la base impide que una asistencia apunte a una
+  /// reserva de otro gimnasio. El PDF proponia `reservaId @unique` global; eso
+  /// deja la garantia en el codigo, y el codigo se olvida.
+  ///
+  /// `onDelete: Cascade` por lo mismo que Reserva -> Turno: una reserva puede
+  /// irse con su turno, y con RESTRICT ese borrado reventaria con una
+  /// violacion de clave foranea que nadie traduce.
+  reservaId String
+  reserva   Reserva @relation(fields: [tenantId, reservaId], references: [tenantId, id], onDelete: Cascade)
+
+  /// `Reserva.asistio` es la UNICA verdad sobre si vino. Esta fila es la
+  /// evidencia de COMO se marco, y solo existe si paso por el check-in: la
+  /// profesora que pasa lista escribe `asistio` sin dejar fila, y esta bien.
+  origen      OrigenAsistencia
+  ip          String?
+  dispositivo String?
+  marcadaEn   DateTime         @default(now())
+
+  /// Lo que hace que el segundo check-in sea un 409 EN LA BASE y no solo en el
+  /// codigo. Entre la comprobacion y la escritura hay una ventana; esto la cierra.
+  @@unique([tenantId, reservaId])
+  @@index([tenantId])
+  @@map("asistencias")
+}
+
+model WebSalonConfig {
+  // `tenantId` como clave primaria, igual que ConfigCheckInQR.
+  tenantId String @id
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// Sin fila, la web esta apagada y el endpoint publico da 404.
+  activa Boolean @default(false)
+
+  /// NO hay `slug` aqui: el publico es `Tenant.slug`, el mismo que usan todas
+  /// las rutas de la PWA. Dos slugs para el mismo gimnasio es pedir que algun
+  /// dia no coincidan.
+  colorPrimario   String  @default("#000000")
+  colorSecundario String  @default("#ffffff")
+  tituloPrincipal String?
+  tagline         String?
+  sobreElSalon    String?
+
+  /// URL EXTERNA, validada como https. No puede salir del almacen: ese firma
+  /// con vencimiento, correcto para un comprobante privado y veneno para una
+  /// landing indexada, donde el enlace muere y queda un 403 que nadie ve.
+  imagenPrincipalUrl String?
+
+  whatsapp  String?
+  instagram String?
+  linkExtra String?
+
+  mostrarPrecios     Boolean @default(true)
+  mostrarTestimonios Boolean @default(false)
+  mostrarFAQ         Boolean @default(false)
+
+  /// Publica la agenda del gimnasio y cuan vacia esta. Apagado por defecto a
+  /// proposito: es una decision de negocio, no un detalle de presentacion.
+  mostrarTurnosLibres Boolean @default(false)
+
+  /// FK compuesta contra Pack, opcional: con `planDestacadoId` NULL la
+  /// comprobacion no se aplica (MATCH SIMPLE); con pack, tiene que ser de aqui.
+  planDestacadoId String?
+  planDestacado   Pack?   @relation(fields: [tenantId, planDestacadoId], references: [tenantId, id])
+
+  updatedAt DateTime @updatedAt
+
+  @@map("web_salon_config")
+}
+
+model Testimonio {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  nombre String
+  texto  String
+  orden  Int    @default(0)
+
+  /// Lo que permitiria que algo los referenciara sin poder cruzar de gimnasio,
+  /// igual que en Pack, Perfil, Sala y Turno.
+  @@unique([tenantId, id])
+  @@index([tenantId, orden])
+  @@map("testimonios")
+}
+
+model PreguntaFrecuente {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  pregunta  String
+  respuesta String
+  orden     Int    @default(0)
+
+  /// Ver Testimonio.
+  @@unique([tenantId, id])
+  @@index([tenantId, orden])
+  @@map("preguntas_frecuentes")
 }
