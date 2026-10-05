@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { PATRON_FECHA } from '@boxadmin/shared';
 
 export class CrearVacacionDto {
@@ -16,10 +16,6 @@ export class CrearVacacionDto {
   @IsString()
   @MaxLength(200)
   motivo?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  devuelveClase?: boolean;
 
   // NO hay `devuelveClase`. Se borro en la Fase 6B: las clases perdidas no se
   // devuelven. Y como el ValidationPipe global corre con forbidNonWhitelisted,

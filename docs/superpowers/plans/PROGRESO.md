@@ -1336,3 +1336,303 @@ La **6B**: check-in por QR y web publica del salon. Ahi entran los cinco modelos
 las dos cosas que esta fase dejo abiertas sobre ellos: que `Asistencia` con `reservaId @unique` choca
 con el `Reserva.asistio` que la Fase 4 ya tiene —serian dos verdades para el mismo hecho—, y que
 `WebSalonConfig.slug @unique` compite con el `Tenant.slug` que ya usan todas las rutas de la PWA.
+
+# Progreso Fase 6B — El check-in y la web publica
+
+**Spec:** `docs/superpowers/specs/2026-10-02-fase6b-checkin-web.md`
+**Plan:** `docs/superpowers/plans/2026-10-02-fase6b-checkin-web.md` (11 tareas, T0-T10)
+
+La otra mitad de la Fase 6. Aqui viven **los cinco modelos que el PDF propone** y que la 6A no
+necesito: `ConfigCheckInQR`, `Asistencia`, `WebSalonConfig`, `Testimonio` y `PreguntaFrecuente`.
+
+Y aqui aparece **la primera superficie publica del sistema**: hasta ahora todo pedia sesion.
+
+- [x] T0 — La zona horaria
+- [x] T1 — El schema y la migracion
+- [x] T2 — Los contratos, y la salida de `devuelveClase`
+- [x] T3 — La firma del QR
+- [x] T4 — El check-in
+- [x] T5 — La configuracion de la web
+- [x] T6 — El endpoint publico
+- [x] T7 — La landing
+- [x] T8 — La pantalla de check-in
+- [x] T9 — Los e2e
+- [x] T10 — Verificacion final, README y tracker
+
+## Decisiones cerradas con Cesar
+
+1. **Las clases perdidas no se devuelven.** Cerro de un plumazo una pregunta que yo habia armado como
+   opcion multiple. `devuelveClase` se borro del schema y del DTO: una columna que nadie iba a usar.
+2. **Una zona horaria para todo el despliegue**, en `ZONA_HORARIA`. No por gimnasio: la complejidad de
+   la zona por fila no se paga hasta que haya un gimnasio en otro huso.
+3. **`asistio` manda; `Asistencia` es la evidencia.** La columna sigue siendo la verdad para los
+   contadores que ya existen; la fila nueva guarda el cuando, el como y el desde donde. Se escriben
+   juntas en la misma transaccion.
+4. **El QR es estatico, firmado, impreso y pegado en la pared.** Garantiza **comodidad, no presencia**:
+   la ventana horaria acota *cuando*, no *donde*. El dia que la asistencia tenga que probar presencia
+   hara falta un QR que rote en una pantalla, y eso es otro diseno.
+5. **Comodidad por encima de control**: que marcar presente sea rapido es el objetivo declarado.
+6. **Un solo secreto, el del `Tenant`**, para firmar el QR.
+
+## El unico endpoint sin sesion, y lo que costo asegurarlo
+
+`GET /public/salon/:slug` es el primero del sistema que lee datos de un gimnasio sin pedir sesion. Casi
+todos los hallazgos serios de la fase salieron de ahi, y **ninguno fue un bug de codigo**: fueron
+pruebas que parecian cubrirlo y no lo cubrian.
+
+### La escalera de la auditoria
+
+Tres escalones, cada uno descubierto cuando una mutacion atraveso el anterior:
+
+1. **Lista negra** — sembrar un alumno con un email conocido y buscar ese email en la respuesta.
+   La atraveso agregar el `id` del pack al contrato: un renglon plausible, porque el id ya se lee para
+   decidir cual es el destacado. **Paso los siete tests que lo intentaban.** Una lista negra siempre va
+   un campo por detras.
+2. **Lista blanca de claves** — fijar las claves exactas del cuerpo y de cada objeto anidado.
+   La atraveso una fuga **dentro de un valor legitimo**: meter los lugares libres en el nombre de la
+   clase, `"Pilates (8 lugares libres)"`. Las claves quedan identicas y el test que buscaba las
+   subcadenas `cupo` y `reservas` no lo vio.
+3. **`toEqual` del objeto entero** — comparar contra un valor esperado explicito. Existia en **una
+   sola** de las cuatro secciones, y por suerte mas que por diseno. Se llevo a las cuatro.
+
+### Una ruta publica tiene que declarar que la protege en su lugar
+
+Quitarle el `@Public()` al endpoint dejaba **1283 tests y 179 e2e en verde**. No habia un solo test en
+toda la API que afirmara que una ruta es publica: `grep` de `IS_PUBLIC|@Public` en los specs daba cero.
+La landing se caia entera en produccion sin que nada avisara.
+
+El inventario que salio de ahi (`common/guards/rutas-publicas.spec.ts`) hace dos cosas que un test
+puntual no hace:
+
+- **atrapa el `@Public()` que SOBRA**, no solo el que falta — que es el error peligroso;
+- declara **que protege a cada ruta publica en lugar del JWT**: `BootstrapKeyGuard` en las dos de
+  bootstrap, el freno estricto en las tres de auth, la firma HMAC en las de archivos.
+
+Esto ultimo cerro un agujero que nadie habia mirado: si alguien le quitaba el `BootstrapKeyGuard` a
+`POST /auth/tenants`, **la creacion de inquilinos quedaba abierta a internet** y el inventario, que solo
+miraba `IS_PUBLIC`, no se enteraba.
+
+## La mutacion abierta: cinco de cinco
+
+En cada tarea pedi, ademas de las mutaciones enumeradas, **una que al implementador le pareciera que el
+codigo no sobreviviria y que nadie hubiera probado**. Cinco tareas, cinco hallazgos reales, y **las
+cinco de la misma familia**:
+
+| Donde | Que se agrego |
+|---|---|
+| Endpoint publico | el `id` del pack en el contrato |
+| `turnosLibres` | los lugares libres dentro del nombre de la clase |
+| Pantalla de check-in | el consejo de `ya-marcada` sumado a `lista-ya-pasada` |
+| Portada de la landing | un contador de "N lugares libres esta semana" |
+
+**Agregar algo que no deberia estar, sin quitar nada de lo que si.** Ningun test de presencia ve eso;
+solo lo ven las comparaciones de totales. El de la pantalla de check-in era ademas el de peor dano: le
+decia "no hace falta que hagas nada mas" a quien **no** habia quedado marcado.
+
+## Los errores de este plan
+
+Veintinueve anotados. Casi ninguno es codigo que no compila: son **protecciones que parecian estar
+puestas y no lo estaban**, que es el mismo patron que la 6A.
+
+### Los que escribi mal
+
+1. **`hour12: false`** en `desfaseDeZona`, que selecciona h24 y hacia que la medianoche cayera un dia
+   antes. Mis cinco tests no tocaban la medianoche.
+2. **El mismo bug de huso, dos veces en la misma fase.** Escribi la ventana en la zona del gimnasio y
+   despues pedi cargar "las reservas del dia", que es UTC.
+3. **`prisma.base`** en el endpoint publico. `base` es el cliente **sin** la extension: salirse del
+   aislamiento por ahi es justo lo que prohibe el comentario de al lado. Va `db` dentro de
+   `runUnscoped`, que es lo que hace `auth.service.ts`, el precedente que yo citaba mal.
+4. **`PackPublico`** ya existia desde la Fase 1 y rompio la compilacion de shared. Quedo `PackEnLanding`.
+5. **"Llevar al login y volver" no era implementable.** Un layout de Next 15 no recibe `searchParams`,
+   el layout de alumno redirige sin conservar el destino y el login termina siempre en el calendario.
+6. **Faltaba `GET /config/web-salon`** en la spec: sin el, el admin no puede conocer los ids que el
+   `DELETE` necesita, porque solo salen en la respuesta del POST.
+7. **Di por imposible probar el filtro de canceladas con dobles** y lo mande entero a los e2e. Se podia:
+   ver el punto 3 de "cuando una mutacion no rompe nada".
+8. **Mande recortar los textos** dando por hecho que no se hacia. Ya se hacia en los campos; lo que
+   faltaba era en las **filas**.
+9. **Dije que el `where` del `_count` existia.** No existia.
+
+### Los que se me pasaron
+
+10. **La lista de ataques de la ruta de retorno estaba incompleta**: faltaban los segmentos `..`, que
+    pasan la comprobacion de prefijo y se normalizan fuera del gimnasio, y los caracteres de control,
+    que el navegador borra antes de resolver la URL.
+11. **El plan daba por hecho que `lib/cliente.ts` servia.** Descartaba el cuerpo del error, o sea el
+    `motivo` del 409: los cuatro mensajes del check-in no se podian ni escribir.
+12. **No pedi nunca que se fijara una clase de CSS.** El recorte quedaba correcto, el salto de linea
+    seguia en el string, y el parrafo salia de corrido igual por falta de `whitespace-pre-line`.
+13. **Las cuatro banderas de privacidad no tenian ningun caso** que las atara a su columna: el test que
+    yo habia pedido auditaba la **lectura**, no la escritura.
+14. **Un test de borrado con un solo registro sembrado**, que no prueba el `where`.
+15. **Ningun test afirmaba que una ruta fuera publica.** Ni uno en toda la API.
+
+### Lo que salio mejor de lo que pedi
+
+- El **inventario bidireccional** de rutas publicas, en vez del test puntual que yo habia pedido: atrapa
+  el `@Public()` que sobra, que es el peligroso, y declara **que protege a cada ruta en lugar del JWT**.
+- El doble que **calcula el `_count` interpretando su `where`**, con el argumento correcto: lo que
+  vuelve fragil a un doble es la excepcion, no la regla.
+- La regla de que **"en blanco" es un dato que no vino**, que yo no habia pedido.
+- Mapear tambien `listarTestimonios`, `listarPreguntas` y los dos `crear*`, porque sin eso la auditoria
+  de claves del lado admin no se podia escribir.
+
+## Trampas nuevas
+
+**`hour12: false` no es el ciclo de 23 horas.** En Node 20 selecciona **h24**: la medianoche se formatea
+`"24:00"`, `Date.parse` lo acepta, y significa el dia siguiente. `instanteEnZona` con `00:00` devolvia
+el dia anterior. Va `hourCycle: 'h23'`.
+
+**La zona se escapa por la consulta.** Escribir la ventana en la zona del gimnasio no alcanza si despues
+se cargan "las reservas del dia": *el dia* es UTC. Hay que cargar **tres dias UTC** y dejar que la
+eleccion decida.
+
+**Un layout de Next 15 no recibe `searchParams`.** Por eso la pantalla de check-in vive **fuera** del
+grupo `(alumno)`: el redirect del layout se comia el `?f=` del QR y el alumno aterrizaba en el
+calendario sin firma, a reescanear parado frente a la pared.
+
+**"Volver a donde iba" es la forma exacta de un open redirect.** `rutaDeRetornoSegura` acepta por lista
+blanca: solo `/<slug>/` con la barra final (sin ella, el slug `gim` abre `/gimnasio-rival/x`). Rechaza
+`//evil.com`, `https://`, `javascript:`, la barra invertida, los caracteres de control —que el navegador
+borra antes de resolver— y los segmentos `..`, que pasan el prefijo y se normalizan fuera del gimnasio.
+
+**`whitespace-pre-line` no colapsa los espacios.** Un `sobreElSalon` pegado desde un Word sale con
+lineas en blanco visibles arriba y abajo. Hay que recortar los extremos y respetar los saltos del medio.
+
+## Cuando una mutacion no rompe nada
+
+Se repitieron los dos diagnosticos de la 6A, y aparecio un tercero:
+
+1. **El fixture no distinguia los dos comportamientos.** `RUIDO.tituloPrincipal` era `Studio Fuego`,
+   igual que `TENANT.nombre`: un mapeo que cruzara los dos campos pasaba **hasta un `toEqual` del cuerpo
+   entero**.
+2. **El caso directamente no estaba probado.** Los dos topes de `turnosLibres`, el `@Public()`, las
+   cuatro banderas de privacidad del lado admin.
+3. **El doble no podia ver la diferencia.** El `_count` se sembraba cocinado, asi que el
+   `where: { canceladaEn: null }` era invisible *por construccion*. Se arreglo haciendo que **el doble
+   calcule el `_count` interpretando su `where`** — no es una excepcion fabricada para salvar un test:
+   el doble ya interpreta `where` con `gte`/`lt`, relaciones anidadas, `orderBy` y `take`. **Lo que
+   vuelve fragil a un doble es la excepcion, no la regla.**
+
+Y un cuarto caso, que no es una mutacion que sobrevive sino algo peor: **un test que pasaba por el
+motivo equivocado.** El de colores de la landing nunca ejercia las anclas de la expresion, porque
+ninguno de sus payloads invalidos llevaba `#`. Pasaba, pero no por lo que decia probar.
+
+## Dos agujeros de borrado que un solo registro sembrado esconde
+
+`deleteMany({ where: { id } })` → `{ where: {} }` pasaba los 41 tests del lado admin. El test del id
+ajeno miraba la fila del **otro inquilino**, y el del id propio sembraba **un solo** testimonio: "borro
+el suyo" y "borro todos los suyos" daban el mismo resultado. Identico en `borrarPregunta`.
+
+**Un test de borrado con un solo registro sembrado no prueba el `where`.**
+
+## Los e2e encontraron tres bugs reales, y dos dejaban la fase sin funcionar
+
+Esta es la leccion mas cara de la fase: **todo lo anterior estaba en verde.** 1290 unitarios, un repaso
+independiente con trece mutaciones, y aun asi dos funciones centrales no habian funcionado nunca.
+
+### 1. El endpoint publico devolvia 500 SIEMPRE
+
+```ts
+runUnscoped(() => this.prisma.db.tenant.findUnique({ ... }))   // mal
+runUnscoped(async () => await this.prisma.db.tenant.findUnique({ ... }))   // bien
+```
+
+Una `PrismaPromise` es **perezosa**. La lambda la devuelve sin esperarla, `runUnscoped` cierra el
+`AsyncLocalStorage`, y la consulta arranca **ya fuera** → `MissingTenantContextError` → 500 en cada
+llamada. `auth.service.ts` usa el `await` explicito en sus tres `runUnscoped` desde la Fase 0.
+
+Lo que vuelve esto importante: **el repaso independiente verifico ese mismo `runUnscoped`** y lo dio
+por correcto. Comprobo que envolvia una sola consulta y que usaba `db` y no `base`, que era lo que yo
+le habia mandado mirar, y las dos cosas eran ciertas. **La pereza de la promesa no la mira nadie, y un
+doble no es perezoso.**
+
+### 2. El cartel del QR no se podia generar NUNCA
+
+`tenant.findUnique` dentro de un contexto de inquilino lo rechaza la extension
+(`UnsafeUniqueOperationError`). Va `findFirst`, como en `liquidacion.datos.ts`. El doble del unitario
+**solo tenia `findUnique`**, asi que el test no podia ver el problema: se le quito el metodo prohibido.
+
+### 3. El `where` del `_count` no estaba
+
+El comentario que prometia que las canceladas no ocupan lugar estaba; el `where` no. Un turno de cupo
+10 con 8 reservas vivas y 2 canceladas desaparecia de la landing por lleno.
+
+**Los tres son del mismo genero**: un doble escrito a mano no puede contradecir a quien lo escribio.
+Sabe lo que el autor creia que pasaba, no lo que pasa.
+
+## La mutacion abierta: seis de seis
+
+La de los e2e fue la mejor de todas porque busco **el unico artefacto que un e2e no puede leer**: lo
+que va codificado DENTRO del PNG del cartel.
+
+```ts
+const url = `${urlDeCheckIn(origen, tenant.slug, firma)}&gym=${actor.tenantId}`;
+```
+
+**Sobrevivio a los 1290 unitarios y a los 204 e2e.** El hueco era exacto: `urlDeCheckIn` esta probada
+como funcion pura, y los cuatro casos de `imagenQr` solo comprueban "es un PNG", el 503 y el 404.
+**Nadie afirmaba que URL se codifica.**
+
+El `tenantId` habria acabado impreso en un cartel colgado en una pared publica, en el historial del
+navegador de cada alumno y en el log de accesos del front. Se cerro espiando `qrcode.toBuffer` y
+fijando la URL exacta.
+
+| Donde | Que se agrego |
+|---|---|
+| Endpoint publico | el `id` del pack en el contrato |
+| `turnosLibres` | los lugares libres dentro del nombre de la clase |
+| Pantalla de check-in | el consejo de `ya-marcada` sumado a `lista-ya-pasada` |
+| Portada de la landing | un contador de "N lugares libres esta semana" |
+| Cartel del QR | el `tenantId` en la URL codificada en el PNG |
+
+## Un comentario que promete lo que el codigo no hace
+
+`eleccion-de-reserva.ts` dice que un alumno con dos clases seguidas que ya marco la primera marcaria la
+segunda. El codigo elige **la mas cercana** y despues mira los bloqueos: si la ya marcada sigue siendo
+la mas cercana, devuelve `ya-marcada`. En la practica no molesta —cuando el alumno escanea para la
+segunda, la segunda ya es la mas cercana— pero el test quedo escrito contra el comportamiento real, no
+contra el comentario.
+
+## Estado final
+
+| | |
+|---|---|
+| `packages/shared` | **103 tests / 4 suites**, tsc limpio |
+| `apps/api` unitarios | **1291 / 65 suites**, tsc limpio |
+| `apps/web` | **351 / 23 suites**, tsc limpio, `build` OK (`f /[slug]`, SSR) |
+| E2E | **204 / 12 suites** (115 s) |
+
+De 1234/62 y 179/10 al empezar la fase.
+
+## Lo que falta a mano
+
+Lo que ningun test automatico ve:
+
+- [ ] Escanear el QR con un telefono de verdad y que abra la pantalla correcta.
+- [ ] La landing en una ventana de incognito, y que el "ver codigo fuente" **no contenga** los precios
+      con la bandera apagada.
+- [ ] Que el cron de los jobs diarios, ahora con `tz`, dispare cuando corresponde.
+
+## Deuda anotada
+
+- **`redis-miba` ocupa el puerto 6379**, asi que `box-admin-redis-1` no levanta y los e2e corrieron
+  contra esa instancia compartida. Pasaron 204/204 en tres corridas sin intermitencias, pero los jobs
+  de BoxAdmin estan compartiendo Redis con otro proyecto.
+- **El commit `06fb463` capturo una mutacion viva** de un subagente: `devuelveClase` volvio al DTO en
+  HEAD. El arbol de trabajo es correcto; falta commitear
+  `apps/api/src/vacaciones/dto/crear-vacacion.dto.ts`.
+- **Un commit de solo formato** pendiente: una veintena de archivos de `apps/api/src/**` que nunca
+  pasaron `prettier --check`, mas el README y este archivo.
+- `conTextosRecortados` de la landing trabaja sobre un nivel; una lista anidada dentro de una fila no la
+  alcanza. Documentado en el archivo.
+- Dos llamadas a `traerSalon` por visita (`generateMetadata` + pagina), que Next memoiza dentro de la
+  misma peticion.
+
+## Siguiente paso
+
+La Fase 6 esta completa, 6A y 6B. Lo que queda del PDF es **el panel del admin**, que es la deuda que
+las dos mitades comparten: la 6A entrego siete reportes sin pantalla y la 6B la configuracion del QR y
+de la web sin pantalla. Es una fase entera —login de admin, layout, navegacion— y es el orden correcto:
+un grafico bonito sobre un numero equivocado es peor que ningun grafico.

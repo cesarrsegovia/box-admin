@@ -11,10 +11,21 @@ export class ErrorDeApi extends Error {
   /** El codigo HTTP. `0` cuando la peticion no llego a salir (sin red). */
   readonly estado: number;
 
-  constructor(mensaje: string, estado: number) {
+  /**
+   * El cuerpo JSON tal como vino, cuando lo hubo.
+   *
+   * Hay respuestas de error que son DATOS y no solo un texto: el 409 del
+   * check-in lleva un `motivo` de cuatro valores sobre el que la pantalla
+   * tiene que ramificar. Sin esto, el unico camino seria que esa pantalla se
+   * saltara `pedir` y hablara con el proxy por su cuenta.
+   */
+  readonly cuerpo: unknown;
+
+  constructor(mensaje: string, estado: number, cuerpo?: unknown) {
     super(mensaje);
     this.name = 'ErrorDeApi';
     this.estado = estado;
+    this.cuerpo = cuerpo;
   }
 
   /** Sin sesion: quien lo reciba deberia mandar al alumno al login. */
@@ -71,7 +82,7 @@ export async function pedir<T = unknown>(
         ? String((datos as { message: unknown }).message)
         : `Error ${respuesta.status}`;
 
-    throw new ErrorDeApi(mensaje, respuesta.status);
+    throw new ErrorDeApi(mensaje, respuesta.status, datos);
   }
 
   return datos as T;

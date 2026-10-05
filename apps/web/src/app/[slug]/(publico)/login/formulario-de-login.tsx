@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
+import { rutaDeRetornoSegura } from '@/lib/ruta-de-retorno';
 
 const esquema = z.object({
   email: z.string().email('Ese email no parece valido'),
@@ -15,7 +16,7 @@ const esquema = z.object({
 
 type Datos = z.infer<typeof esquema>;
 
-export function FormularioDeLogin({ slug }: { slug: string }) {
+export function FormularioDeLogin({ slug, volverA }: { slug: string; volverA?: string }) {
   const router = useRouter();
   const [errorDeApi, setErrorDeApi] = useState<string | null>(null);
   const {
@@ -41,7 +42,9 @@ export function FormularioDeLogin({ slug }: { slug: string }) {
       return;
     }
 
-    router.push(`/${slug}/calendario`);
+    // El destino sale SIEMPRE de `rutaDeRetornoSegura`, nunca del parametro
+    // crudo: `volverA` lo escribe quien arme el enlace al login.
+    router.push(rutaDeRetornoSegura(volverA, slug));
   }
 
   return (

@@ -78,6 +78,25 @@ describe('pedir', () => {
     });
   });
 
+  it('el cuerpo del error viaja entero, no solo su mensaje', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          respuestaFalsa({ motivo: 'ya-marcada', message: 'Ya marcaste' }, { status: 409 }),
+        ),
+    );
+
+    // Hay errores que son DATOS: el 409 del check-in lleva un `motivo` sobre
+    // el que la pantalla ramifica. Quedarse solo con el texto obligaria a esa
+    // pantalla a saltarse `pedir`.
+    await expect(pedir('/checkin', { metodo: 'POST' })).rejects.toMatchObject({
+      estado: 409,
+      cuerpo: { motivo: 'ya-marcada', message: 'Ya marcaste' },
+    });
+  });
+
   it('un 204 no intenta parsear cuerpo', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
 

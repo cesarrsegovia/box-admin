@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Prisma } from '@prisma/client';
 import { TenantIdInvalidoError, runUnscoped, runWithTenant } from './tenant-context';
 import {
@@ -546,5 +548,149 @@ describe('modelos de la Fase 3A', () => {
     );
 
     expect(args).toEqual({ data: { nombre: 'x', tenantId: 'gym-1' } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Centinela de claves foraneas compuestas
+// ---------------------------------------------------------------------------
+
+/**
+ * La regla que este barrido convierte en test: **en un modelo con columna
+ * `tenantId`, toda clave foranea hacia otro modelo con `tenantId` tiene que
+ * llevar `tenantId` entre sus `fields`.** Es la pieza que hace que sea
+ * Postgres —y no el codigo— quien impida que una fila del gimnasio A apunte a
+ * una del gimnasio B.
+ *
+ * POR QUE UN BARRIDO Y NO UN CASO POR MODELO: `aislamiento-fk.e2e-spec.ts`
+ * comprueba esa garantia contra Postgres de verdad, pero con una lista escrita
+ * a mano. El proximo modelo con relacion que alguien agregue no va a tener su
+ * caso, y nadie se va a acordar de escribirselo. Esto cubre a los que todavia
+ * no existen, y convierte en test una regla que hoy vive repetida en
+ * comentarios por todo el schema.
+ *
+ * POR QUE SE LEE EL SCHEMA Y NO `Prisma.dmmf`: el DMMF de RUNTIME de Prisma 7
+ * viene PODADO. Sus campos solo conservan `{ kind, name, relationName, type }`;
+ * no hay `relationFromFields`, que es justo el dato que esta regla necesita. Es
+ * la misma familia de sorpresa que `Prisma.dmmf.datamodel.enums`, que en
+ * Prisma 7 esta vacio (ver `plantillas.spec.ts`). Asi que la fuente es el
+ * propio `schema.prisma`, que ademas es lo que lee quien revisa el diff.
+ *
+ * Y para que leer el schema no pueda fallar EN SILENCIO —un parser que no casa
+ * nada pasaria todos los tests, que es la peor forma de fallar: en verde— lo
+ * primero que se comprueba es que lo parseado coincide campo por campo con lo
+ * que declara el DMMF.
+ */
+describe('centinela de FK compuestas', () => {
+  const RUTA_SCHEMA = join(__dirname, '..', '..', '..', 'prisma', 'schema.prisma');
+
+  interface RelacionDelSchema {
+    modelo: string;
+    campo: string;
+    destino: string;
+    /** Las columnas del `fields: [...]`, o `null` si es el lado SIN clave foranea. */
+    fields: string[] | null;
+  }
+
+  const nombresDeModelo = new Set(Prisma.dmmf.datamodel.models.map((m) => m.name));
+
+  /** Todos los campos de relacion del schema, tal y como estan escritos. */
+  function leerRelaciones(texto: string): { modelos: string[]; relaciones: RelacionDelSchema[] } {
+    const modelos: string[] = [];
+    const relaciones: RelacionDelSchema[] = [];
+
+    for (const bloque of texto.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)) {
+      const modelo = bloque[1];
+      modelos.push(modelo);
+
+      for (const lineaCruda of bloque[2].split('\n')) {
+        // Fuera los comentarios (`//` y `///`) antes de mirar nada: el schema
+        // esta lleno de prosa que nombra campos y modelos.
+        const linea = lineaCruda.replace(/\/\/.*$/, '');
+        const campo = linea.match(/^\s*(\w+)\s+(\w+)(\?|\[\])?(\s|$)/);
+        if (!campo) continue;
+
+        const [, nombre, destino] = campo;
+        // Solo los campos cuyo tipo es otro modelo. Los escalares y los enums
+        // se descartan aqui, y los `@@unique` / `@@index` / `@@map` ni llegan:
+        // empiezan por `@@`.
+        if (!nombresDeModelo.has(destino)) continue;
+
+        const fields = linea.match(/@relation\([^)]*?fields:\s*\[([^\]]*)\]/);
+        relaciones.push({
+          modelo,
+          campo: nombre,
+          destino,
+          fields: fields
+            ? fields[1]
+                .split(',')
+                .map((c) => c.trim())
+                .filter(Boolean)
+            : null,
+        });
+      }
+    }
+
+    return { modelos, relaciones };
+  }
+
+  const { modelos, relaciones } = leerRelaciones(readFileSync(RUTA_SCHEMA, 'utf8'));
+
+  it('lo leido del schema coincide campo por campo con lo que declara el DMMF', () => {
+    expect([...modelos].sort()).toEqual([...nombresDeModelo].sort());
+
+    const delParser = relaciones.map((r) => `${r.modelo}.${r.campo}:${r.destino}`).sort();
+    const delDmmf = Prisma.dmmf.datamodel.models
+      .flatMap((m) =>
+        m.fields.filter((f) => f.kind === 'object').map((f) => `${m.name}.${f.name}:${f.type}`),
+      )
+      .sort();
+
+    expect(delParser).toEqual(delDmmf);
+  });
+
+  it('el barrido ve de verdad las FK compuestas que ya existen', () => {
+    // Un recuento no: una cifra se actualiza sin pensar. Tres relaciones
+    // concretas que tienen que estar vistas como portadoras de clave foranea.
+    const portadoras = relaciones
+      .filter((r) => r.fields !== null)
+      .map((r) => `${r.modelo}.${r.campo}`);
+
+    expect(portadoras).toEqual(
+      expect.arrayContaining(['Reserva.turno', 'Reserva.perfil', 'Asistencia.reserva']),
+    );
+  });
+
+  it('toda FK entre dos modelos con tenantId lleva tenantId', () => {
+    const conTenant = new Set<string>(MODELOS_CON_TENANT);
+
+    const incumplen = relaciones
+      .filter((r) => {
+        // El lado SIN clave foranea no porta nada: no hay nada que comprobar.
+        if (r.fields === null) return false;
+        // El origen tiene que tener columna propia. `RefreshToken` queda fuera
+        // por aqui, y es correcto: no tiene `tenantId`, se aisla a traves de su
+        // relacion `usuario`, y de eso se encarga MODELOS_POR_RELACION con su
+        // propio test de coherencia.
+        if (!conTenant.has(r.modelo)) return false;
+        // LA UNICA EXCEPCION, y por definicion: la relacion hacia el propio
+        // `Tenant` es FK simple. Su `fields: [tenantId]` ES la columna de
+        // aislamiento; exigirle que se lleve a si misma no diria nada.
+        if (r.destino === 'Tenant') return false;
+        // Un destino sin `tenantId` no puede recibir una FK compuesta. Hoy no
+        // hay ninguno; si aparece, lo cazan los tests de clasificacion.
+        if (!conTenant.has(r.destino)) return false;
+
+        return !r.fields.includes('tenantId');
+      })
+      .map(
+        (r) =>
+          `${r.modelo}.${r.campo} -> ${r.destino}: la FK es [${r.fields!.join(', ')}], sin tenantId. ` +
+          `Hazla compuesta — fields: [tenantId, ${r.fields!.join(', ')}], references: [tenantId, id] — ` +
+          `y anade @@unique([tenantId, id]) a ${r.destino} si no lo tiene. Sin eso nada a nivel de ` +
+          'base impide que esta fila apunte a la de otro gimnasio.',
+      );
+
+    expect(incumplen).toEqual([]);
   });
 });

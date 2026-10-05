@@ -9,6 +9,7 @@ import { AlmacenModule } from './almacen/almacen.module';
 import { AusenciasModule } from './ausencias/ausencias.module';
 import { AuthModule } from './auth/auth.module';
 import { CalendarioModule } from './calendario/calendario.module';
+import { CheckinModule } from './checkin/checkin.module';
 import { ComprobantesModule } from './comprobantes/comprobantes.module';
 import { ComunicacionModule } from './comunicacion/comunicacion.module';
 import { DisponibilidadModule } from './disponibilidad/disponibilidad.module';
@@ -37,6 +38,7 @@ import { StatsModule } from './stats/stats.module';
 import { TurnosModule } from './turnos/turnos.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { VacacionesModule } from './vacaciones/vacaciones.module';
+import { WebSalonModule } from './web-salon/web-salon.module';
 
 @Module({
   imports: [
@@ -119,6 +121,8 @@ import { VacacionesModule } from './vacaciones/vacaciones.module';
     CacheModule,
     StatsModule,
     PushModule,
+    CheckinModule,
+    WebSalonModule,
     JobsModule,
   ],
   providers: [

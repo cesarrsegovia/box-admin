@@ -1489,6 +1489,108 @@ formularios. **Un libro de gastos**, que es contabilidad. Y **la composición de
 packs de hoy**, porque el sistema no guarda historial de planes: inventarlo desde los pagos daría un
 reparto plausible y equivocado.
 
+## Check-in y web pública — Fase 6B
+
+La otra mitad de la Fase 6, y la que trae **la primera superficie pública del sistema**: hasta ahora
+todo pedía sesión.
+
+| Método | Ruta                                              | Rol                 |
+| ------ | ------------------------------------------------- | ------------------- |
+| POST   | `/checkin`                                        | `ALUMNO`            |
+| GET    | `/config/checkin-qr`                              | `ADMIN_SALON`       |
+| PUT    | `/config/checkin-qr`                              | `ADMIN_SALON`       |
+| GET    | `/config/checkin-qr/imagen` — el PNG del cartel   | `ADMIN_SALON`       |
+| GET    | `/config/web-salon`                               | `ADMIN_SALON`       |
+| PUT    | `/config/web-salon`                               | `ADMIN_SALON`       |
+| POST   | `/config/web-salon/testimonios`                   | `ADMIN_SALON`       |
+| DELETE | `/config/web-salon/testimonios/:id`               | `ADMIN_SALON`       |
+| POST   | `/config/web-salon/preguntas`                     | `ADMIN_SALON`       |
+| DELETE | `/config/web-salon/preguntas/:id`                 | `ADMIN_SALON`       |
+| GET    | `/public/salon/:slug`                             | **ninguno**         |
+
+**El cartel del QR pide `ADMIN_SALON`, no `ADMIN_OPERATIVO`.** El PNG lleva dentro la firma del
+gimnasio: quien pueda descargarlo puede fabricar el QR, así que está al nivel de una credencial.
+
+### El QR garantiza comodidad, no presencia
+
+El QR es **estático**, firmado, impreso y pegado en la pared. No rota. Eso significa que la foto que un
+alumno le mande a otro sirve igual, y es una decisión, no un descuido: el objetivo declarado es que
+marcar presente sea rápido.
+
+La ventana horaria —quince minutos antes y quince después del **inicio** del turno, configurable por
+gimnasio— acota **cuándo**, no **dónde**. El día que la asistencia tenga que probar presencia hará
+falta un QR que rote en una pantalla, y eso es otro diseño.
+
+La URL impresa lleva `?f=<firma>`: un HMAC con la clave del `Tenant` y el separador de propósito
+`checkin-qr:v1:`, comparado con `timingSafeEqual`. El QR de un gimnasio no sirve en otro.
+
+### Los cuatro motivos de rechazo son distinguibles a propósito
+
+Un check-in que no se puede marcar devuelve 409 con uno de cuatro motivos: `sin-reserva`,
+`fuera-de-ventana`, `ya-marcada` y `lista-ya-pasada`. Son datos del propio alumno, así que decirle cuál
+de los cuatro no filtra nada y le ahorra una llamada a recepción: «no se pudo marcar» lo manda a
+preguntar, «llegaste 40 minutos tarde» no.
+
+**`lista-ya-pasada` no es `ya-marcada`, y no se pueden fusionar.** Decirle «ya marcaste» a quien no
+marcó lo manda a buscar un problema que no existe; lo que tiene que hacer es hablar con su profesora,
+que es quien puede corregirlo.
+
+### `asistio` manda; `Asistencia` es la evidencia
+
+La columna sigue siendo la verdad para los contadores que ya existen. La fila nueva guarda el cuándo,
+el cómo y el desde dónde, y **las dos se escriben en la misma transacción**: una asistencia marcada sin
+su evidencia, o al revés, sería una segunda verdad sobre el mismo hecho.
+
+### La web pública
+
+`GET /public/salon/:slug` es el único endpoint del sistema que lee datos de un gimnasio **sin sesión**.
+Se audita por lo que no tiene: ni un email, ni un id de perfil, ni el nombre de una profesora, ni
+cuántos alumnos hay.
+
+Las cuatro secciones opcionales —precios, testimonios, preguntas frecuentes y agenda— **omiten su
+clave** cuando su bandera está apagada. No viajan con un `false` al lado: si el servidor las manda y el
+cliente las esconde, los precios ya están en el HTML, en la caché del navegador y en el primer «ver
+código fuente».
+
+**Un slug inexistente, un gimnasio inactivo, una web apagada y un gimnasio sin configurar dan el mismo
+404**, respuesta por respuesta y no sólo en el código de estado. Distinguirlos sería un oráculo que
+dice qué gimnasios existen.
+
+La bandera de la agenda avisa de lo que publica: **los turnos con lugar dicen también lo vacío que está
+el gimnasio.** Una reserva cancelada no ocupa lugar, así que un turno de cupo 10 con 8 reservas vivas y
+2 canceladas sigue apareciendo.
+
+### La landing y la pantalla de check-in
+
+La landing (`/{slug}`) es **SSR**: es la única superficie del sistema donde el SEO importa. Todo el
+texto que escribe el admin se renderiza **como texto** —es la primera vez que contenido de un usuario
+se muestra en una página pública, y el daño sería XSS almacenado en el sitio del gimnasio— y los
+colores, la imagen y los enlaces se validan otra vez en el cliente aunque la API ya los valide.
+
+Una sección cuyo dato no vino **no se renderiza**: un encabezado con nada debajo se ve, desde la calle,
+igual de roto que un error. Lo mismo vale para una cadena en blanco y para una fila incompleta.
+
+La pantalla de check-in (`/{slug}/checkin`) vive **fuera** del área de alumno aunque la URL no lo
+delate. El QR lo escanea cualquiera, incluso alguien sin sesión, y la puerta del área de alumno redirige
+al login sin conservar a dónde iba: el alumno aterrizaba en el calendario **con la firma del QR
+perdida**, a reescanear parado frente a la pared. Ahora la página resuelve su propia sesión y el login
+vuelve al destino, validado por lista blanca contra el slug propio.
+
+### La zona horaria
+
+`ZONA_HORARIA` es **una sola para todo el despliegue** y se valida al arrancar. El check-in compara
+contra la hora del gimnasio, no contra UTC: la diferencia es un día entero en los bordes, y produjo dos
+errores distintos en esta fase.
+
+### Lo que esta fase NO trae
+
+**El panel del admin.** Igual que la 6A: la configuración de la web y del QR se entrega como API. Las
+dos pantallas que sí trae son las del alumno y la del visitante, que son las que no pueden esperar al
+panel.
+
+**Un QR que pruebe presencia**, por lo dicho arriba. **Historial de configuraciones de la web**: se
+guarda la vigente. Y **la landing no tiene editor visual**: el admin manda los campos, no maqueta.
+
 ## Tests
 
 Unitarios:

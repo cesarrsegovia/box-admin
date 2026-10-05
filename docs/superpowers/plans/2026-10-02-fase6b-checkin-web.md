@@ -81,7 +81,7 @@ apps/api/
 
 apps/web/src/app/[slug]/
   page.tsx                        CREAR  la landing, SSR
-  (alumno)/checkin/page.tsx       CREAR  a donde lleva el QR
+  checkin/page.tsx                CREAR  a donde lleva el QR (FUERA de (alumno))
 ```
 
 **Por qué `firma-qr.ts` y la ventana son puras y van aparte:** la firma es lo único que separa un QR
@@ -499,7 +499,16 @@ export interface PreguntaPublica {
   respuesta: string;
 }
 
-export interface PackPublico {
+/**
+ * SE LLAMA `PackEnLanding`, NO `PackPublico`: ese nombre ya esta tomado desde
+ * la Fase 1 en `nucleo.contracts.ts`, y reexportar los dos rompe el build de
+ * shared con TS2308.
+ *
+ * Y NO SE FUSIONAN. El de `nucleo` lleva `id`, `tenantId`, `salaId` y `activo`,
+ * y nada de eso puede salir de un endpoint sin sesion. Las Tasks 5, 6 y 7 usan
+ * este.
+ */
+export interface PackEnLanding {
   nombre: string;
   /** String con dos decimales, o `null` si el pack no tiene precio cargado. */
   precio: string | null;
@@ -538,7 +547,7 @@ export interface SalonPublico {
   instagram: string | null;
   linkExtra: string | null;
 
-  packs?: PackPublico[];
+  packs?: PackEnLanding[];
   testimonios?: TestimonioPublico[];
   preguntas?: PreguntaPublica[];
   turnosLibres?: TurnoLibrePublico[];
@@ -964,7 +973,7 @@ not-found de Next.
 ## Task 8: La pantalla de check-in
 
 **Files:**
-- Crear: `apps/web/src/app/[slug]/(alumno)/checkin/page.tsx` · `.spec.tsx`
+- Crear: `apps/web/src/app/[slug]/checkin/page.tsx` · `.spec.tsx`
 
 A donde lleva el QR. Lee la firma del query, llama a `POST /checkin`, y muestra el resultado.
 

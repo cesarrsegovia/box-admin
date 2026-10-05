@@ -74,3 +74,57 @@ export interface SalonPublico {
   preguntas?: PreguntaPublica[];
   turnosLibres?: TurnoLibrePublico[];
 }
+
+/**
+ * Un testimonio tal y como lo ve el admin que lo administra.
+ *
+ * Lleva `id` y `orden`, que `TestimonioPublico` no lleva: el `id` hace falta
+ * para poder borrarlo y el `orden` para entender por que sale donde sale.
+ * NO se fusionan los dos tipos por el mismo motivo por el que `PackEnLanding`
+ * no es `PackPublico`: el dia que alguien ensanche uno, el otro no se entera.
+ */
+export interface TestimonioAdmin {
+  id: string;
+  nombre: string;
+  texto: string;
+  orden: number;
+}
+
+/** Ver `TestimonioAdmin`. */
+export interface PreguntaAdmin {
+  id: string;
+  pregunta: string;
+  respuesta: string;
+  orden: number;
+}
+
+/**
+ * La configuracion de la web tal y como la ve y la edita el ADMIN_SALON.
+ *
+ * Es deliberadamente MAS ancha que `SalonPublico`: aqui si viajan las banderas
+ * (el admin tiene que poder verlas apagadas para encenderlas) y los ids de los
+ * testimonios y las preguntas. Nada de esto sale por el endpoint sin sesion.
+ */
+export interface ConfiguracionWebSalon {
+  activa: boolean;
+  colorPrimario: string;
+  colorSecundario: string;
+  tituloPrincipal: string | null;
+  tagline: string | null;
+  sobreElSalon: string | null;
+  imagenPrincipalUrl: string | null;
+  whatsapp: string | null;
+  instagram: string | null;
+  linkExtra: string | null;
+
+  mostrarPrecios: boolean;
+  mostrarTestimonios: boolean;
+  mostrarFAQ: boolean;
+  /** OJO: publica la agenda del gimnasio y cuan vacia esta. */
+  mostrarTurnosLibres: boolean;
+
+  planDestacadoId: string | null;
+
+  testimonios: TestimonioAdmin[];
+  preguntas: PreguntaAdmin[];
+}
