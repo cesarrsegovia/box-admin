@@ -233,7 +233,11 @@ describe('AuthService.login — fallo 2: fuga de tiempos', () => {
     const service = new AuthService(prisma, jwtReal, crearConfigFake());
 
     await expect(
-      service.login({ tenantSlug: 'gimnasio-a', email: 'nadie@example.com', password: 'cualquiera' }),
+      service.login({
+        tenantSlug: 'gimnasio-a',
+        email: 'nadie@example.com',
+        password: 'cualquiera',
+      }),
     ).rejects.toThrow(UnauthorizedException);
 
     expect(verifySpy).toHaveBeenCalledTimes(1);

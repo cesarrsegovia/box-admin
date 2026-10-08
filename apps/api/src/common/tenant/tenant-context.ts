@@ -7,9 +7,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
  * La ausencia de contexto (undefined) NO es un tercer modo válido: es un bug,
  * y la extensión de Prisma lo trata como error.
  */
-export type TenantContext =
-  | { kind: 'tenant'; tenantId: string }
-  | { kind: 'unscoped' };
+export type TenantContext = { kind: 'tenant'; tenantId: string } | { kind: 'unscoped' };
 
 const storage = new AsyncLocalStorage<TenantContext>();
 

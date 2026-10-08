@@ -43,8 +43,7 @@ Spec: `docs/superpowers/specs/2026-09-14-fase1-nucleo-operativo.md`
       Migracion regenerada (no habia datos ni commit) y ambas bases reseteadas con
       permiso explicito de Cesar. 174 unitarios + 21 e2e, 5 de ellos nuevos en
       `test/aislamiento-fk.e2e-spec.ts`, que lo demuestran con `prisma.base`.
-- [x] T2 Contratos compartidos y utilidades de fecha — 18 tests nuevos en shared
-      + 174 en la API. Hubo que montar jest en `packages/shared`, que no tenía
+- [x] T2 Contratos compartidos y utilidades de fecha — 18 tests nuevos en shared + 174 en la API. Hubo que montar jest en `packages/shared`, que no tenía
       runner de tests: el plan lo daba por hecho y no existía.
 - [x] T3 HistorialService — 178 tests. Por fin se escribe en `historial_acciones`,
       la tabla que llevaba desde la Fase 0 creada y sin usar. Acepta cliente de
@@ -91,7 +90,6 @@ Spec: `docs/superpowers/specs/2026-09-14-fase1-nucleo-operativo.md`
       puntos del checklist a mano contra la API corriendo (no solo por e2e) y
       documenté los endpoints en el README.
 
-
 ## Decisiones cerradas con Cesar antes de empezar
 
 1. Alta de usuarios: el API genera la contraseña temporal y la devuelve una sola vez.
@@ -108,18 +106,18 @@ siguen ignorados.
 
 ### Checklist de aceptación del PDF, verificado a mano contra la API real
 
-| # | Punto | Resultado |
-|---|---|---|
-| 1 | Crear una sala y configurarla con sus reglas propias | ✅ 201, `cupoBase: 12`, `exclusiva: true` |
-| 2 | Crear un pack en el catálogo, independiente de cualquier alumno | ✅ 201, `precio: "12500.00"` como string |
-| 3 | Alta de alumno y de profesor con DTOs y validaciones distintas | ✅ 201 / 201; mandar `packId` al alta de profesor → **400** |
-| 4 | Un alumno sin salas genera un warning visible | ✅ 201 con `["SIN_SALAS","SIN_PACK"]`; `PATCH /salas` con `[]` → **400** |
-| 5 | Crear un turno y asignarle una reserva manual respetando el cupo | ✅ 201 / 201, `fecha: "2026-10-05"` sin huso |
-| 6 | Reservar un turno lleno devuelve 409 | ✅ **409**, sin registro fuera de cupo |
-| 7 | Recuperable devuelve la clase; definitiva no | ✅ tras RECUPERABLE la siguiente reserva no advierte; tras DEFINITIVA avisa `PACK_AGOTADO` |
-| 8 | Reasignar mueve el registro y valida el cupo del destino | ✅ 200, origen a 0 activas y destino a 1; destino lleno → **409** |
-| 9 | Cada operación relevante queda en `historial_acciones` | ✅ 16 filas (Sala, Pack, Usuario, Turno, Reserva CREADA/CANCELADA/REASIGNADA), **0 sin `usuarioId`** |
-| 10 | e2e cubren el flujo completo | ✅ 35 tests nuevos en `nucleo.e2e-spec.ts` |
+| #   | Punto                                                            | Resultado                                                                                            |
+| --- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 1   | Crear una sala y configurarla con sus reglas propias             | ✅ 201, `cupoBase: 12`, `exclusiva: true`                                                            |
+| 2   | Crear un pack en el catálogo, independiente de cualquier alumno  | ✅ 201, `precio: "12500.00"` como string                                                             |
+| 3   | Alta de alumno y de profesor con DTOs y validaciones distintas   | ✅ 201 / 201; mandar `packId` al alta de profesor → **400**                                          |
+| 4   | Un alumno sin salas genera un warning visible                    | ✅ 201 con `["SIN_SALAS","SIN_PACK"]`; `PATCH /salas` con `[]` → **400**                             |
+| 5   | Crear un turno y asignarle una reserva manual respetando el cupo | ✅ 201 / 201, `fecha: "2026-10-05"` sin huso                                                         |
+| 6   | Reservar un turno lleno devuelve 409                             | ✅ **409**, sin registro fuera de cupo                                                               |
+| 7   | Recuperable devuelve la clase; definitiva no                     | ✅ tras RECUPERABLE la siguiente reserva no advierte; tras DEFINITIVA avisa `PACK_AGOTADO`           |
+| 8   | Reasignar mueve el registro y valida el cupo del destino         | ✅ 200, origen a 0 activas y destino a 1; destino lleno → **409**                                    |
+| 9   | Cada operación relevante queda en `historial_acciones`           | ✅ 16 filas (Sala, Pack, Usuario, Turno, Reserva CREADA/CANCELADA/REASIGNADA), **0 sin `usuarioId`** |
+| 10  | e2e cubren el flujo completo                                     | ✅ 35 tests nuevos en `nucleo.e2e-spec.ts`                                                           |
 
 - [x] T13b El reintento de serializacion era codigo muerto (surgido de la
       verificacion final) — 326 tests. Detalle abajo.
@@ -147,7 +145,7 @@ Cinco bugs reales, ninguno de ellos visible en un test verde:
 3. **Las claves foráneas no estaban calificadas por tenant.** Nada impedía a nivel
    de base que una reserva de un gimnasio apuntase al turno de otro.
 4. **Borrar un turno con reservas canceladas daba un 500 opaco** (`ON DELETE
-   RESTRICT` + un `count` que solo miraba las activas).
+RESTRICT` + un `count` que solo miraba las activas).
 
 Y uno que no era bug sino una trampa heredada: `visibleAlumnos: false` escondía la
 sala también a los **profesores**, lo que habría mordido en la Fase 4.
@@ -170,7 +168,6 @@ ensuciar el diff de ésta. Merece un commit propio, solo de formato.
 Fase 1 completa. Nada commiteado: hay **16 mensajes de commit sugeridos** esperando
 a Cesar (uno por tarea, mas T1b, T5b, el arreglo de la FK de turnos y el del reintento
 de serializacion).
-
 
 ---
 
@@ -255,6 +252,7 @@ Spec: `docs/superpowers/specs/2026-09-16-fase2-motor-recurrencia.md`
 4. Vacaciones y cierres son **exclusiones**, no conflictos.
 
 ## Historico
+
 Hubo una pausa por limite de uso de la sesion tras la T7. Leccion aprendida: lanzar un subagente es
 la accion mas cara que hago (55k-125k tokens cada uno), asi que cerca del techo
 hay que trabajar inline.
@@ -268,16 +266,16 @@ deriva, Jest sale con codigo 0. Nada commiteado: indice de git vacio y los dos
 
 ### Checklist del PDF, verificado a mano contra la API real
 
-| # | Punto | Resultado |
-|---|---|---|
-| 1 | Cargar una rutina fija | OK 201; 403 si el alumno no tiene acceso a la sala |
-| 2 | `previsualizar` no escribe nada | OK 4 turnos / 4 reservas, base intacta |
-| 3 | Los conflictos no interrumpen el proceso | OK cupo 1 y dos alumnos: 4 reservas + 4 CUPO_LLENO |
-| 4 | `publicar` real e idempotente | OK 202, luego 4/4, y al repetir 0/0 |
-| 5 | Una ausencia excluye la fecha para todos | OK el 13 desaparece del plan, sin crear turno |
-| 6 | Una vacacion excluye solo a su alumno | OK el turno del 20 sigue, con el otro alumno |
-| 7 | El job corre en background | OK 202 en menos de 1 s con 10 rutinas |
-| 8 | Tests unitarios del algoritmo | OK 33 tests del planificador, mutaciones verificadas |
+| #   | Punto                                    | Resultado                                            |
+| --- | ---------------------------------------- | ---------------------------------------------------- |
+| 1   | Cargar una rutina fija                   | OK 201; 403 si el alumno no tiene acceso a la sala   |
+| 2   | `previsualizar` no escribe nada          | OK 4 turnos / 4 reservas, base intacta               |
+| 3   | Los conflictos no interrumpen el proceso | OK cupo 1 y dos alumnos: 4 reservas + 4 CUPO_LLENO   |
+| 4   | `publicar` real e idempotente            | OK 202, luego 4/4, y al repetir 0/0                  |
+| 5   | Una ausencia excluye la fecha para todos | OK el 13 desaparece del plan, sin crear turno        |
+| 6   | Una vacacion excluye solo a su alumno    | OK el turno del 20 sigue, con el otro alumno         |
+| 7   | El job corre en background               | OK 202 en menos de 1 s con 10 rutinas                |
+| 8   | Tests unitarios del algoritmo            | OK 33 tests del planificador, mutaciones verificadas |
 
 ### Lo que se encontro por el camino
 
@@ -356,16 +354,16 @@ local también.
 
 ### Checklist de aceptación, verificado a mano contra la API real
 
-| # | Punto | Resultado |
-|---|---|---|
-| 1 | Auto-registro con clave válida | OK rol `ALUMNO`, con la sala de la clave |
-| 2 | El alta aparece en la bandeja de pendientes | OK `?autoRegistrado=true` la lista |
-| 3 | El alumno ve su calendario y reserva | OK `LIBRE` → reserva con `origen: ALUMNO` |
-| 4 | Un turno lleno **ofrece** la lista de espera | OK 409 con el mensaje; posición 1 |
-| 5 | Cancelar dispara la asignación del primero | OK B entra solo, `origen: LISTA_ESPERA` |
-| 6 | Comprobante: subir, ver, aprobar | OK PUT 200, **descarga byte a byte igual**, `pagoAlDia: true` |
-| 7 | Los turnos de un mes sin publicar no aparecen | OK `[]` antes de publicar |
-| 8 | Las rutas públicas tienen límite | OK `401 401 401 429 429` |
+| #   | Punto                                         | Resultado                                                     |
+| --- | --------------------------------------------- | ------------------------------------------------------------- |
+| 1   | Auto-registro con clave válida                | OK rol `ALUMNO`, con la sala de la clave                      |
+| 2   | El alta aparece en la bandeja de pendientes   | OK `?autoRegistrado=true` la lista                            |
+| 3   | El alumno ve su calendario y reserva          | OK `LIBRE` → reserva con `origen: ALUMNO`                     |
+| 4   | Un turno lleno **ofrece** la lista de espera  | OK 409 con el mensaje; posición 1                             |
+| 5   | Cancelar dispara la asignación del primero    | OK B entra solo, `origen: LISTA_ESPERA`                       |
+| 6   | Comprobante: subir, ver, aprobar              | OK PUT 200, **descarga byte a byte igual**, `pagoAlDia: true` |
+| 7   | Los turnos de un mes sin publicar no aparecen | OK `[]` antes de publicar                                     |
+| 8   | Las rutas públicas tienen límite              | OK `401 401 401 429 429`                                      |
 
 ### Lo que se encontró por el camino
 
@@ -508,16 +506,16 @@ una comentó de más y tumbó también los tests de casos válidos, con lo que n
 Contra el **build de producción** (el service worker no existe en desarrollo), con un gimnasio recién
 creado por la API y las herramientas de desarrollo abiertas.
 
-| # | Punto | Resultado |
-|---|---|---|
-| 1 | Auto-registro con clave de invitación | ✅ con un matiz: **el pack no se elige, viene en la clave** |
-| 2 | Ve el calendario y reserva o cancela | ✅ reservó, canceló, y el cupo se movió en el momento |
-| 3 | Un turno lleno ofrece la lista de espera | ✅ **con `listaEsperaHabilitada` encendida**; apagada dice "Completo (5/5)" y no ofrece nada |
-| 4 | Sube un comprobante y lo ve "pendiente" | ✅ el archivo llegó al almacén con sus 69 bytes reales |
-| 5 | `mi-pack` muestra el consumo real | ✅ 1 de 8 tras reservar, 0 de 8 y "1 de 2 cancelaciones" tras cancelar |
-| 6 | Instalable y offline para "mi calendario" | ✅ un service worker activo, manifest sin errores, iconos de 192 y 512 reales |
-| 7 | Cambiar el slug no muestra datos de otro | ✅ redirige al login del slug nuevo |
-| 8 | Vitest y Playwright | ✅ 106 + 5 |
+| #   | Punto                                     | Resultado                                                                                    |
+| --- | ----------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 1   | Auto-registro con clave de invitación     | ✅ con un matiz: **el pack no se elige, viene en la clave**                                  |
+| 2   | Ve el calendario y reserva o cancela      | ✅ reservó, canceló, y el cupo se movió en el momento                                        |
+| 3   | Un turno lleno ofrece la lista de espera  | ✅ **con `listaEsperaHabilitada` encendida**; apagada dice "Completo (5/5)" y no ofrece nada |
+| 4   | Sube un comprobante y lo ve "pendiente"   | ✅ el archivo llegó al almacén con sus 69 bytes reales                                       |
+| 5   | `mi-pack` muestra el consumo real         | ✅ 1 de 8 tras reservar, 0 de 8 y "1 de 2 cancelaciones" tras cancelar                       |
+| 6   | Instalable y offline para "mi calendario" | ✅ un service worker activo, manifest sin errores, iconos de 192 y 512 reales                |
+| 7   | Cambiar el slug no muestra datos de otro  | ✅ redirige al login del slug nuevo                                                          |
+| 8   | Vitest y Playwright                       | ✅ 106 + 5                                                                                   |
 
 Y **`document.cookie` devuelve la cadena vacía** estando la sesión abierta: la decisión D3 se cumple,
 el JavaScript de la página no ve el token. Tras cerrar sesión, `/api/bx/mi-pack` responde 401.
@@ -651,15 +649,15 @@ Nada commiteado.
 
 ### El checklist del PDF, verificado a mano
 
-| # | Punto | Resultado |
-|---|---|---|
-| 1 | El turno generado trae `profesorId` automáticamente | ✅ y **el nombre de la actividad no se toca** |
-| 2 | Reasignar un turno puntual sin afectar el patrón | ✅ sobrevive a republicar el mes |
-| 3 | Un `PROFESOR` ve únicamente sus clases | ✅ 3 de 4 tras darle una a otra |
-| 4 | La lista no expone datos de otros | ✅ solo `perfilId`, `nombreCompleto` y `asistio` |
-| 5 | Horas contratadas vs. dictadas | ✅ 240 min contratados, 180 dictados |
-| 6 | El filtro `?profesorId=` | ✅ |
-| 7 | Tests | ✅ 16 e2e nuevos, 5 mutaciones que muerden |
+| #   | Punto                                               | Resultado                                        |
+| --- | --------------------------------------------------- | ------------------------------------------------ |
+| 1   | El turno generado trae `profesorId` automáticamente | ✅ y **el nombre de la actividad no se toca**    |
+| 2   | Reasignar un turno puntual sin afectar el patrón    | ✅ sobrevive a republicar el mes                 |
+| 3   | Un `PROFESOR` ve únicamente sus clases              | ✅ 3 de 4 tras darle una a otra                  |
+| 4   | La lista no expone datos de otros                   | ✅ solo `perfilId`, `nombreCompleto` y `asistio` |
+| 5   | Horas contratadas vs. dictadas                      | ✅ 240 min contratados, 180 dictados             |
+| 6   | El filtro `?profesorId=`                            | ✅                                               |
+| 7   | Tests                                               | ✅ 16 e2e nuevos, 5 mutaciones que muerden       |
 
 Más dos que añadió esta fase: pasar lista es idempotente y no toca las canceladas, y el feriado
 descuenta de contratadas.
@@ -669,15 +667,15 @@ devuelve ceros y una lista vacía, no un 500.
 
 ### Las cinco mutaciones, todas muerden
 
-| Qué se mutó | Test que rompió |
-|---|---|
-| `< 0` → `<= 0` en la contención horaria | `el final de la franja NO le pertenece` |
-| Ignorar el rango de fechas del solape | `deja pasar el relevo` |
+| Qué se mutó                                          | Test que rompió                              |
+| ---------------------------------------------------- | -------------------------------------------- |
+| `< 0` → `<= 0` en la contención horaria              | `el final de la franja NO le pertenece`      |
+| Ignorar el rango de fechas del solape                | `deja pasar el relevo`                       |
 | **Quitar `if (turno.profesorId !== null) continue`** | `un turno que YA TIENE profesora no se toca` |
-| Ignorar el solape de horas | `deja pasar dos clases seguidas` |
-| Quitar `profesorId: null` del `where` del aplicador | el test del `updateMany` condicionado |
-| `contratada && !cerrada` → `contratada` | `un feriado no suma a contratadas` |
-| Quitar `profesorId` del `where` de `/mis-clases` | `devuelve solo las clases propias` (y 2 más) |
+| Ignorar el solape de horas                           | `deja pasar dos clases seguidas`             |
+| Quitar `profesorId: null` del `where` del aplicador  | el test del `updateMany` condicionado        |
+| `contratada && !cerrada` → `contratada`              | `un feriado no suma a contratadas`           |
+| Quitar `profesorId` del `where` de `/mis-clases`     | `devuelve solo las clases propias` (y 2 más) |
 
 La tercera es la que protege la suplencia: si pasara, se perdería en silencio cada vez que alguien
 republicase el mes.
@@ -800,22 +798,22 @@ Nada commiteado.
 
 ### El checklist, verificado a mano
 
-| # | Punto | Resultado |
-|---|---|---|
-| — | **El pago que vence HOY sigue al día todo el día** | ✅ contra el reloj real |
-| 1 | Aprobar un comprobante crea el pago y actualiza el estado | ✅ con su `comprobanteId` enlazado |
-| 2 | Pago manual sin comprobante | ✅ y `15000.50` no pierde centavos |
-| 4 | Un pago vencido deja de poner al día solo | ✅ |
-| 5 | Una seña no pone al día | ✅ |
-| 6 | Anular saca del cálculo sin borrar la fila | ✅ |
-| — | El listado devuelve el estado de todos | ✅ 6 alumnos en 17 ms |
+| #   | Punto                                                     | Resultado                          |
+| --- | --------------------------------------------------------- | ---------------------------------- |
+| —   | **El pago que vence HOY sigue al día todo el día**        | ✅ contra el reloj real            |
+| 1   | Aprobar un comprobante crea el pago y actualiza el estado | ✅ con su `comprobanteId` enlazado |
+| 2   | Pago manual sin comprobante                               | ✅ y `15000.50` no pierde centavos |
+| 4   | Un pago vencido deja de poner al día solo                 | ✅                                 |
+| 5   | Una seña no pone al día                                   | ✅                                 |
+| 6   | Anular saca del cálculo sin borrar la fila                | ✅                                 |
+| —   | El listado devuelve el estado de todos                    | ✅ 6 alumnos en 17 ms              |
 
 ### Las dos mutaciones muerden
 
-| Qué se mutó | Test que rompió |
-|---|---|
+| Qué se mutó                     | Test que rompió                           |
+| ------------------------------- | ----------------------------------------- |
 | `comienzoDeHoyUtc(hoy)` → `hoy` | `el ULTIMO dia del periodo cuenta ENTERO` |
-| Quitar el filtro de `anuladoEn` | `un pago anulado no cuenta` |
+| Quitar el filtro de `anuladoEn` | `un pago anulado no cuenta`               |
 
 La primera es la que importa: sin normalizar la fecha, el estado se cae durante todo el último día
 del periodo. Y es un error que ningún test que use medianoche como "hoy" llegaría a ver — por eso el
@@ -968,7 +966,7 @@ no compila, es la proteccion que parece estar puesta.
 - **Encolar dentro de una transaccion `Serializable`.** Redis no participa del rollback de Postgres: un
   aborto 40001 despues de encolar deja el job vivo y el reintento encola otro. Y pasa justo cuando dos
   personas compiten por el ultimo lugar, que es cuando el aviso importa.
-- **`attempts: 1` NO impide una segunda tanda.** El camino *stalled* de BullMQ re-encola sin consultar
+- **`attempts: 1` NO impide una segunda tanda.** El camino _stalled_ de BullMQ re-encola sin consultar
   `attempts`, y para un job repetible **ni siquiera tiene tope**. Un deploy a las 09:00 reenvia la
   tanda entera.
 - **`add(..., { repeat })` duplica el cron al cambiar el patron.** La clave del repetible incluye el
@@ -1061,6 +1059,7 @@ no compila, es la proteccion que parece estar puesta.
     email.** Era una regresion nueva —con la marca en Redis cada job tenia la suya— y se cerro
     metiendo `reservaId` en el payload: ahora el processor **verifica** la fila que el job nombra en
     vez de elegir una.
+
 - **`DatosDePlantilla` es un `Record<string, string>` que no comprueba nada.** Una variable mal escrita
   compila y manda un email con el hueco vacio, y ninguna plantilla declara que variables necesita.
 - **Una clave SMTP de menos de 8 caracteres, si viene troceada, se escapa de `motivoSeguro`.** Lo
@@ -1245,13 +1244,13 @@ parametro que se acepta y se ignora.
 - **`@IsDateString()` aceptaba ISO completo**: `?desde=2026-10-01T12:00:00Z` pasaba la validacion y
   reventaba al formatear → **500 opaco en vez de 400**.
 - **La composicion contaba profesoras como alumnas.** Una profesora tiene `Perfil` sin pack, asi que
-  caia en "Sin pack" e inflaba el reporte que dice cuantos *alumnos* hay por plan.
+  caia en "Sin pack" e inflaba el reporte que dice cuantos _alumnos_ hay por plan.
 - **Un alumno dado de baja desaparecia de la composicion y seguia debiendo en los otros tres.** La
   misma persona era "no es alumno" para un reporte y "alumno que debe" para tres — y la cobranza
   **decaia para siempre** a medida que el gimnasio acumulaba ex-alumnos. Un indicador que baja solo.
   Resuelto unificando la poblacion: los tres reportes miden alumnos activos.
 - **Faltaban nueve sitios de invalidacion.** La lista empezo en cinco y termino en dieciseis. El que
-  mas dolia era `ComprobantesService.aprobar`: aprobar un comprobante *es* registrar un cobro.
+  mas dolia era `ComprobantesService.aprobar`: aprobar un comprobante _es_ registrar un cobro.
 - **Un parametro que se acepta y se ignora.** `/stats/caja?salaId=` llego a implementarse validandolo,
   metiendolo en la clave del cache y **sin filtrar nada**. Es una mentira con codigo 200: alguien lo
   pasa, recibe un numero y cree que es de esa sala.
@@ -1271,7 +1270,7 @@ parametro que se acepta y se ignora.
   `resto * 2 >= divisor` decidiendo. Y **se agrupa por tarifa antes de multiplicar**: tres franjas de
   cincuenta minutos dan 249999 centavos redondeando cada una y 250000 redondeando al final.
 - **`.toNumber()` sobre un `Decimal(10,2)` NO pierde nada** —cabe exacto en un double—. Lo que abre es
-  el *camino*: `0.29 * 100` da 28.999999999999996. La regla comprobable no es "nunca `.toNumber()`",
+  el _camino_: `0.29 * 100` da 28.999999999999996. La regla comprobable no es "nunca `.toNumber()`",
   es **"nada de float en la conversion a centavos"**.
 - **El `Map` indexado por el string crudo de la tarifa.** `'1000.00'`, `'1000.0'` y `'1000'` son el
   mismo dinero y eran tres claves: tres franjas de cincuenta minutos daban 249999. Se indexa por
@@ -1369,7 +1368,7 @@ Y aqui aparece **la primera superficie publica del sistema**: hasta ahora todo p
    contadores que ya existen; la fila nueva guarda el cuando, el como y el desde donde. Se escriben
    juntas en la misma transaccion.
 4. **El QR es estatico, firmado, impreso y pegado en la pared.** Garantiza **comodidad, no presencia**:
-   la ventana horaria acota *cuando*, no *donde*. El dia que la asistencia tenga que probar presencia
+   la ventana horaria acota _cuando_, no _donde_. El dia que la asistencia tenga que probar presencia
    hara falta un QR que rote en una pantalla, y eso es otro diseno.
 5. **Comodidad por encima de control**: que marcar presente sea rapido es el objetivo declarado.
 6. **Un solo secreto, el del `Tenant`**, para firmar el QR.
@@ -1418,12 +1417,12 @@ En cada tarea pedi, ademas de las mutaciones enumeradas, **una que al implementa
 codigo no sobreviviria y que nadie hubiera probado**. Cinco tareas, cinco hallazgos reales, y **las
 cinco de la misma familia**:
 
-| Donde | Que se agrego |
-|---|---|
-| Endpoint publico | el `id` del pack en el contrato |
-| `turnosLibres` | los lugares libres dentro del nombre de la clase |
-| Pantalla de check-in | el consejo de `ya-marcada` sumado a `lista-ya-pasada` |
-| Portada de la landing | un contador de "N lugares libres esta semana" |
+| Donde                 | Que se agrego                                         |
+| --------------------- | ----------------------------------------------------- |
+| Endpoint publico      | el `id` del pack en el contrato                       |
+| `turnosLibres`        | los lugares libres dentro del nombre de la clase      |
+| Pantalla de check-in  | el consejo de `ya-marcada` sumado a `lista-ya-pasada` |
+| Portada de la landing | un contador de "N lugares libres esta semana"         |
 
 **Agregar algo que no deberia estar, sin quitar nada de lo que si.** Ningun test de presencia ve eso;
 solo lo ven las comparaciones de totales. El de la pantalla de check-in era ademas el de peor dano: le
@@ -1485,7 +1484,7 @@ puestas y no lo estaban**, que es el mismo patron que la 6A.
 el dia anterior. Va `hourCycle: 'h23'`.
 
 **La zona se escapa por la consulta.** Escribir la ventana en la zona del gimnasio no alcanza si despues
-se cargan "las reservas del dia": *el dia* es UTC. Hay que cargar **tres dias UTC** y dejar que la
+se cargan "las reservas del dia": _el dia_ es UTC. Hay que cargar **tres dias UTC** y dejar que la
 eleccion decida.
 
 **Un layout de Next 15 no recibe `searchParams`.** Por eso la pantalla de check-in vive **fuera** del
@@ -1510,7 +1509,7 @@ Se repitieron los dos diagnosticos de la 6A, y aparecio un tercero:
 2. **El caso directamente no estaba probado.** Los dos topes de `turnosLibres`, el `@Public()`, las
    cuatro banderas de privacidad del lado admin.
 3. **El doble no podia ver la diferencia.** El `_count` se sembraba cocinado, asi que el
-   `where: { canceladaEn: null }` era invisible *por construccion*. Se arreglo haciendo que **el doble
+   `where: { canceladaEn: null }` era invisible _por construccion_. Se arreglo haciendo que **el doble
    calcule el `_count` interpretando su `where`** — no es una excepcion fabricada para salvar un test:
    el doble ya interpreta `where` con `gte`/`lt`, relaciones anidadas, `orderBy` y `take`. **Lo que
    vuelve fragil a un doble es la excepcion, no la regla.**
@@ -1579,13 +1578,13 @@ El `tenantId` habria acabado impreso en un cartel colgado en una pared publica, 
 navegador de cada alumno y en el log de accesos del front. Se cerro espiando `qrcode.toBuffer` y
 fijando la URL exacta.
 
-| Donde | Que se agrego |
-|---|---|
-| Endpoint publico | el `id` del pack en el contrato |
-| `turnosLibres` | los lugares libres dentro del nombre de la clase |
-| Pantalla de check-in | el consejo de `ya-marcada` sumado a `lista-ya-pasada` |
-| Portada de la landing | un contador de "N lugares libres esta semana" |
-| Cartel del QR | el `tenantId` en la URL codificada en el PNG |
+| Donde                 | Que se agrego                                         |
+| --------------------- | ----------------------------------------------------- |
+| Endpoint publico      | el `id` del pack en el contrato                       |
+| `turnosLibres`        | los lugares libres dentro del nombre de la clase      |
+| Pantalla de check-in  | el consejo de `ya-marcada` sumado a `lista-ya-pasada` |
+| Portada de la landing | un contador de "N lugares libres esta semana"         |
+| Cartel del QR         | el `tenantId` en la URL codificada en el PNG          |
 
 ## Un comentario que promete lo que el codigo no hace
 
@@ -1597,12 +1596,12 @@ contra el comentario.
 
 ## Estado final
 
-| | |
-|---|---|
-| `packages/shared` | **103 tests / 4 suites**, tsc limpio |
-| `apps/api` unitarios | **1291 / 65 suites**, tsc limpio |
-| `apps/web` | **351 / 23 suites**, tsc limpio, `build` OK (`f /[slug]`, SSR) |
-| E2E | **204 / 12 suites** (115 s) |
+|                      |                                                                |
+| -------------------- | -------------------------------------------------------------- |
+| `packages/shared`    | **103 tests / 4 suites**, tsc limpio                           |
+| `apps/api` unitarios | **1291 / 65 suites**, tsc limpio                               |
+| `apps/web`           | **351 / 23 suites**, tsc limpio, `build` OK (`f /[slug]`, SSR) |
+| E2E                  | **204 / 12 suites** (115 s)                                    |
 
 De 1234/62 y 179/10 al empezar la fase.
 

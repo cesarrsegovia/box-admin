@@ -130,10 +130,7 @@ describe('TenantContextMiddleware', () => {
     });
 
     it('con tenantId vacio: next() sin abrir contexto y sin lanzar', () => {
-      const token = jwt.sign(
-        { sub: 'user-1', tenantId: '', rol: 'ADMIN' },
-        { secret: SECRET },
-      );
+      const token = jwt.sign({ sub: 'user-1', tenantId: '', rol: 'ADMIN' }, { secret: SECRET });
       const req = buildRequest(`Bearer ${token}`);
       let contextoDentroDeNext: unknown = 'sin-llamar';
 
@@ -147,10 +144,7 @@ describe('TenantContextMiddleware', () => {
     });
 
     it('con tenantId numerico: next() sin abrir contexto y sin lanzar', () => {
-      const token = jwt.sign(
-        { sub: 'user-1', tenantId: 123, rol: 'ADMIN' },
-        { secret: SECRET },
-      );
+      const token = jwt.sign({ sub: 'user-1', tenantId: 123, rol: 'ADMIN' }, { secret: SECRET });
       const req = buildRequest(`Bearer ${token}`);
       let contextoDentroDeNext: unknown = 'sin-llamar';
 
@@ -164,10 +158,7 @@ describe('TenantContextMiddleware', () => {
     });
 
     it('con tenantId null: next() sin abrir contexto y sin lanzar', () => {
-      const token = jwt.sign(
-        { sub: 'user-1', tenantId: null, rol: 'ADMIN' },
-        { secret: SECRET },
-      );
+      const token = jwt.sign({ sub: 'user-1', tenantId: null, rol: 'ADMIN' }, { secret: SECRET });
       const req = buildRequest(`Bearer ${token}`);
       let contextoDentroDeNext: unknown = 'sin-llamar';
 

@@ -1,4 +1,6 @@
 import { cookies } from 'next/headers';
+import type { MeRespuesta } from '@boxadmin/shared';
+import { urlDeApi } from './api-url';
 import { COOKIE_ACCESS, COOKIE_REFRESH, COOKIE_SLUG } from './cookies';
 
 export interface Sesion {
@@ -30,4 +32,25 @@ export function sesionValidaPara(sesion: Sesion, slugDeLaUrl: string): boolean {
   if (!sesion.slug) return false;
 
   return sesion.slug === slugDeLaUrl;
+}
+
+/**
+ * El rol se le pregunta a la API, NO se deduce del token aqui.
+ *
+ * El JWT lleva el rol, pero decodificarlo sin verificar la firma para decidir
+ * que se dibuja es apoyarse en un dato que el cliente podria haber tocado.
+ * `GET /auth/me` es el unico que verifica.
+ *
+ * Va contra la API directamente y no por `/api/bx`: eso es el proxy del
+ * NAVEGADOR, y esto corre en el servidor, que ya tiene el token en la mano.
+ */
+export async function leerRol(access: string): Promise<MeRespuesta | null> {
+  const respuesta = await fetch(urlDeApi(['auth', 'me'], ''), {
+    headers: { authorization: `Bearer ${access}` },
+    cache: 'no-store',
+  });
+
+  if (!respuesta.ok) return null;
+
+  return (await respuesta.json()) as MeRespuesta;
 }

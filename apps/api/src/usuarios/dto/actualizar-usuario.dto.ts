@@ -37,7 +37,6 @@ export class ActualizarUsuarioDto {
   @IsNotEmpty()
   packId?: string;
 
-
   @IsOptional()
   @IsInt()
   @Min(0)

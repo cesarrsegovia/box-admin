@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
+import { vigilarElTitulo } from './src/test/espia-de-consola';
 
 /**
  * La limpieza del DOM entre tests NO es automatica con Vitest.
@@ -16,3 +17,12 @@ import { afterEach } from 'vitest';
 afterEach(() => {
   cleanup();
 });
+
+/**
+ * El tapon del titulo de la pagina, en TODOS los specs.
+ *
+ * Va aqui y no en cada spec porque es una dimension, no un caso: ninguna
+ * pantalla deberia tener que acordarse de pedirlo para que se le audite lo que
+ * publica en `document.title`. Ver el comentario de `vigilarElTitulo`.
+ */
+vigilarElTitulo();

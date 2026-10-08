@@ -62,33 +62,31 @@ describe('tenant-context', () => {
   // debe rechazarlo en origen, para todo llamador, no solo el middleware.
   describe('runWithTenant rechaza un tenantId invalido', () => {
     it('lanza TenantIdInvalidoError con undefined', () => {
-      expect(() =>
-        runWithTenant(undefined as unknown as string, () => getTenantContext()),
-      ).toThrow(TenantIdInvalidoError);
-    });
-
-    it('lanza TenantIdInvalidoError con null', () => {
-      expect(() =>
-        runWithTenant(null as unknown as string, () => getTenantContext()),
-      ).toThrow(TenantIdInvalidoError);
-    });
-
-    it('lanza TenantIdInvalidoError con cadena vacia', () => {
-      expect(() => runWithTenant('', () => getTenantContext())).toThrow(
+      expect(() => runWithTenant(undefined as unknown as string, () => getTenantContext())).toThrow(
         TenantIdInvalidoError,
       );
     });
 
+    it('lanza TenantIdInvalidoError con null', () => {
+      expect(() => runWithTenant(null as unknown as string, () => getTenantContext())).toThrow(
+        TenantIdInvalidoError,
+      );
+    });
+
+    it('lanza TenantIdInvalidoError con cadena vacia', () => {
+      expect(() => runWithTenant('', () => getTenantContext())).toThrow(TenantIdInvalidoError);
+    });
+
     it('lanza TenantIdInvalidoError con un numero', () => {
-      expect(() =>
-        runWithTenant(123 as unknown as string, () => getTenantContext()),
-      ).toThrow(TenantIdInvalidoError);
+      expect(() => runWithTenant(123 as unknown as string, () => getTenantContext())).toThrow(
+        TenantIdInvalidoError,
+      );
     });
 
     it('lanza TenantIdInvalidoError con un objeto', () => {
-      expect(() =>
-        runWithTenant({} as unknown as string, () => getTenantContext()),
-      ).toThrow(TenantIdInvalidoError);
+      expect(() => runWithTenant({} as unknown as string, () => getTenantContext())).toThrow(
+        TenantIdInvalidoError,
+      );
     });
 
     it('no ejecuta el callback cuando el tenantId es invalido', () => {

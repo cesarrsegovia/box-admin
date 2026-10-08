@@ -156,9 +156,7 @@ export class RawQueryEnTenantError extends Error {
 }
 
 type CategoriaDeModelo =
-  | { tipo: 'conTenant' }
-  | { tipo: 'porRelacion'; campo: string }
-  | { tipo: 'global' };
+  { tipo: 'conTenant' } | { tipo: 'porRelacion'; campo: string } | { tipo: 'global' };
 
 function clasificarModelo(modelo: string | undefined): CategoriaDeModelo {
   if (modelo && (MODELOS_CON_TENANT as readonly string[]).includes(modelo)) {
@@ -176,9 +174,7 @@ function clasificarModelo(modelo: string | undefined): CategoriaDeModelo {
 function intentaReasignarTenant(data: unknown): boolean {
   if (Array.isArray(data)) return data.some(intentaReasignarTenant);
   if (!data || typeof data !== 'object') return false;
-  return CLAVES_DE_REASIGNACION.some((clave) =>
-    Object.prototype.hasOwnProperty.call(data, clave),
-  );
+  return CLAVES_DE_REASIGNACION.some((clave) => Object.prototype.hasOwnProperty.call(data, clave));
 }
 
 /**

@@ -58,7 +58,7 @@ describe('MiPackService.deActor', () => {
       restantes: 5,
       cancelacionesUsadas: 1,
       cancelacionesPermitidas: 2,
-        });
+    });
     expect(mp.pack).toMatchObject({ id: 'pack-1', nombre: '8 clases' });
   });
 

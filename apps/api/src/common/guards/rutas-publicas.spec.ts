@@ -112,11 +112,7 @@ function guardsDe(clase: object, handler: object): string[] {
   return [
     ...((Reflect.getMetadata(GUARDS_METADATA, clase) as unknown[] | undefined) ?? []),
     ...((Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[] | undefined) ?? []),
-  ].map((guard) =>
-    typeof guard === 'function'
-      ? guard.name
-      : (guard as object).constructor.name,
-  );
+  ].map((guard) => (typeof guard === 'function' ? guard.name : (guard as object).constructor.name));
 }
 
 /**

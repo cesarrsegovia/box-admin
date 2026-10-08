@@ -5,15 +5,15 @@ gimnasios ("boxes"), cada uno con sus propios usuarios y datos, sin que se mezcl
 
 Se construye por fases. Hasta ahora:
 
-| Fase | Qué añadió |
-|---|---|
-| **0** — Fundamentos | Autenticación, roles y el aislamiento por tenant sobre el que se apoya todo lo demás |
-| **1** — Núcleo operativo | Salas, packs, usuarios, turnos y reservas |
-| **2** — Motor de recurrencia | Rutinas fijas y generación automática de los meses |
-| **3A** — Self-service (API) | Auto-registro con clave, disponibilidad unificada, lista de espera y comprobantes |
-| **3B** — La PWA | `apps/web`: la aplicación que usa el alumno, instalable en el teléfono |
-| **4** — El profesor real | `Turno.profesorId` como relación, "mis clases", asistencia y la base de la liquidación |
-| **5A** — El ciclo de cobro | Pagos con periodo; "al día" se deriva en vez de guardarse en una bandera |
+| Fase                         | Qué añadió                                                                             |
+| ---------------------------- | -------------------------------------------------------------------------------------- |
+| **0** — Fundamentos          | Autenticación, roles y el aislamiento por tenant sobre el que se apoya todo lo demás   |
+| **1** — Núcleo operativo     | Salas, packs, usuarios, turnos y reservas                                              |
+| **2** — Motor de recurrencia | Rutinas fijas y generación automática de los meses                                     |
+| **3A** — Self-service (API)  | Auto-registro con clave, disponibilidad unificada, lista de espera y comprobantes      |
+| **3B** — La PWA              | `apps/web`: la aplicación que usa el alumno, instalable en el teléfono                 |
+| **4** — El profesor real     | `Turno.profesorId` como relación, "mis clases", asistencia y la base de la liquidación |
+| **5A** — El ciclo de cobro   | Pagos con periodo; "al día" se deriva en vez de guardarse en una bandera               |
 
 Cada fase tiene su spec y su plan en `docs/superpowers/`, y su estado en
 `docs/superpowers/plans/PROGRESO.md`.
@@ -143,16 +143,16 @@ solo con el email: necesita también el `tenantSlug` para saber en qué gimnasio
 
 ## Endpoints de la Fase 0
 
-| Endpoint | Método | Protección |
-|---|---|---|
-| `/auth/tenants` | POST | Público + `x-bootstrap-key` (crea un tenant) |
-| `/auth/register` | POST | Público + `x-bootstrap-key` (crea el primer usuario del tenant, siempre `ADMIN_SALON`) |
-| `/auth/login` | POST | Público |
-| `/auth/refresh` | POST | Público (valida el refresh token en el body) |
-| `/auth/logout` | POST | JWT (access token) |
-| `/auth/me` | GET | JWT (access token) |
-| `/auth/admin-only` | GET | JWT + rol mínimo `ADMIN_SALON` (`RolesGuard`) |
-| `/jobs/health-check` | POST | JWT + rol mínimo `ADMIN_SALON` (encola un job de prueba en BullMQ) |
+| Endpoint             | Método | Protección                                                                             |
+| -------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `/auth/tenants`      | POST   | Público + `x-bootstrap-key` (crea un tenant)                                           |
+| `/auth/register`     | POST   | Público + `x-bootstrap-key` (crea el primer usuario del tenant, siempre `ADMIN_SALON`) |
+| `/auth/login`        | POST   | Público                                                                                |
+| `/auth/refresh`      | POST   | Público (valida el refresh token en el body)                                           |
+| `/auth/logout`       | POST   | JWT (access token)                                                                     |
+| `/auth/me`           | GET    | JWT (access token)                                                                     |
+| `/auth/admin-only`   | GET    | JWT + rol mínimo `ADMIN_SALON` (`RolesGuard`)                                          |
+| `/jobs/health-check` | POST   | JWT + rol mínimo `ADMIN_SALON` (encola un job de prueba en BullMQ)                     |
 
 `x-bootstrap-key` es un valor compartido definido en `.env` (`BOOTSTRAP_KEY`); solo protege el
 alta inicial de tenants y del primer usuario de cada uno. `/auth/register` rechaza un segundo
@@ -168,12 +168,12 @@ fase solo definía los roles de `/salas`; el resto sale de separar **configurar*
 
 ### Salas
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/salas` | `ADMIN_SALON` |
-| GET | `/salas` | autenticado |
-| GET | `/salas/:id` | autenticado |
-| PATCH | `/salas/:id` | `ADMIN_SALON` |
+| Método | Ruta         | Rol mínimo                                                              |
+| ------ | ------------ | ----------------------------------------------------------------------- |
+| POST   | `/salas`     | `ADMIN_SALON`                                                           |
+| GET    | `/salas`     | autenticado                                                             |
+| GET    | `/salas/:id` | autenticado                                                             |
+| PATCH  | `/salas/:id` | `ADMIN_SALON`                                                           |
 | DELETE | `/salas/:id` | `ADMIN_SALON` — baja lógica; **409** si tiene turnos de hoy en adelante |
 
 La visibilidad tiene tres niveles: el personal del salón ve todas las salas; un `PROFESOR` ve las
@@ -187,13 +187,13 @@ que el `DELETE`, y se audita como baja. Reactivarla no comprueba nada.
 
 ### Packs (catálogo de precios)
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/packs` | `ADMIN_SALON` |
-| GET | `/packs?salaId=&activo=` | autenticado |
-| GET | `/packs/:id` | autenticado |
-| PATCH | `/packs/:id` | `ADMIN_SALON` |
-| DELETE | `/packs/:id` | `ADMIN_SALON` — baja lógica siempre |
+| Método | Ruta                     | Rol mínimo                          |
+| ------ | ------------------------ | ----------------------------------- |
+| POST   | `/packs`                 | `ADMIN_SALON`                       |
+| GET    | `/packs?salaId=&activo=` | autenticado                         |
+| GET    | `/packs/:id`             | autenticado                         |
+| PATCH  | `/packs/:id`             | `ADMIN_SALON`                       |
+| DELETE | `/packs/:id`             | `ADMIN_SALON` — baja lógica siempre |
 
 El catálogo es una sección propia, no un campo escondido dentro del alta de un alumno. `precio` viaja
 como **string** con dos decimales (`"12500.00"`), nunca como número: un float binario pierde centavos
@@ -203,16 +203,16 @@ catálogo.
 
 ### Usuarios de negocio
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/usuarios/alumnos` | `ADMIN_OPERATIVO` |
-| POST | `/usuarios/profesores` | `ADMIN_OPERATIVO` |
-| GET | `/usuarios?tipo=alumno|profesor&salaId=&activo=` | `ADMIN_OPERATIVO` |
-| GET | `/usuarios/:id` | `ADMIN_OPERATIVO`, o uno mismo |
-| PATCH | `/usuarios/:id` | `ADMIN_OPERATIVO` |
-| PATCH | `/usuarios/:id/salas` | `ADMIN_OPERATIVO` — **400** si el array viene vacío |
-| POST | `/usuarios/:id/reset-password` | `ADMIN_SALON` |
-| DELETE | `/usuarios/:id` | `ADMIN_OPERATIVO` — baja lógica |
+| Método | Ruta                           | Rol mínimo                                          |
+| ------ | ------------------------------ | --------------------------------------------------- |
+| POST   | `/usuarios/alumnos`            | `ADMIN_OPERATIVO`                                   |
+| POST   | `/usuarios/profesores`         | `ADMIN_OPERATIVO`                                   |
+| GET    | `/usuarios?tipo=alumno         | profesor&salaId=&activo=`                           | `ADMIN_OPERATIVO` |
+| GET    | `/usuarios/:id`                | `ADMIN_OPERATIVO`, o uno mismo                      |
+| PATCH  | `/usuarios/:id`                | `ADMIN_OPERATIVO`                                   |
+| PATCH  | `/usuarios/:id/salas`          | `ADMIN_OPERATIVO` — **400** si el array viene vacío |
+| POST   | `/usuarios/:id/reset-password` | `ADMIN_SALON`                                       |
+| DELETE | `/usuarios/:id`                | `ADMIN_OPERATIVO` — baja lógica                     |
 
 **Las dos altas usan DTOs distintos.** El de profesor no acepta `packId`, `clasesExtra`, `pagoAlDia`
 ni vigencias, y como el `ValidationPipe` global corre con `forbidNonWhitelisted`, mandárselos
@@ -228,13 +228,13 @@ volver a leer. `POST /usuarios/:id/reset-password` funciona igual.
 
 ### Turnos
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/turnos` | `ADMIN_OPERATIVO` |
-| GET | `/turnos?desde=&hasta=&salaId=&soloLibres=` | autenticado |
-| GET | `/turnos/:id` | autenticado |
-| PATCH | `/turnos/:id` | `ADMIN_OPERATIVO` — **409** si el cupo nuevo es menor que las reservas activas |
-| DELETE | `/turnos/:id` | `ADMIN_OPERATIVO` — borrado físico; **409** si tiene reservas activas |
+| Método | Ruta                                        | Rol mínimo                                                                     |
+| ------ | ------------------------------------------- | ------------------------------------------------------------------------------ |
+| POST   | `/turnos`                                   | `ADMIN_OPERATIVO`                                                              |
+| GET    | `/turnos?desde=&hasta=&salaId=&soloLibres=` | autenticado                                                                    |
+| GET    | `/turnos/:id`                               | autenticado                                                                    |
+| PATCH  | `/turnos/:id`                               | `ADMIN_OPERATIVO` — **409** si el cupo nuevo es menor que las reservas activas |
+| DELETE | `/turnos/:id`                               | `ADMIN_OPERATIVO` — borrado físico; **409** si tiene reservas activas          |
 
 `fecha` entra y sale como `"YYYY-MM-DD"`, sin hora ni huso; `horaInicio` y `horaFin` son `"HH:MM"` en
 24 h, con `horaFin` estrictamente posterior. `lugaresLibres` cuenta solo reservas **sin cancelar**, y
@@ -247,11 +247,11 @@ canceladas se van con él (`onDelete: Cascade`); la auditoría no se pierde, por
 
 ### Reservas
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/turnos/:turnoId/reservas` | `ADMIN_OPERATIVO` |
+| Método | Ruta                                         | Rol mínimo        |
+| ------ | -------------------------------------------- | ----------------- |
+| POST   | `/turnos/:turnoId/reservas`                  | `ADMIN_OPERATIVO` |
 | DELETE | `/reservas/:id?tipo=recuperable\|definitiva` | `ADMIN_OPERATIVO` |
-| PATCH | `/reservas/:id/reasignar` | `ADMIN_OPERATIVO` |
+| PATCH  | `/reservas/:id/reasignar`                    | `ADMIN_OPERATIVO` |
 
 El cuerpo de la creación lleva `perfilId`, no `usuarioId`: los listados de usuarios ya lo devuelven.
 
@@ -276,10 +276,10 @@ Las respuestas de alta y de reserva llevan `advertencias: [{ codigo, mensaje }]`
 operación: existen para que el admin se entere de algo que, guardado en silencio, produciría un
 usuario inservible sin que nadie lo notara hasta que intentara reservar.
 
-| Código | Cuándo |
-|---|---|
-| `SIN_SALAS` | Alta de alumno o profesor sin ninguna sala asignada |
-| `SIN_PACK` | Alta de alumno sin pack |
+| Código         | Cuándo                                                   |
+| -------------- | -------------------------------------------------------- |
+| `SIN_SALAS`    | Alta de alumno o profesor sin ninguna sala asignada      |
+| `SIN_PACK`     | Alta de alumno sin pack                                  |
 | `PACK_AGOTADO` | La reserva deja al alumno por encima del tope de su pack |
 
 La asimetría con `PATCH /usuarios/:id/salas`, que rechaza la lista vacía con **400**, es deliberada:
@@ -358,12 +358,12 @@ Todos exigen JWT. El rol indicado es el **mínimo**.
 
 ### Rutinas fijas
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/rutinas` | `ADMIN_OPERATIVO` |
-| GET | `/rutinas?perfilId=&salaId=&activa=` | `ADMIN_OPERATIVO` |
-| PATCH | `/rutinas/:id` | `ADMIN_OPERATIVO` |
-| DELETE | `/rutinas/:id` | `ADMIN_OPERATIVO` — baja lógica |
+| Método | Ruta                                 | Rol mínimo                      |
+| ------ | ------------------------------------ | ------------------------------- |
+| POST   | `/rutinas`                           | `ADMIN_OPERATIVO`               |
+| GET    | `/rutinas?perfilId=&salaId=&activa=` | `ADMIN_OPERATIVO`               |
+| PATCH  | `/rutinas/:id`                       | `ADMIN_OPERATIVO`               |
+| DELETE | `/rutinas/:id`                       | `ADMIN_OPERATIVO` — baja lógica |
 
 Crear una rutina valida que el alumno tenga **acceso a la sala**, con la misma regla que una reserva
 manual: sin acceso, la rutina generaría mes tras mes reservas que el motor acabaría rechazando.
@@ -376,12 +376,12 @@ pide a propósito con `?activa=false`.
 
 ### Calendario
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/calendario/:salaId/:anio/:mes/previsualizar` | `ADMIN_OPERATIVO` — **200** con el plan |
-| GET | `/calendario/:salaId/:anio/:mes/conflictos` | `ADMIN_OPERATIVO` |
-| POST | `/calendario/:salaId/:anio/:mes/publicar` | **`ADMIN_SALON`** — **202** con el `jobId` |
-| GET | `/calendario/:salaId/:anio/:mes` | `ADMIN_OPERATIVO` — estado del mes y del último job |
+| Método | Ruta                                           | Rol mínimo                                          |
+| ------ | ---------------------------------------------- | --------------------------------------------------- |
+| POST   | `/calendario/:salaId/:anio/:mes/previsualizar` | `ADMIN_OPERATIVO` — **200** con el plan             |
+| GET    | `/calendario/:salaId/:anio/:mes/conflictos`    | `ADMIN_OPERATIVO`                                   |
+| POST   | `/calendario/:salaId/:anio/:mes/publicar`      | **`ADMIN_SALON`** — **202** con el `jobId`          |
+| GET    | `/calendario/:salaId/:anio/:mes`               | `ADMIN_OPERATIVO` — estado del mes y del último job |
 
 **`previsualizar` es síncrono y no escribe nada.** No hay razón para mandar a una cola una operación
 de solo lectura que el admin está esperando en pantalla.
@@ -393,14 +393,14 @@ Regenerar un **mes que ya pasó** devuelve **400**: crearía reservas para clase
 
 ### Vacaciones y ausencias
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/vacaciones-alumnos` | `ADMIN_OPERATIVO` |
-| GET | `/vacaciones-alumnos?perfilId=` | `ADMIN_OPERATIVO` |
-| DELETE | `/vacaciones-alumnos/:id` | `ADMIN_OPERATIVO` |
-| POST | `/ausencias` | **`ADMIN_SALON`** |
-| GET | `/ausencias?salaId=&desde=&hasta=` | autenticado |
-| DELETE | `/ausencias/:id` | **`ADMIN_SALON`** |
+| Método | Ruta                               | Rol mínimo        |
+| ------ | ---------------------------------- | ----------------- |
+| POST   | `/vacaciones-alumnos`              | `ADMIN_OPERATIVO` |
+| GET    | `/vacaciones-alumnos?perfilId=`    | `ADMIN_OPERATIVO` |
+| DELETE | `/vacaciones-alumnos/:id`          | `ADMIN_OPERATIVO` |
+| POST   | `/ausencias`                       | **`ADMIN_SALON`** |
+| GET    | `/ausencias?salaId=&desde=&hasta=` | autenticado       |
+| DELETE | `/ausencias/:id`                   | **`ADMIN_SALON`** |
 
 Una `Ausencia` con `salaId: null` cierra **todo el salón**, y aparece igualmente al filtrar por
 cualquier sala concreta. El filtro por fechas busca **solape, no contención**: un cierre del 28 de
@@ -410,10 +410,10 @@ septiembre al 3 de octubre sale al preguntar por octubre.
 
 El plan de un mes separa dos cosas que es tentador mezclar:
 
-| | Qué es | Tipos |
-|---|---|---|
-| **`conflictos`** | Requieren **decisión humana** | `CUPO_LLENO`, `FUERA_DE_PACK`, `SALA_SIN_CUPO_BASE` |
-| **`exclusiones`** | Informativas: pasaron porque alguien cargó ese dato a propósito | `AUSENCIA_SALA`, `VACACION_ALUMNO` |
+|                   | Qué es                                                          | Tipos                                               |
+| ----------------- | --------------------------------------------------------------- | --------------------------------------------------- |
+| **`conflictos`**  | Requieren **decisión humana**                                   | `CUPO_LLENO`, `FUERA_DE_PACK`, `SALA_SIN_CUPO_BASE` |
+| **`exclusiones`** | Informativas: pasaron porque alguien cargó ese dato a propósito | `AUSENCIA_SALA`, `VACACION_ALUMNO`                  |
 
 Mezclarlas haría que un mes con tres alumnos de vacaciones mostrara decenas de "conflictos" que nadie
 tiene que resolver, y que esconderían los dos que sí. `GET /conflictos` devuelve solo los primeros.
@@ -491,11 +491,11 @@ la Fase 3B, construida contra este contrato ya probado.
 
 ### Invitaciones
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/invitaciones` | `ADMIN_OPERATIVO` |
-| GET | `/invitaciones` | `ADMIN_OPERATIVO` |
-| PATCH | `/invitaciones/:id` | `ADMIN_OPERATIVO` |
+| Método | Ruta                | Rol mínimo        |
+| ------ | ------------------- | ----------------- |
+| POST   | `/invitaciones`     | `ADMIN_OPERATIVO` |
+| GET    | `/invitaciones`     | `ADMIN_OPERATIVO` |
+| PATCH  | `/invitaciones/:id` | `ADMIN_OPERATIVO` |
 
 **Una clave lleva consigo las salas y el pack** que recibirá el alumno, y exige al menos una sala.
 Eso no es un adorno: las reservas se validan contra `UsuarioSala`, así que un alumno auto-registrado
@@ -508,10 +508,10 @@ se desactiva la clave y se crea otra.
 
 ### Auto-registro
 
-| Método | Ruta | Acceso |
-|---|---|---|
-| POST | `/auth/auto-registro` | público, con throttle estricto |
-| GET | `/usuarios?autoRegistrado=true` | `ADMIN_OPERATIVO` |
+| Método | Ruta                            | Acceso                         |
+| ------ | ------------------------------- | ------------------------------ |
+| POST   | `/auth/auto-registro`           | público, con throttle estricto |
+| GET    | `/usuarios?autoRegistrado=true` | `ADMIN_OPERATIVO`              |
 
 El cuerpo trae `tenantSlug`, `codigo`, `nombreCompleto`, `email` y `password`, y devuelve el mismo
 par de tokens que el login: el alumno queda logueado.
@@ -529,14 +529,14 @@ Las cuatro formas de clave inutilizable —inexistente, desactivada, caducada y 
 
 ### Calendario del alumno
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| GET | `/mi-calendario?desde=&hasta=&salaId=` | `ALUMNO` |
-| GET | `/turnos-disponibles?desde=&hasta=&salaId=` | `ALUMNO` |
-| POST | `/turnos/:id/mi-reserva` | `ALUMNO` |
-| DELETE | `/mis-reservas/:id` | `ALUMNO` |
-| POST | `/turnos/:id/lista-espera` | `ALUMNO` |
-| DELETE | `/lista-espera/:id` | `ALUMNO` |
+| Método | Ruta                                        | Rol mínimo |
+| ------ | ------------------------------------------- | ---------- |
+| GET    | `/mi-calendario?desde=&hasta=&salaId=`      | `ALUMNO`   |
+| GET    | `/turnos-disponibles?desde=&hasta=&salaId=` | `ALUMNO`   |
+| POST   | `/turnos/:id/mi-reserva`                    | `ALUMNO`   |
+| DELETE | `/mis-reservas/:id`                         | `ALUMNO`   |
+| POST   | `/turnos/:id/lista-espera`                  | `ALUMNO`   |
+| DELETE | `/lista-espera/:id`                         | `ALUMNO`   |
 
 Todas operan sobre el perfil **del actor**, nunca sobre un `perfilId` del cuerpo. Un usuario sin
 perfil —un admin, por ejemplo— recibe 404, y es correcto: no tiene calendario propio.
@@ -557,17 +557,17 @@ acceso" confirmaría que esa sala existe.
 espera" y "solo cupos liberados"— en un estado consolidado. El contrato tiene **dos ejes separados a
 propósito**:
 
-| Campo | Qué describe |
-|---|---|
-| `estado` | El **turno**, independiente de quién pregunte |
-| `puedeReservar` + `motivo` | A **este alumno, ahora** |
+| Campo                      | Qué describe                                  |
+| -------------------------- | --------------------------------------------- |
+| `estado`                   | El **turno**, independiente de quién pregunte |
+| `puedeReservar` + `motivo` | A **este alumno, ahora**                      |
 
-| Estado | Cuándo |
-|---|---|
-| `LIBRE` | hay cupo |
-| `SOLO_ADMIN` | hay cupo, pero la sala es `soloCuposLiberados` y nadie canceló todavía |
-| `LISTA_ESPERA` | sin cupo, con lista de espera habilitada |
-| `LLENO` | sin cupo y sin lista de espera |
+| Estado         | Cuándo                                                                 |
+| -------------- | ---------------------------------------------------------------------- |
+| `LIBRE`        | hay cupo                                                               |
+| `SOLO_ADMIN`   | hay cupo, pero la sala es `soloCuposLiberados` y nadie canceló todavía |
+| `LISTA_ESPERA` | sin cupo, con lista de espera habilitada                               |
+| `LLENO`        | sin cupo y sin lista de espera                                         |
 
 Mezclar los dos ejes —hacer que el estado cambiara según quién consulta— haría el contrato inservible
 para el frontend, que necesita pintar el turno y el botón por separado.
@@ -612,13 +612,13 @@ en la cola. Y salta a quien ya tenga reserva activa en ese turno, limpiando igua
 
 ### Comprobantes
 
-| Método | Ruta | Rol mínimo |
-|---|---|---|
-| POST | `/comprobantes` | `ALUMNO` |
-| PATCH | `/comprobantes/:id/confirmar` | `ALUMNO` |
-| GET | `/comprobantes?estado=` | `ALUMNO` (los suyos) / `ADMIN_OPERATIVO` (todos) |
-| PATCH | `/comprobantes/:id/aprobar` | `ADMIN_OPERATIVO` |
-| PATCH | `/comprobantes/:id/rechazar` | `ADMIN_OPERATIVO` |
+| Método | Ruta                          | Rol mínimo                                       |
+| ------ | ----------------------------- | ------------------------------------------------ |
+| POST   | `/comprobantes`               | `ALUMNO`                                         |
+| PATCH  | `/comprobantes/:id/confirmar` | `ALUMNO`                                         |
+| GET    | `/comprobantes?estado=`       | `ALUMNO` (los suyos) / `ADMIN_OPERATIVO` (todos) |
+| PATCH  | `/comprobantes/:id/aprobar`   | `ADMIN_OPERATIVO`                                |
+| PATCH  | `/comprobantes/:id/rechazar`  | `ADMIN_OPERATIVO`                                |
 
 **El flujo es de tres pasos**, que es el patrón estándar de subida presignada:
 
@@ -631,7 +631,7 @@ terminó. Sin él, saber si un comprobante tiene archivo obligaría a consultar 
 listado. Una fila sin confirmar no aparece en el listado del admin —así no ve enlaces rotos—, pero sí
 en el del alumno, que es quien tiene que terminar de subirla.
 
-La **clave del archivo la genera el servidor** (UUID + extensión sacada del *mime*, con lista blanca:
+La **clave del archivo la genera el servidor** (UUID + extensión sacada del _mime_, con lista blanca:
 PDF, JPEG, PNG y WebP). Usar el nombre del cliente sería path traversal servido en bandeja. La clave
 nunca sale en el contrato público: solo viaja la URL firmada, de 5 minutos de vida.
 
@@ -643,10 +643,10 @@ nada lo escribiera. Rechazar no lo toca: un rechazo no invalida un pago anterior
 Un puerto `AlmacenDeArchivos` con dos adaptadores, elegidos por `ALMACEN_TIPO` **en el arranque** —así
 un error de configuración sale al levantar la aplicación, no en la primera subida—:
 
-| Valor | Qué hace | Variables que exige |
-|---|---|---|
-| `local` | Guarda en disco y expone `PUT`/`GET /archivos-locales/:clave` firmadas con HMAC | `ALMACEN_LOCAL_DIR`, `API_BASE_URL` |
-| `s3` | Presignado contra cualquier almacén compatible con S3 (Backblaze B2, DigitalOcean Spaces) | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
+| Valor   | Qué hace                                                                                  | Variables que exige                                                                 |
+| ------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `local` | Guarda en disco y expone `PUT`/`GET /archivos-locales/:clave` firmadas con HMAC           | `ALMACEN_LOCAL_DIR`, `API_BASE_URL`                                                 |
+| `s3`    | Presignado contra cualquier almacén compatible con S3 (Backblaze B2, DigitalOcean Spaces) | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
 
 Las variables de S3 **solo se exigen con `ALMACEN_TIPO=s3`**: pedirlas siempre obligaría a inventar
 credenciales falsas en desarrollo, que es justo como acaban commiteadas.
@@ -771,7 +771,6 @@ código.** Docker Desktop se cerró solo seis veces entre la Fase 2 y la 3A.
 hace: se buscó en los tres PDFs, en los specs y en el código. Mejor un campo almacenado sin usar que
 una semántica inventada. `soloCuposLiberados` estaba igual y **sí** se resolvió en esta fase.
 
-
 ## La PWA del alumno — Fase 3B
 
 `apps/web`: un Next.js 15 instalable en el teléfono, contra la API de la Fase 3A. La Fase 3 del PDF
@@ -791,14 +790,14 @@ Después, `http://localhost:3001/<slug-del-gimnasio>/registro`.
 
 ### Las seis pantallas
 
-| Ruta | Quién | Qué hace |
-|---|---|---|
-| `/[slug]/login` | público | Entrar |
-| `/[slug]/registro` | público | Auto-registro con clave de invitación |
-| `/[slug]/calendario` | alumno | Vista semanal: reservar, cancelar, lista de espera |
-| `/[slug]/mi-pack` | alumno | Consumo, periodo, si está al día |
-| `/[slug]/comprobantes` | alumno | Subir y ver estado |
-| `/[slug]/perfil` | alumno | Datos y cerrar sesión |
+| Ruta                   | Quién   | Qué hace                                           |
+| ---------------------- | ------- | -------------------------------------------------- |
+| `/[slug]/login`        | público | Entrar                                             |
+| `/[slug]/registro`     | público | Auto-registro con clave de invitación              |
+| `/[slug]/calendario`   | alumno  | Vista semanal: reservar, cancelar, lista de espera |
+| `/[slug]/mi-pack`      | alumno  | Consumo, periodo, si está al día                   |
+| `/[slug]/comprobantes` | alumno  | Subir y ver estado                                 |
+| `/[slug]/perfil`       | alumno  | Datos y cerrar sesión                              |
 
 El gimnasio va en la ruta y no en un subdominio: funciona en cualquier hosting sin DNS comodín ni
 certificado wildcard, y en desarrollo funciona tal cual en `localhost`.
@@ -809,12 +808,12 @@ certificado wildcard, y en desarrollo funciona tal cual en `localhost`.
 leer, y como la API devuelve los tokens en el cuerpo del JSON, hace falta una capa de Next que los
 recoja y los convierta en cookie.
 
-| Ruta de Next | Qué hace |
-|---|---|
-| `POST /api/auth/login` | Llama a la API, siembra `bx_access`, `bx_refresh` y `bx_slug` |
-| `POST /api/auth/auto-registro` | Igual, contra `/auth/auto-registro` |
-| `POST /api/auth/logout` | Revoca en la API y borra las cookies |
-| `ALL /api/bx/[...ruta]` | **Proxy genérico**: reenvía a la API con el `Authorization` de la cookie |
+| Ruta de Next                   | Qué hace                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| `POST /api/auth/login`         | Llama a la API, siembra `bx_access`, `bx_refresh` y `bx_slug`            |
+| `POST /api/auth/auto-registro` | Igual, contra `/auth/auto-registro`                                      |
+| `POST /api/auth/logout`        | Revoca en la API y borra las cookies                                     |
+| `ALL /api/bx/[...ruta]`        | **Proxy genérico**: reenvía a la API con el `Authorization` de la cookie |
 
 El proxy es genérico a propósito —un handler por endpoint serían veinte archivos casi idénticos—, y
 el precio es que **la validación del destino tiene que ser seria**: un proxy que acepta cualquier
@@ -1002,7 +1001,6 @@ usar el modo avión del sistema, o el conmutador de red de la propia pestaña.
 - **Notificaciones push**: llegan en la Fase 5, con el hook que la 3A dejó preparado e inerte.
 - **Cualquier pantalla de administración**: esta aplicación es solo del alumno.
 
-
 ## El profesor — Fase 4
 
 Hasta aquí, el vínculo entre una profesora y un horario era **una parte del nombre de la actividad**:
@@ -1040,15 +1038,15 @@ el caso corriente de las clases escalonadas.
 Al regenerar un mes, el motor pone profesora **solo en los turnos que no la tienen**. Nunca pisa un
 valor puesto.
 
-| Situación | Al republicar el mes |
-|---|---|
-| Turno con profesora Ana (suplencia), el patrón dice Fati | Sigue Ana |
-| Turno sin profesora, el patrón dice Fati | Queda Fati |
-| Turno con profesora Fati, el patrón cambió a Ana | Sigue Fati |
+| Situación                                                | Al republicar el mes |
+| -------------------------------------------------------- | -------------------- |
+| Turno con profesora Ana (suplencia), el patrón dice Fati | Sigue Ana            |
+| Turno sin profesora, el patrón dice Fati                 | Queda Fati           |
+| Turno con profesora Fati, el patrón cambió a Ana         | Sigue Fati           |
 
 No hace falta una columna que marque "lo puso un humano": **tener profesora ya significa que alguien
 lo decidió**. Y la regla cubre los dos caminos reales de golpe — la suplencia sobrevive a cualquier
-republicación, y dar de alta el horario *después* de publicar el mes rellena los turnos huérfanos.
+republicación, y dar de alta el horario _después_ de publicar el mes rellena los turnos huérfanos.
 
 El precio, aceptado: no se puede expresar "esta franja tiene patrón pero quiero que quede
 deliberadamente sin profesora".
@@ -1080,11 +1078,11 @@ suplencia, primero le da la sala.
 
 ### Lo que ve la profesora
 
-| Método | Ruta | Qué hace |
-|---|---|---|
-| GET | `/mis-clases?desde=&hasta=` | Sus clases, con cupo y si ya pasó lista |
-| GET | `/mis-clases/:turnoId/alumnos` | Nombre y asistencia. Nada más |
-| POST | `/mis-clases/:turnoId/asistencia` | Pasar lista |
+| Método | Ruta                              | Qué hace                                |
+| ------ | --------------------------------- | --------------------------------------- |
+| GET    | `/mis-clases?desde=&hasta=`       | Sus clases, con cupo y si ya pasó lista |
+| GET    | `/mis-clases/:turnoId/alumnos`    | Nombre y asistencia. Nada más           |
+| POST   | `/mis-clases/:turnoId/asistencia` | Pasar lista                             |
 
 El filtro es `profesorId = su perfil` y nada más: el turno es suyo por definición. **El turno de otra
 profesora devuelve 404 y no 403** — decir que existe ya sería contar algo de la agenda ajena. Un
@@ -1116,12 +1114,12 @@ tres semanas puede ponerse al día, y el rastro queda en `historial_acciones`.
 `GET /liquidacion/:profesorId?anio=&mes=` (rol `ADMIN_SALON`, porque enseña tarifas) devuelve una
 sola lista de franjas con tres banderas ortogonales:
 
-| `contratada` | `dictada` | `cerrada` | Qué es |
-|---|---|---|---|
-| sí | sí | no | La clase se dio |
-| sí | no | no | **Nadie se anotó** |
-| sí | no | sí | Feriado |
-| no | sí | — | Suplencia sin contrato en esa franja |
+| `contratada` | `dictada` | `cerrada` | Qué es                               |
+| ------------ | --------- | --------- | ------------------------------------ |
+| sí           | sí        | no        | La clase se dio                      |
+| sí           | no        | no        | **Nadie se anotó**                   |
+| sí           | no        | sí        | Feriado                              |
+| no           | sí        | —         | Suplencia sin contrato en esa franja |
 
 ⚠️ **Un día cerrado NO suma a horas contratadas.** Sale aparte, en `horasCerradas`, con su motivo.
 Así "contratadas menos dictadas" significa una sola cosa —horas que nadie usó por falta de alumnos—
@@ -1145,7 +1143,6 @@ hoy si estaba abierto. Cada cosa sirve para algo distinto — `activo` es lo que
 el etiquetado, y `hasta` es lo que mira la liquidación, que **no filtra por `activo`**. Así, borrar
 un horario deja de generar etiquetas de hoy en adelante pero no cambia lo que ya se liquidó en
 agosto.
-
 
 ## El ciclo de cobro — Fase 5A
 
@@ -1257,7 +1254,6 @@ declara, se paga.
 
 Y un alumno recién dado de alta queda **pendiente** hasta su primer pago. Antes también: el default
 de la columna era `false`.
-
 
 ## La comunicación — Fase 5B
 
@@ -1494,19 +1490,19 @@ reparto plausible y equivocado.
 La otra mitad de la Fase 6, y la que trae **la primera superficie pública del sistema**: hasta ahora
 todo pedía sesión.
 
-| Método | Ruta                                              | Rol                 |
-| ------ | ------------------------------------------------- | ------------------- |
-| POST   | `/checkin`                                        | `ALUMNO`            |
-| GET    | `/config/checkin-qr`                              | `ADMIN_SALON`       |
-| PUT    | `/config/checkin-qr`                              | `ADMIN_SALON`       |
-| GET    | `/config/checkin-qr/imagen` — el PNG del cartel   | `ADMIN_SALON`       |
-| GET    | `/config/web-salon`                               | `ADMIN_SALON`       |
-| PUT    | `/config/web-salon`                               | `ADMIN_SALON`       |
-| POST   | `/config/web-salon/testimonios`                   | `ADMIN_SALON`       |
-| DELETE | `/config/web-salon/testimonios/:id`               | `ADMIN_SALON`       |
-| POST   | `/config/web-salon/preguntas`                     | `ADMIN_SALON`       |
-| DELETE | `/config/web-salon/preguntas/:id`                 | `ADMIN_SALON`       |
-| GET    | `/public/salon/:slug`                             | **ninguno**         |
+| Método | Ruta                                            | Rol           |
+| ------ | ----------------------------------------------- | ------------- |
+| POST   | `/checkin`                                      | `ALUMNO`      |
+| GET    | `/config/checkin-qr`                            | `ADMIN_SALON` |
+| PUT    | `/config/checkin-qr`                            | `ADMIN_SALON` |
+| GET    | `/config/checkin-qr/imagen` — el PNG del cartel | `ADMIN_SALON` |
+| GET    | `/config/web-salon`                             | `ADMIN_SALON` |
+| PUT    | `/config/web-salon`                             | `ADMIN_SALON` |
+| POST   | `/config/web-salon/testimonios`                 | `ADMIN_SALON` |
+| DELETE | `/config/web-salon/testimonios/:id`             | `ADMIN_SALON` |
+| POST   | `/config/web-salon/preguntas`                   | `ADMIN_SALON` |
+| DELETE | `/config/web-salon/preguntas/:id`               | `ADMIN_SALON` |
+| GET    | `/public/salon/:slug`                           | **ninguno**   |
 
 **El cartel del QR pide `ADMIN_SALON`, no `ADMIN_OPERATIVO`.** El PNG lleva dentro la firma del
 gimnasio: quien pueda descargarlo puede fabricar el QR, así que está al nivel de una credencial.
@@ -1590,6 +1586,123 @@ panel.
 
 **Un QR que pruebe presencia**, por lo dicho arriba. **Historial de configuraciones de la web**: se
 guarda la vigente. Y **la landing no tiene editor visual**: el admin manda los campos, no maqueta.
+
+## El panel del admin — Fase 7
+
+La primera pantalla de administración del proyecto. Hasta aquí `apps/web` era la PWA del alumno más la
+landing pública: todo lo de admin se hacía con `curl`.
+
+Esta fase entrega **el armazón y el área de Personas**. El panel completo son 69 endpoints en 20
+módulos, agrupados en cinco áreas —Operación diaria, Personas, Dinero, Análisis y Configuración— y las
+otras cuatro son fases posteriores que heredan el armazón sin volver a discutirlo.
+
+| Ruta | Qué es | Rol |
+| ---- | ------ | --- |
+| `/{slug}/admin` | Inicio | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/usuarios` | Listado, con filtros en la URL | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/usuarios/nuevo` | Alta de alumno o profesor | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/usuarios/{id}` | La ficha de la persona | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/invitaciones` | Claves de invitación | `ADMIN_OPERATIVO` |
+
+**No agrega ni modifica un solo endpoint de la API.** Todo lo que el panel hace ya existía.
+
+### La puerta
+
+`admin/layout.tsx` corre en el servidor, lee las cookies httpOnly y resuelve el rol contra
+`GET /auth/me`, que es el único que verifica la firma del token. La jerarquía no se reimplementa: usa
+`rolAlcanza`, la misma función que el guard de la API.
+
+Rechaza en tres casos, y el tercero **no de la misma manera**:
+
+| Caso | Qué hace |
+| ---- | -------- |
+| Sin sesión | Al login, conservando a dónde iba |
+| Sesión de otro gimnasio | Al login, igual |
+| **Rol insuficiente** | **Una pantalla**, no un redirect |
+
+El tercero no puede ir al login y no es una preferencia: sería un bucle sin salida. El destino pasaría
+la lista blanca por ser del mismo gimnasio, el login traería de vuelta al panel, y el panel rebotaría
+otra vez — **volver a autenticarse no cambia el rol**. La pantalla dice qué rol hace falta, que es lo
+que convierte un reclamo en una conversación con el dueño.
+
+Un `/auth/me` que falla es distinto: eso **sí** se arregla volviendo a entrar, y por eso va al login.
+
+### A dónde vuelve cada uno
+
+`src/middleware.ts` estampa la ruta pedida en una cabecera y los dos layouts la leen. Sin eso, un
+layout de Next no tiene forma de saber dónde estaba el usuario: no recibe `searchParams` ni el
+pathname. Es la misma limitación por la que la pantalla de check-in vive fuera del área de alumno.
+
+⚠️ **Esa cabecera no se confía.** Un cliente puede mandarla, así que el valor pasa por
+`rutaDeRetornoSegura` igual que el `volverA` del query, y hay tests que lo comprueban con el filtro
+real y no con un doble.
+
+`rutaDeRetornoSegura` acepta por **lista blanca**: sólo rutas relativas que empiecen exactamente por
+`/<slug>/`. Rechaza `//evil.com`, `https://`, `javascript:`, la barra invertida, los caracteres de
+control —que el navegador borra antes de resolver la URL— y los segmentos `..`, **incluidos los
+escritos en porcentaje**: `%2e%2e`, `%2E%2E`, `.%2e` y `%2e.` resuelven todos fuera del gimnasio, y
+`/mi-gym/%2e%2e` resuelve a la raíz del dominio.
+
+### El área del alumno es del alumno
+
+Hasta esta fase, el layout de `(alumno)` sólo comprobaba que la sesión fuera de ese gimnasio. Ahora
+exige también el rol. La comparación es `!== 'ALUMNO'` y **no** `rolAlcanza`: un admin no es «un alumno
+con más permisos», es otra persona.
+
+A quien no es alumno no se lo manda al login, por el mismo motivo que arriba. Al admin se le ofrece su
+panel; al profesor, cerrar sesión, porque **todavía no tiene pantalla propia** — sus endpoints existen
+desde la Fase 4 y nadie los dibuja.
+
+### El panel no se cachea
+
+El service worker **excluye `/{slug}/admin/*` de toda caché**. `defaultCache` de Serwist guarda la
+carcasa, y la carcasa incluye el HTML y la carga RSC: un listado con nombres, emails y teléfonos
+quedaría en la `CacheStorage` del navegador del mostrador, que es una computadora compartida.
+
+De todo `/api/` se cachean **sólo los dos endpoints del calendario del alumno**, por lista blanca: un
+endpoint nuevo nace fuera de la caché sin que nadie tenga que acordarse de excluirlo.
+
+### La contraseña temporal
+
+El alta devuelve una contraseña que **se ve una vez y no se puede releer**, y resetearla pide
+`ADMIN_SALON` mientras que el alta la hace `ADMIN_OPERATIVO`: **quien la pierde no puede repararlo
+solo.**
+
+Por eso su pantalla no deja seguir sin marcar «ya la anoté», no se cierra al hacer clic afuera, avisa
+antes de recargar, y la clave no viaja en la URL ni queda en el historial. Es incómoda a propósito: el
+costo de perderla lo paga otra persona.
+
+Las **advertencias** del alta —que el alumno quedó sin salas, por ejemplo— van en esa misma pantalla,
+que es la que ya obliga a detenerse. Un cartel que se desvanece sobre alguien que está copiando una
+clave no lo lee nadie.
+
+⚠️ `reset()` de TanStack **no vacía la caché de mutaciones**: sólo quita el observador y programa el
+recolector, con cinco minutos por defecto. Sin `gcTime: 0`, la respuesta de cada escritura —contraseña
+temporal y ficha médica incluidas— queda legible en el `QueryClient` de toda la aplicación mucho
+después de que el admin se fue del mostrador. **Las seis mutaciones lo llevan**, y hay un test que lee
+el archivo para que una mutación nueva nazca cubierta.
+
+### La ficha, y un borrado que no ocurre
+
+Cada bloque tiene su propia mutación: son cinco endpoints de escritura más los de días fijos, y
+mezclarlos convertiría nueve fallos distintos en un único «algo salió mal».
+
+⚠️ **`GET /usuarios/:id` omite `fichaMedica` salvo para `ADMIN_SALON` o el dueño, pero `PATCH` la
+acepta de cualquier operativo.** Dibujar el campo igual lo pintaría vacío, y guardar un teléfono
+mandaría `fichaMedica: ''`: historial clínico borrado por corregir un número, sin que nadie lo vea. El
+campo se dibuja sólo si la clave viene en el payload — lo que el servidor mandó, no una regla paralela
+que puede desincronizarse.
+
+Los **días fijos** de la ficha son `Rutina`, que no es un plan de entrenamiento sino una **reserva
+recurrente** del motor de la Fase 2: «viene todos los martes a las 18 a Pilates». Su baja es lógica, así
+que la lista se filtra por `activa`.
+
+### Lo que esta fase NO trae
+
+Las otras cuatro áreas del panel. **Paginación y búsqueda por texto**, porque la API no las tiene e
+inventarlas en el cliente daría la ilusión de una capacidad que no existe. **Pantallas de profesor.**
+Mandar la contraseña temporal por email. Y **quitar un límite ya puesto a una clave de invitación**: la
+API no sabe hacerlo, así que el formulario lo dice en pantalla en vez de fingirlo.
 
 ## Tests
 

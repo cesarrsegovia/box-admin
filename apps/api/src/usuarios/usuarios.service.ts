@@ -197,7 +197,7 @@ export class UsuariosService {
           telefono: dto.telefono,
           fichaMedica: dto.fichaMedica,
           packId: dto.packId,
-              clasesExtra: dto.clasesExtra,
+          clasesExtra: dto.clasesExtra,
           cancelacionesUsadas: dto.cancelacionesUsadas,
           vigenciaDesde: dto.vigenciaDesde ? desdeFechaISO(dto.vigenciaDesde) : undefined,
           vigenciaHasta: dto.vigenciaHasta ? desdeFechaISO(dto.vigenciaHasta) : undefined,
@@ -453,7 +453,11 @@ export class UsuariosService {
     const datos: UsuarioConPerfil = { ...creado, salas, pack };
 
     return {
-      ...aUsuarioDetalle(datos, true, await this.pagos.perfilAlDia(this.prisma.db, datos.perfil.id)),
+      ...aUsuarioDetalle(
+        datos,
+        true,
+        await this.pagos.perfilAlDia(this.prisma.db, datos.perfil.id),
+      ),
       passwordTemporal,
       advertencias: this.advertenciasDeAlta(rol, salas, pack),
     };

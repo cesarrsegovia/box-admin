@@ -24,9 +24,7 @@ describe('BootstrapKeyGuard', () => {
 
   it('bloquea cuando el header no viene', () => {
     const guard = new BootstrapKeyGuard(configConClave(CLAVE_VALIDA));
-    expect(() => guard.canActivate(contextoConHeader(undefined))).toThrow(
-      UnauthorizedException,
-    );
+    expect(() => guard.canActivate(contextoConHeader(undefined))).toThrow(UnauthorizedException);
   });
 
   it('bloquea con una clave incorrecta de la misma longitud', () => {
@@ -39,32 +37,24 @@ describe('BootstrapKeyGuard', () => {
 
   it('bloquea con una clave de longitud distinta sin que timingSafeEqual reviente', () => {
     const guard = new BootstrapKeyGuard(configConClave(CLAVE_VALIDA));
-    expect(() => guard.canActivate(contextoConHeader('corta'))).toThrow(
-      UnauthorizedException,
-    );
+    expect(() => guard.canActivate(contextoConHeader('corta'))).toThrow(UnauthorizedException);
   });
 
   it('bloquea cuando el header llega repetido como array de strings', () => {
     const guard = new BootstrapKeyGuard(configConClave(CLAVE_VALIDA));
-    expect(() =>
-      guard.canActivate(contextoConHeader([CLAVE_VALIDA, CLAVE_VALIDA])),
-    ).toThrow(UnauthorizedException);
+    expect(() => guard.canActivate(contextoConHeader([CLAVE_VALIDA, CLAVE_VALIDA]))).toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('bloquea con BOOTSTRAP_KEY vacia y header vacio, sin llegar a timingSafeEqual', () => {
     const guard = new BootstrapKeyGuard(configConClave(''));
-    expect(() => guard.canActivate(contextoConHeader(''))).toThrow(
-      UnauthorizedException,
-    );
+    expect(() => guard.canActivate(contextoConHeader(''))).toThrow(UnauthorizedException);
   });
 
   it('bloquea con BOOTSTRAP_KEY vacia sin importar el header', () => {
     const guard = new BootstrapKeyGuard(configConClave(''));
-    expect(() => guard.canActivate(contextoConHeader(CLAVE_VALIDA))).toThrow(
-      UnauthorizedException,
-    );
-    expect(() => guard.canActivate(contextoConHeader(undefined))).toThrow(
-      UnauthorizedException,
-    );
+    expect(() => guard.canActivate(contextoConHeader(CLAVE_VALIDA))).toThrow(UnauthorizedException);
+    expect(() => guard.canActivate(contextoConHeader(undefined))).toThrow(UnauthorizedException);
   });
 });

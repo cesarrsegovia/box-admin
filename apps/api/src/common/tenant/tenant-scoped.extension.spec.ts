@@ -128,9 +128,9 @@ describe('aplicarScopeDeTenant', () => {
     });
 
     it('lanza MissingTenantContextError en una escritura', () => {
-      expect(() =>
-        aplicarScopeDeTenant('Usuario', 'create', { data: { email: 'a@b.c' } }),
-      ).toThrow(MissingTenantContextError);
+      expect(() => aplicarScopeDeTenant('Usuario', 'create', { data: { email: 'a@b.c' } })).toThrow(
+        MissingTenantContextError,
+      );
     });
   });
 
@@ -138,17 +138,13 @@ describe('aplicarScopeDeTenant', () => {
     it('deja la query intacta', () => {
       const args = { where: { email: 'a@b.c' } };
 
-      expect(runUnscoped(() => aplicarScopeDeTenant('Usuario', 'findFirst', args))).toEqual(
-        args,
-      );
+      expect(runUnscoped(() => aplicarScopeDeTenant('Usuario', 'findFirst', args))).toEqual(args);
     });
 
     it('permite findUnique con el índice compuesto', () => {
       const args = { where: { tenantId_email: { tenantId: 't1', email: 'a@b.c' } } };
 
-      expect(
-        runUnscoped(() => aplicarScopeDeTenant('Usuario', 'findUnique', args)),
-      ).toEqual(args);
+      expect(runUnscoped(() => aplicarScopeDeTenant('Usuario', 'findUnique', args))).toEqual(args);
     });
 
     it('permite reasignar el tenantId (es la via explicita para hacerlo)', () => {
@@ -160,9 +156,7 @@ describe('aplicarScopeDeTenant', () => {
 
   describe('en contexto de tenant', () => {
     it('inyecta el filtro en una query sin where', () => {
-      const resultado = runWithTenant('t1', () =>
-        aplicarScopeDeTenant('Usuario', 'findMany', {}),
-      );
+      const resultado = runWithTenant('t1', () => aplicarScopeDeTenant('Usuario', 'findMany', {}));
 
       expect(resultado).toEqual({ where: { tenantId: 't1' } });
     });
@@ -243,9 +237,9 @@ describe('aplicarScopeDeTenant', () => {
     });
 
     it('filtra tambien deleteMany y count', () => {
-      expect(runWithTenant('t1', () => aplicarScopeDeTenant('Usuario', 'deleteMany', {}))).toEqual(
-        { where: { tenantId: 't1' } },
-      );
+      expect(runWithTenant('t1', () => aplicarScopeDeTenant('Usuario', 'deleteMany', {}))).toEqual({
+        where: { tenantId: 't1' },
+      });
       expect(runWithTenant('t1', () => aplicarScopeDeTenant('Usuario', 'count', {}))).toEqual({
         where: { tenantId: 't1' },
       });
@@ -320,9 +314,7 @@ describe('aplicarScopeDeTenant', () => {
     });
 
     it.each(operaciones)('%s sobre Tenant queda restringido al propio id', (operacion) => {
-      const resultado = runWithTenant('t1', () =>
-        aplicarScopeDeTenant('Tenant', operacion, {}),
-      );
+      const resultado = runWithTenant('t1', () => aplicarScopeDeTenant('Tenant', operacion, {}));
 
       expect(resultado).toEqual({ where: { id: 't1' } });
     });
@@ -430,9 +422,9 @@ describe('aplicarScopeDeTenant', () => {
     });
 
     it('el modelo sin clasificar se detecta incluso en unscoped', () => {
-      expect(() =>
-        runUnscoped(() => aplicarScopeDeTenant('Factura', 'findMany', {})),
-      ).toThrow(ModeloNoClasificadoError);
+      expect(() => runUnscoped(() => aplicarScopeDeTenant('Factura', 'findMany', {}))).toThrow(
+        ModeloNoClasificadoError,
+      );
     });
   });
 

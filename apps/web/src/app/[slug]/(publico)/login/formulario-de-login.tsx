@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import type { UsuarioPublico } from '@boxadmin/shared';
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
+import { destinoPorRol } from '@/lib/destino-por-rol';
 import { rutaDeRetornoSegura } from '@/lib/ruta-de-retorno';
 
 const esquema = z.object({
@@ -42,9 +44,12 @@ export function FormularioDeLogin({ slug, volverA }: { slug: string; volverA?: s
       return;
     }
 
+    const { usuario } = (await respuesta.json()) as { usuario: UsuarioPublico };
+
     // El destino sale SIEMPRE de `rutaDeRetornoSegura`, nunca del parametro
-    // crudo: `volverA` lo escribe quien arme el enlace al login.
-    router.push(rutaDeRetornoSegura(volverA, slug));
+    // crudo. Lo unico que cambia es el valor por defecto, que ahora depende
+    // del rol: antes todo el mundo caia en el calendario.
+    router.push(rutaDeRetornoSegura(volverA, slug, destinoPorRol(usuario.rol, slug)));
   }
 
   return (

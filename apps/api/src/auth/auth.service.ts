@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type {
@@ -77,8 +73,7 @@ export class AuthService {
   /** Crea el primer usuario de un tenant, siempre con rol ADMIN_SALON. */
   async register(dto: RegisterDto): Promise<UsuarioPublico> {
     const tenant = await runUnscoped(
-      async () =>
-        await this.prisma.db.tenant.findUnique({ where: { slug: dto.tenantSlug } }),
+      async () => await this.prisma.db.tenant.findUnique({ where: { slug: dto.tenantSlug } }),
     );
     if (!tenant) throw new UnauthorizedException('Tenant inexistente');
 

@@ -85,3 +85,109 @@ describe('rutaDeRetornoSegura', () => {
     expect(rutaDeRetornoSegura('/mi-gym', SLUG)).toBe(CALENDARIO);
   });
 });
+
+describe('rutaDeRetornoSegura · el destino por defecto tambien se valida', () => {
+  // `porDefecto` existe para que el login mande cada rol a su sitio, pero
+  // acaba en el mismo `router.push` que `volverA`. Si no se mirara, la puerta
+  // tendria una ventana abierta al lado.
+
+  it('un porDefecto hacia otro dominio cae al calendario del slug propio', () => {
+    expect(rutaDeRetornoSegura(undefined, SLUG, 'https://evil.com')).toBe(CALENDARIO);
+  });
+
+  it('un porDefecto protocol-relative tampoco pasa', () => {
+    expect(rutaDeRetornoSegura(undefined, SLUG, '//evil.com')).toBe(CALENDARIO);
+  });
+
+  it('un porDefecto hacia OTRO gimnasio cae al calendario del propio', () => {
+    // El cruce de inquilinos no deja de serlo porque venga del tercer
+    // argumento en vez del query.
+    expect(rutaDeRetornoSegura(undefined, SLUG, '/otro-gimnasio/admin')).toBe(CALENDARIO);
+  });
+
+  it('un porDefecto legitimo SI se respeta: es el caso que el login necesita', () => {
+    expect(rutaDeRetornoSegura(undefined, SLUG, '/mi-gym/admin')).toBe('/mi-gym/admin');
+  });
+
+  it('un volverA invalido cae al porDefecto legitimo, no al calendario a secas', () => {
+    expect(rutaDeRetornoSegura('/otro-gimnasio/x', SLUG, '/mi-gym/admin')).toBe('/mi-gym/admin');
+  });
+
+  it('con los DOS invalidos queda el calendario, que es el unico cableado', () => {
+    expect(rutaDeRetornoSegura('https://evil.com', SLUG, '//evil.com')).toBe(CALENDARIO);
+  });
+
+  it('un volverA legitimo gana al porDefecto', () => {
+    expect(rutaDeRetornoSegura('/mi-gym/checkin?f=abc', SLUG, '/mi-gym/admin')).toBe(
+      '/mi-gym/checkin?f=abc',
+    );
+  });
+
+  it('las seis comprobaciones valen igual para porDefecto', () => {
+    // Las mismas trampas que para `volverA`: barra invertida, control y `..`.
+    expect(rutaDeRetornoSegura(undefined, SLUG, '/mi-gym/x\\..\\..')).toBe(CALENDARIO);
+    expect(rutaDeRetornoSegura(undefined, SLUG, '/mi-gym/\tx')).toBe(CALENDARIO);
+    expect(rutaDeRetornoSegura(undefined, SLUG, '/mi-gym/../otro-gimnasio/x')).toBe(CALENDARIO);
+    expect(rutaDeRetornoSegura(undefined, SLUG, '/mi-gym')).toBe(CALENDARIO);
+    expect(rutaDeRetornoSegura(undefined, SLUG, '')).toBe(CALENDARIO);
+  });
+});
+
+describe('rutaDeRetornoSegura · los `..` codificados', () => {
+  // Todo lo de aqui esta MEDIDO con `new URL`, que es el mismo parser que usa
+  // el navegador, y no deducido. El parser decodifica `%2e` a `.` antes de
+  // normalizar, asi que `%2e%2e` sube de directorio igual que `..` literal:
+  // `/mi-gym/%2e%2e/otro-gimnasio/x` resuelve a `/otro-gimnasio/x`.
+  //
+  // No es un open redirect (la ruta sigue siendo relativa y no sale del
+  // dominio): es un CRUCE DE INQUILINOS, que en este sistema es peor.
+
+  it('rechaza %2e%2e, que el navegador resuelve igual que ..', () => {
+    expect(rutaDeRetornoSegura('/mi-gym/%2e%2e/otro-gimnasio/x', SLUG)).toBe(CALENDARIO);
+  });
+
+  it('rechaza %2E%2E en mayusculas, que resuelve igual', () => {
+    expect(rutaDeRetornoSegura('/mi-gym/%2E%2E/otro-gimnasio/x', SLUG)).toBe(CALENDARIO);
+  });
+
+  it('rechaza las mezclas de punto literal y codificado', () => {
+    // Medido: los tres resuelven a `/otro-gimnasio/x`.
+    expect(rutaDeRetornoSegura('/mi-gym/.%2e/otro-gimnasio/x', SLUG)).toBe(CALENDARIO);
+    expect(rutaDeRetornoSegura('/mi-gym/%2e./otro-gimnasio/x', SLUG)).toBe(CALENDARIO);
+    expect(rutaDeRetornoSegura('/mi-gym/%2e%2E/otro-gimnasio/x', SLUG)).toBe(CALENDARIO);
+  });
+
+  it('rechaza el %2e%2e final, que resuelve a la raiz del dominio', () => {
+    // Medido: `/mi-gym/%2e%2e` resuelve a `/`, fuera del gimnasio.
+    expect(rutaDeRetornoSegura('/mi-gym/%2e%2e', SLUG)).toBe(CALENDARIO);
+  });
+
+  it('ACEPTA la doble codificacion, que no es un bypass', () => {
+    // Medido: el parser decodifica UNA vez, asi que `%252e%252e` se queda en
+    // `%2e%2e` y nunca llega a ser `..`. El pathname resuelto conserva el
+    // segmento entero dentro de `/mi-gym/`.
+    expect(rutaDeRetornoSegura('/mi-gym/%252e%252e/x', SLUG)).toBe('/mi-gym/%252e%252e/x');
+  });
+
+  it('ACEPTA un %2e suelto, que es un solo punto y no sube', () => {
+    // Medido: `/mi-gym/%2e/x` resuelve a `/mi-gym/x`, dentro del gimnasio.
+    expect(rutaDeRetornoSegura('/mi-gym/%2e/x', SLUG)).toBe('/mi-gym/%2e/x');
+  });
+
+  it('un %2e%2e en la QUERY no cuenta: la comprobacion mira solo el camino', () => {
+    // Medido: `/mi-gym/x?v=%2e%2e` resuelve a `/mi-gym/x`. La query no sube de
+    // directorio, y el alumno del QR necesita que su `?f=` llegue entero.
+    expect(rutaDeRetornoSegura('/mi-gym/checkin?f=%2e%2e', SLUG)).toBe('/mi-gym/checkin?f=%2e%2e');
+  });
+
+  it('rechaza un % suelto, que ni siquiera se puede decodificar', () => {
+    // `decodeURIComponent` lanza `URIError`. Rechazar es deliberado: una ruta
+    // que no se puede decodificar no es una ruta legitima.
+    expect(rutaDeRetornoSegura('/mi-gym/100%/x', SLUG)).toBe(CALENDARIO);
+    expect(rutaDeRetornoSegura('/mi-gym/%zz/x', SLUG)).toBe(CALENDARIO);
+  });
+
+  it('el porDefecto tambien pasa por esto', () => {
+    expect(rutaDeRetornoSegura(undefined, SLUG, '/mi-gym/%2e%2e/otro-gimnasio/x')).toBe(CALENDARIO);
+  });
+});

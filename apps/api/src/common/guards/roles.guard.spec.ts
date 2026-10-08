@@ -1,11 +1,6 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import {
-  ROLES_USUARIO,
-  rolAlcanza,
-  type RolAsignable,
-  type RolUsuario,
-} from '@boxadmin/shared';
+import { ROLES_USUARIO, rolAlcanza, type RolAsignable, type RolUsuario } from '@boxadmin/shared';
 import { RolesGuard } from './roles.guard';
 
 function contextoCon(user: { rol: RolUsuario } | undefined): ExecutionContext {
@@ -27,9 +22,9 @@ describe('RolesGuard', () => {
   });
 
   it('deja pasar cuando el rol coincide exactamente', () => {
-    expect(
-      guardQueExige(['ADMIN_SALON']).canActivate(contextoCon({ rol: 'ADMIN_SALON' })),
-    ).toBe(true);
+    expect(guardQueExige(['ADMIN_SALON']).canActivate(contextoCon({ rol: 'ADMIN_SALON' }))).toBe(
+      true,
+    );
   });
 
   it('deja pasar cuando el rol es superior en la jerarquia', () => {
@@ -45,9 +40,9 @@ describe('RolesGuard', () => {
   });
 
   it('bloquea siempre a FANTASMA, que es un rol tecnico sin login', () => {
-    expect(() =>
-      guardQueExige(['ALUMNO']).canActivate(contextoCon({ rol: 'FANTASMA' })),
-    ).toThrow(ForbiddenException);
+    expect(() => guardQueExige(['ALUMNO']).canActivate(contextoCon({ rol: 'FANTASMA' }))).toThrow(
+      ForbiddenException,
+    );
   });
 
   it('bloquea si no hay usuario en la request', () => {
@@ -70,9 +65,7 @@ describe('RolesGuard', () => {
 
   it('bloquea con dos roles requeridos cuando el usuario no alcanza ninguno', () => {
     expect(() =>
-      guardQueExige(['SUPERADMIN', 'ADMIN_OPERATIVO']).canActivate(
-        contextoCon({ rol: 'ALUMNO' }),
-      ),
+      guardQueExige(['SUPERADMIN', 'ADMIN_OPERATIVO']).canActivate(contextoCon({ rol: 'ALUMNO' })),
     ).toThrow(ForbiddenException);
   });
 });

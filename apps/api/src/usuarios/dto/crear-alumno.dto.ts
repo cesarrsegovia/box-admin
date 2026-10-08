@@ -48,7 +48,6 @@ export class CrearAlumnoDto {
   @IsNotEmpty()
   packId?: string;
 
-
   @IsOptional()
   @IsInt()
   @Min(0)
