@@ -1635,3 +1635,222 @@ La Fase 6 esta completa, 6A y 6B. Lo que queda del PDF es **el panel del admin**
 las dos mitades comparten: la 6A entrego siete reportes sin pantalla y la 6B la configuracion del QR y
 de la web sin pantalla. Es una fase entera —login de admin, layout, navegacion— y es el orden correcto:
 un grafico bonito sobre un numero equivocado es peor que ningun grafico.
+
+# Progreso Fase 7 — El panel del admin: armazón y Personas
+
+**Spec:** `docs/superpowers/specs/2026-10-06-fase7-panel-personas.md`
+**Plan:** `docs/superpowers/plans/2026-10-06-fase7-panel-personas.md` (13 tareas)
+
+La primera pantalla de administración del proyecto. Hasta aquí `apps/web` era la PWA del alumno más la
+landing: todo lo de admin se hacía con `curl`.
+
+- [x] T1 — El destino por rol
+- [x] T2 — El service worker no cachea el panel
+- [x] T3 — La puerta del panel
+- [x] T4 — El armazón y la navegación por rol
+- [x] T5 — La puerta vieja del alumno exige rol
+- [x] T5b — El middleware que estampa la ruta _(no estaba en el plan)_
+- [x] T6 — Los hooks de Personas
+- [x] T7 — El listado
+- [x] T8-T10 — La ficha _(ejecutadas juntas: tocan los mismos archivos)_
+- [x] T11 — El alta y la contraseña temporal
+- [x] T12 — Invitaciones
+- [x] T13 — Verificación, README y tracker
+
+## Decisiones cerradas con Cesar
+
+1. **Se empieza por el armazón más Personas.** El panel completo son 69 endpoints en 20 módulos y cinco
+   áreas; las otras cuatro heredan el armazón sin volver a discutirlo. Personas se eligió porque es la
+   que vuelve usable el sistema y porque **ejercita la frontera entre los dos roles de admin**: quince
+   de sus dieciséis endpoints piden `ADMIN_OPERATIVO` y uno, `reset-password`, pide `ADMIN_SALON`.
+2. **El panel vive en `apps/web`**, no en una app aparte: duplicar el BFF, la sesión, el cortafuegos y
+   el cliente HTTP son cuatro piezas de seguridad con dos implementaciones que hay que mantener iguales.
+3. **Un solo login**, con el destino decidido por el rol.
+4. **La puerta vieja del área de alumno se cierra en esta fase.**
+5. **Escritorio primero**, al revés que la PWA del alumno: son dos usos distintos.
+6. **La contraseña temporal tiene pantalla propia con confirmación explícita.**
+7. **El `volverA` se vuelve verdad con un middleware**, en vez de sacarlo. Ver abajo.
+
+## El error más grave de la fase, y es mío
+
+**Los grupos entre paréntesis no agregan segmento a la URL.** Lo escribí en la spec —«los grupos entre
+paréntesis no afectan la URL, el panel queda en `/{slug}/admin/...`»— y la primera mitad es cierta,
+razón por la cual la segunda **no se sigue**. `(admin)/usuarios/page.tsx` resolvía a
+`/{slug}/usuarios`.
+
+Lo que el build imprimía de verdad: ninguna ruta `/[slug]/admin`, el panel colgando del raíz del slug, y
+`(admin)/page.tsx` colisionando con la landing pública en `/[slug]`.
+
+Consecuencias en cascada: todos los enlaces del panel apuntaban a un 404, `destinoPorRol` mandaba al
+admin a un 404, y **la regla del service worker protegía una ruta que no existía** — o sea que las
+pantallas con nombres y emails se estuvieron cacheando igual.
+
+Arreglo: renombrar el directorio a `admin/`. **No rompió un solo test**, y ese es el dato que importa:
+los 672 tests convivieron con el error porque todos afirmaban sobre las rutas que yo _pretendía_
+construir, no sobre las que el framework generaba. El código y los tests compartían la misma suposición
+equivocada, así que no había forma de que se contradijeran. Sólo el build podía decirlo, y había que
+mirarlo.
+
+Lo encontró un agente que estaba investigando otra cosa y lo reportó «sin buscarlo».
+
+## El `volverA` era decorativo
+
+La puerta del panel cableaba `volverA=/${slug}/admin`, y el destino por rol de un admin **es
+exactamente esa misma URL**: el parámetro no cambiaba el aterrizaje de nadie.
+
+Es la forma exacta del `/stats/caja?salaId=` de la 6A, que validaba una sala y devolvía los números de
+todas. **Un parámetro que se valida y después se ignora.** Las dos pasaron desapercibidas porque el
+código hace algo visible con el parámetro —lo valida, lo pone en la URL— y sólo mirando el resultado
+final se ve que da igual.
+
+La causa era estructural: **un layout de Next no recibe `searchParams` ni el pathname**. El repo ya lo
+tenía documentado, porque la pantalla de check-in vive fuera del grupo `(alumno)` por esta misma razón.
+
+Se resolvió con un middleware que estampa la ruta en una cabecera. Y esa cabecera **no se confía**: un
+cliente puede mandarla, así que pasa por `rutaDeRetornoSegura` igual que el query, con tests que
+ejercitan el filtro real y no un doble.
+
+## Un bypass en código ya desplegado
+
+`rutaDeRetornoSegura` aceptaba `/mi-gym/%2e%2e/otro-gimnasio/x`. El parser del navegador decodifica
+`%2e` a `.` y aplica _remove_dot_segments_, así que resuelve a `/otro-gimnasio/x`: **es el bypass que la
+quinta comprobación existe para impedir, escrito en porcentaje.** No sale del dominio, así que no es un
+open redirect — es un **cruce de inquilinos**, la clase de bug más grave de este sistema, vivo desde la
+Fase 6B en la pantalla de check-in.
+
+Medido contra `new URL`, no deducido. De paso aparecieron tres formas que no estaban en mi lista:
+`.%2e`, `%2e.` y `/mi-gym/%2e%2e` al final, que resuelve a **la raíz del dominio**.
+
+El arreglo decodifica el camino dentro de esa comprobación, en `try/catch` que rechaza ante un `%`
+suelto. 16 → 33 tests, con **cero deleciones** en el diff de los originales, y tres de los nuevos
+afirman que algo **se acepta**, para que un endurecimiento de más también caiga.
+
+## `reset()` no limpia
+
+`MutationObserver.reset()` de TanStack **sólo quita el observador y programa el recolector**, con
+`gcTime` de cinco minutos por defecto. Leído en el fuente.
+
+O sea que `useMutation` deja la respuesta entera —contraseña temporal y ficha médica incluidas— en el
+`QueryClient` de toda la aplicación, legible desde la consola cinco minutos después de que el admin se
+fue del mostrador.
+
+**Dos agentes lo encontraron por caminos independientes**, uno por la ficha médica y otro por la
+contraseña. El segundo descubrió además que el comentario que el primero había dejado —«como todas las
+mutaciones de este archivo»— era falso, porque justo la suya no lo tenía.
+
+Arreglado con `gcTime: 0` **en el hook y no en la pantalla**: la limpieza desde el componente protege a
+un llamador, el hook protege a todos, incluidos los que todavía no existen. El test que lo fija **lee el
+archivo fuente**, para que una mutación nueva nazca cubierta en vez de tener que acordarse de sumarla a
+una lista.
+
+## Un borrado que no ocurre
+
+**`GET /usuarios/:id` omite `fichaMedica` salvo para `ADMIN_SALON` o el dueño, pero `PATCH` la acepta de
+cualquier operativo.** Dibujar el campo igual lo pinta vacío, y guardar un teléfono mandaría
+`fichaMedica: ''`: **historial clínico borrado por corregir un número**, sin que nadie lo vea.
+
+Resuelto condicionando el campo a `'fichaMedica' in usuario` —la clave del payload, no el rol dibujado
+aparte—, que es apoyarse en lo que el servidor mandó y no en una regla paralela que puede
+desincronizarse.
+
+## `queryByRole` no prueba que algo no exista en el DOM
+
+Errata mía, escrita en el plan y propagada a cuatro archivos. `*ByRole` consulta el **árbol de
+accesibilidad**, que ya excluye por su cuenta lo que lleva `hidden`, `aria-hidden` o `display:none`. Un
+botón con `hidden` pasó 63 tests escritos con esa creencia.
+
+Importa en los campos de formulario: uno oculto **sigue estando en el formulario y se manda igual**, y
+con `forbidNonWhitelisted` eso es un 400 que tira la petición entera.
+
+Afinado al medirlo, en las dos direcciones:
+
+- `queryByLabelText` **sí** ve lo que lleva `hidden`. De once aserciones sospechosas, sólo dos estaban
+  descubiertas; lo que salva al resto son las **listas blancas que leen los `<label>` del DOM**.
+- Y hay un caso donde `queryByRole` es **lo correcto**: cuando la pregunta _es_ sobre accesibilidad —
+  que un bloque se anuncie como `status` y no como `alert`, porque el alta sí se hizo y `alert`
+  interrumpe al lector de pantalla.
+
+## Las mutaciones abiertas: dieciséis de dieciséis
+
+Lo que cambia cada vez no es la familia —**agregar algo que no debería estar, sin quitar nada**— sino
+**dónde nadie estaba mirando**:
+
+| Dónde apareció                | El eje que nadie auditaba                                     |
+| ----------------------------- | ------------------------------------------------------------- |
+| un componente de cliente      | lo que cruza la frontera y viaja en el payload RSC            |
+| un `router.push`              | cuántas veces se llama, no con qué                            |
+| una lista blanca de enlaces   | comprobada con un solo rol                                    |
+| un atributo del DOM           | el token, que no era campo de `/auth/me`                      |
+| la caché de consultas         | lo que queda guardado, no lo que se pide                      |
+| la caché de **mutaciones**    | sobrevive cinco minutos al desmontaje                         |
+| una cabecera de **respuesta** | no llevaba el prefijo que la auditoría filtraba               |
+| `localStorage`                | sobrevive al logout y al cambio de turno                      |
+| el service worker             | **las cabeceras**: ningún test construía peticiones con ellas |
+| `console.*`                   | ningún spec de `apps/web` mencionaba `console`                |
+| `document.title`              | lo que la pantalla le dice al **navegador**, no al documento  |
+
+Las dos últimas son las que más lejos llegaron. El título de la página va a la base de historial **en
+disco**, al archivo de restauración de sesión, al conmutador de pestañas —visible para quien pase por
+detrás del mostrador—, a cualquier captura o pantalla compartida, y **es lo que toda SDK de analítica
+manda por defecto como nombre de página**: un gimnasio que enchufe analítica mañana publica sus códigos
+de invitación a un tercero sin que nadie lo decida.
+
+Los dos tapones quedaron **globales**, enganchados en `vitest.setup.ts`, así que cubren los 36 archivos
+y los que se escriban después.
+
+## Lo que los e2e encontraron y los unitarios no podían ver
+
+**El offline del alumno quedó a medias.** La lista blanca del service worker dejaba fuera
+`turnos-disponibles`, que antes cubría `defaultCache`. La vista de semana pide **dos** endpoints, así
+que sin red una consulta fallaba y pintaba una alerta al lado del banner. La regla se había probado
+contra la función, no contra lo que la aplicación necesita.
+
+**`e2e/navegar.ts` es frágil desde siempre**, y no es nuestro: `isVisible()` **no espera**. Mide a los
+~218 ms y los datos llegan a los ~337, así que se va a la semana siguiente y tres clics después falla
+sobre una semana que legítimamente no tiene turnos. No es mala suerte: la primera mirada cae **siempre**
+antes de los datos, y lo único que decide si pasa es si el fetch alcanza a completarse durante la ida y
+vuelta de Playwright. Cualquier latencia nueva lo inclina.
+
+## Trampas nuevas
+
+**El middleware no va en `apps/web/middleware.ts`.** Next escanea un solo directorio, el padre de
+`appDir`; como `appDir` es `src/app`, el único sitio válido es `apps/web/src/middleware.ts`. En el sitio
+equivocado **no se carga y sin aviso**: el archivo existe, los tests pasan, y en producción no corre
+nadie. Se confirma en el build, que imprime `ƒ Middleware`.
+
+**El heredoc del Bash tool se come las barras invertidas** aun con el delimitador entre comillas:
+`'/x\\..'` queda `'/x\..'` en disco, que en TS es `/x....`. El test falla por eso y no por el código.
+
+**El filtro de vitest es subcadena, no regex**: `vitest run "a|b|c"` no casa nada.
+
+**Con varios agentes en el mismo árbol el total de tests no sirve para comparar.** Lo que vale es que
+cada archivo preexistente conserve su número.
+
+## Estado final
+
+|               |                                                   |
+| ------------- | ------------------------------------------------- |
+| `apps/web`    | **676 tests / 36 suites**, tsc limpio, `build` OK |
+| Playwright    | **5 / 5**, los tres specs                         |
+| `apps/api`    | **1291 / 65**, sin tocar                          |
+| E2E de la API | **204 / 12**, sin tocar                           |
+
+## Deuda anotada
+
+- **El profesor sigue sin pantalla propia.** Sus endpoints existen desde la Fase 4; al llegar al área de
+  alumno se le ofrece cerrar sesión.
+- **No se puede vaciar `packId` ni las vigencias** de un alumno, ni **quitar un límite ya puesto** a una
+  clave de invitación: la API no lo admite. El formulario lo dice en pantalla en vez de fingirlo.
+- **`ActualizarInvitacionDto.packId` no lleva `@IsNotEmpty()`** y el de crear sí. Un `packId: ""` pasa la
+  validación y luego se trata como ausente.
+- `(admin)/invitaciones` importa `errores.ts` de `usuarios/[id]` por ruta relativa: si alguien lo mueve,
+  el formulario deja de compilar.
+- El contenedor `api` del compose **está roto**: le falta `@nestjs/throttler` en su `node_modules`. Los
+  e2e exigen levantar la API en el host.
+
+## Siguiente paso
+
+Las otras cuatro áreas del panel, en el orden que convenga: Operación diaria (~23 endpoints), Dinero
+(~9), Análisis (los siete reportes de la 6A, que siguen sin cara) y Configuración (~15, incluida la del
+check-in y la web pública de la 6B). Las cuatro heredan el armazón, la puerta, el middleware, la tabla,
+el diálogo de confirmación y los dos tapones globales.

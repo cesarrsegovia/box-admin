@@ -1596,13 +1596,13 @@ Esta fase entrega **el armazón y el área de Personas**. El panel completo son 
 módulos, agrupados en cinco áreas —Operación diaria, Personas, Dinero, Análisis y Configuración— y las
 otras cuatro son fases posteriores que heredan el armazón sin volver a discutirlo.
 
-| Ruta | Qué es | Rol |
-| ---- | ------ | --- |
-| `/{slug}/admin` | Inicio | `ADMIN_OPERATIVO` |
-| `/{slug}/admin/usuarios` | Listado, con filtros en la URL | `ADMIN_OPERATIVO` |
-| `/{slug}/admin/usuarios/nuevo` | Alta de alumno o profesor | `ADMIN_OPERATIVO` |
-| `/{slug}/admin/usuarios/{id}` | La ficha de la persona | `ADMIN_OPERATIVO` |
-| `/{slug}/admin/invitaciones` | Claves de invitación | `ADMIN_OPERATIVO` |
+| Ruta                           | Qué es                         | Rol               |
+| ------------------------------ | ------------------------------ | ----------------- |
+| `/{slug}/admin`                | Inicio                         | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/usuarios`       | Listado, con filtros en la URL | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/usuarios/nuevo` | Alta de alumno o profesor      | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/usuarios/{id}`  | La ficha de la persona         | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/invitaciones`   | Claves de invitación           | `ADMIN_OPERATIVO` |
 
 **No agrega ni modifica un solo endpoint de la API.** Todo lo que el panel hace ya existía.
 
@@ -1614,11 +1614,11 @@ otras cuatro son fases posteriores que heredan el armazón sin volver a discutir
 
 Rechaza en tres casos, y el tercero **no de la misma manera**:
 
-| Caso | Qué hace |
-| ---- | -------- |
-| Sin sesión | Al login, conservando a dónde iba |
-| Sesión de otro gimnasio | Al login, igual |
-| **Rol insuficiente** | **Una pantalla**, no un redirect |
+| Caso                    | Qué hace                          |
+| ----------------------- | --------------------------------- |
+| Sin sesión              | Al login, conservando a dónde iba |
+| Sesión de otro gimnasio | Al login, igual                   |
+| **Rol insuficiente**    | **Una pantalla**, no un redirect  |
 
 El tercero no puede ir al login y no es una preferencia: sería un bucle sin salida. El destino pasaría
 la lista blanca por ser del mismo gimnasio, el login traería de vuelta al panel, y el panel rebotaría
