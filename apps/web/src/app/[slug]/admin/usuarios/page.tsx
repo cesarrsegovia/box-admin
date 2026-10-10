@@ -1,11 +1,12 @@
 'use client';
 
 import { Suspense, useEffect } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { RolUsuario, UsuarioResumen } from '@boxadmin/shared';
 import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
+import { destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useUsuarios } from '@/hooks/use-usuarios';
 import { FiltrosDePersonas, filtrosDeLaBusqueda } from './filtros';
 
@@ -48,6 +49,7 @@ const COLUMNAS: readonly ColumnaDeTabla<UsuarioResumen>[] = [
 function ListadoDePersonas() {
   const { slug } = useParams<{ slug: string }>();
   const parametros = useSearchParams();
+  const ruta = usePathname();
   const router = useRouter();
 
   const filtros = filtrosDeLaBusqueda(parametros);
@@ -61,8 +63,11 @@ function ListadoDePersonas() {
     // El layout del panel ya mira la sesion en el servidor, pero eso pasa una
     // vez al entrar: el token puede caducar con la pantalla abierta, y entonces
     // el unico que se entera es este 401.
-    router.push(`/${slug}/login?volverA=${encodeURIComponent(`/${slug}/admin/usuarios`)}`);
-  }, [sesionCaducada, router, slug]);
+    // El destino se arma en `lib/destino-de-login` y no aqui: conserva los
+    // filtros, que viven en la URL. Volver del login al listado entero es
+    // perder la busqueda que la persona acababa de armar.
+    router.push(destinoDeLoginDesde(ruta, parametros.toString(), slug));
+  }, [sesionCaducada, router, ruta, parametros, slug]);
 
   const hayFiltros = Object.keys(filtros).length > 0;
 

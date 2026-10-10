@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
+import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useUsuario } from '@/hooks/use-usuarios';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 import { BloqueDeAcciones } from './bloque-acciones';
@@ -30,6 +31,7 @@ import { BloqueDeSalas } from './bloque-salas';
  */
 export default function PaginaDeFicha() {
   const { slug, id } = useParams<{ slug: string; id: string }>();
+  const ruta = usePathname();
   const router = useRouter();
   const rolDeQuienMira = useRolDeQuienMira();
 
@@ -42,8 +44,11 @@ export default function PaginaDeFicha() {
 
     // El layout del panel mira la sesion en el servidor, pero eso pasa una vez
     // al entrar: el token puede caducar con la ficha abierta.
-    router.push(`/${slug}/login?volverA=${encodeURIComponent(`/${slug}/admin/usuarios/${id}`)}`);
-  }, [sesionCaducada, router, slug, id]);
+    // El destino se arma en `lib/destino-de-login` y no aqui, para que la
+    // forma del `volverA` viva en un solo sitio. `SIN_QUERY` es una decision
+    // con nombre: esta pantalla no tiene query que conservar.
+    router.push(destinoDeLoginDesde(ruta, SIN_QUERY, slug));
+  }, [sesionCaducada, router, ruta, slug]);
 
   if (isPending) return <p className="text-sm text-slate-500">Cargando…</p>;
 

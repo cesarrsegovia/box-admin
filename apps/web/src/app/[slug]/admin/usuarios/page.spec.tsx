@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { UsuarioResumen } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { rutaDeRetornoSegura } from '@/lib/ruta-de-retorno';
 import { clavesDeUsuarios } from '@/hooks/use-usuarios';
 import { filtrosDeLaBusqueda } from './filtros';
 import PaginaDePersonas from './page';
@@ -391,6 +392,36 @@ describe('cuando la peticion falla', () => {
       `/mi-gym/login?volverA=${encodeURIComponent('/mi-gym/admin/usuarios')}`,
     );
     expect(empujar).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * EL `volverA` SE LLEVA LOS FILTROS.
+   *
+   * El test de arriba monta SIN filtros, asi que fijaba el destino en el unico
+   * caso donde no hay nada que conservar: pasaba igual con un `volverA` que se
+   * lleva el query y con uno que lo tira. Se midio — el helper que descarta el
+   * query lo dejaba en verde.
+   *
+   * Y lo que se tira no es un detalle: quien acaba de armar una busqueda vuelve
+   * del login al listado entero, sin entender por que. El repo ya tenia ese
+   * veredicto escrito en `admin/layout.tsx` sobre este mismo patron: «NO
+   * CONSERVABA NADA ... Parecia que funcionaba, que es peor que no estar».
+   *
+   * No se comprueba COMO se escribio la cadena sino que SOBREVIVE el viaje: el
+   * destino se pasa por `rutaDeRetornoSegura`, que es quien decide a donde
+   * aterriza de verdad.
+   */
+  it('el volverA conserva los filtros, y sobrevive a rutaDeRetornoSegura', async () => {
+    montar({ error: new ErrorDeApi('Sin sesion', 401), busqueda: '?tipo=profesor&activo=false' });
+
+    await esperar();
+
+    const [destino] = empujar.mock.calls[0] as [string];
+    const volverA = new URL(destino, 'http://x').searchParams.get('volverA');
+
+    expect(rutaDeRetornoSegura(volverA ?? undefined, 'mi-gym')).toBe(
+      '/mi-gym/admin/usuarios?tipo=profesor&activo=false',
+    );
   });
 });
 

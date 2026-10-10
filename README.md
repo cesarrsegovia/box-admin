@@ -1704,6 +1704,79 @@ inventarlas en el cliente daría la ilusión de una capacidad que no existe. **P
 Mandar la contraseña temporal por email. Y **quitar un límite ya puesto a una clave de invitación**: la
 API no sabe hacerlo, así que el formulario lo dice en pantalla en vez de fingirlo.
 
+## La publicación del mes — Fase 8
+
+La pantalla que genera el mes de un salón, en `/{slug}/admin/calendario`. Es la acción que mueve el
+gimnasio: crea los turnos y las reservas de todo un salón para todo un mes, y hasta aquí exigía un
+`curl`.
+
+Es la primera de **Operación diaria**, que son 28 endpoints en siete módulos. Esta fase entrega sólo el
+calendario — cuatro endpoints, de los que la pantalla usa tres. Turnos y reservas por un lado, y la
+configuración operativa (salas, horarios de profesor, vacaciones, ausencias) por otro, son fases
+posteriores.
+
+**No agrega ni modifica un solo endpoint de la API.**
+
+### No hay asistente, y es a propósito
+
+`previsualizar` es **de sólo lectura y síncrono**, y su resultado es **función pura de
+`(salaId, anio, mes)`**. Así que no existe estado de asistente que se pueda perder: los tres parámetros
+viven en la URL y todo lo demás se deriva de ellos. Recargar, compartir el enlace o volver con el botón
+de atrás dan exactamente lo mismo, sin una línea de máquina de estados.
+
+Inventar pasos con memoria habría sido crear una segunda fuente de verdad para algo que el servidor ya
+sabe: el mes conoce su propio estado, y el plan se deriva de la sala y el mes.
+
+⚠️ **El selector no ofrece meses pasados.** La API los rechaza con 400 —regenerar un mes que ya pasó
+crearía reservas para clases que ya ocurrieron— y un selector que ofrece lo que el servidor no acepta
+es una forma de mentir.
+
+### Conflictos y exclusiones no son lo mismo
+
+Un **conflicto** exige una decisión humana: `CUPO_LLENO`, `FUERA_DE_PACK`, `SALA_SIN_CUPO_BASE`. Una
+**exclusión** es una fecha que no genera reserva porque alguien cargó un dato a propósito:
+`AUSENCIA_SALA`, `VACACION_ALUMNO`.
+
+El contrato las separa y explica por qué: «un mes con tres alumnos de vacaciones produciría decenas de
+"conflictos" que nadie tiene que resolver y que esconderían los dos que sí». La pantalla respeta esa
+separación: los conflictos se ven **sin desplegar nada**; las exclusiones y las listas completas de
+turnos y reservas van plegadas.
+
+**Los conflictos nombran a quién afectan.** El `perfilId` se resuelve contra el listado de personas,
+porque un conflicto que no dice de quién es no se puede accionar. Si el id no está en la lista —un
+alumno dado de baja— el conflicto se muestra igual, sin nombre: nadie puede hacer desaparecer un
+conflicto de la pantalla.
+
+### Publicar
+
+Pide **`ADMIN_SALON`**, mientras que el resto del módulo pide `ADMIN_OPERATIVO`. El comentario del
+controlador dice por qué: «publicar crea reservas para todo el salón de golpe: es gestión, no operación
+diaria». El botón **no existe en el marcado** para quien no llega — no escondido con CSS — y sin
+proveedor de rol tampoco se dibuja: falla cerrada.
+
+Es **asíncrono**: devuelve 202 con un `jobId` y el mes queda en `BORRADOR`. Quien lo pasa a
+`HABILITADO` es el worker, cuando termina de escribir. La pantalla consulta el estado y **deja de
+consultar** cuando el trabajo termina, falla o no existe — un sondeo que no para es una petición cada
+tres segundos para siempre en la máquina del mostrador.
+
+El estado vive en el servidor, no en la pantalla, así que irse y volver muestra lo real. Eso es lo que
+hace segura la decisión de no bloquear: no hay nada que perder al irse.
+
+**Republicar un mes ya publicado es seguro**, y la pantalla lo explica en vez de advertir. El
+planificador es **incremental**: lee lo que ya existe y completa lo que falta. «Los que ya tienen
+profesora no se tocan: tener profesora significa que alguien lo decidió, y republicar el mes no puede
+deshacerlo».
+
+### Lo que esta fase NO trae
+
+Turnos y reservas, y la configuración operativa. **Editar el plan antes de publicar**: la API no lo
+admite, y la forma de cambiarlo es cambiar las rutinas, los horarios o las ausencias. **Despublicar o
+vaciar un mes**: no existe endpoint. **Publicar varias salas de una vez**: la ruta es por sala.
+
+Y **`publicadoPor` se muestra como id, no como nombre**. No es un olvido: el listado de personas filtra
+por alumnos y profesores y **nunca devuelve administradores**, así que resolver ese id contra él sería
+código muerto por construcción. Mostrarlo feo es mejor que perder el dato de auditoría.
+
 ## Tests
 
 Unitarios:

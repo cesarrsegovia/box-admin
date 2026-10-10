@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import type { ClaveInvitacionPublica } from '@boxadmin/shared';
 import { Confirmar } from '@/componentes/confirmar';
 import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
+import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useCambiarActiva, useInvitaciones } from '@/hooks/use-invitaciones';
 import { mensajeDeFallo } from '../usuarios/[id]/errores';
 import {
@@ -156,6 +157,7 @@ type Panel = { modo: 'crear' } | { modo: 'editar'; clave: ClaveInvitacionPublica
 
 function ListadoDeInvitaciones() {
   const { slug } = useParams<{ slug: string }>();
+  const ruta = usePathname();
   const router = useRouter();
 
   const { data, isPending, error, refetch } = useInvitaciones();
@@ -180,8 +182,13 @@ function ListadoDeInvitaciones() {
 
     // El layout del panel mira la sesion en el servidor, pero eso pasa una vez
     // al entrar: el token puede caducar con la pantalla abierta.
-    router.push(`/${slug}/login?volverA=${encodeURIComponent(`/${slug}/admin/invitaciones`)}`);
-  }, [sesionCaducada, router, slug]);
+    // El destino se arma en `lib/destino-de-login` y no aqui, para que la
+    // forma del `volverA` viva en un solo sitio. `SIN_QUERY` es una decision
+    // con nombre: esta pantalla no tiene query que conservar, y meterle un
+    // `useSearchParams` solo para esto le costaria una frontera de Suspense
+    // que hoy no necesita (ver el comentario del export por defecto).
+    router.push(destinoDeLoginDesde(ruta, SIN_QUERY, slug));
+  }, [sesionCaducada, router, ruta, slug]);
 
   function desactivar(): void {
     if (aDesactivar === null) return;

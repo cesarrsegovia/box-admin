@@ -1854,3 +1854,158 @@ Las otras cuatro áreas del panel, en el orden que convenga: Operación diaria (
 (~9), Análisis (los siete reportes de la 6A, que siguen sin cara) y Configuración (~15, incluida la del
 check-in y la web pública de la 6B). Las cuatro heredan el armazón, la puerta, el middleware, la tabla,
 el diálogo de confirmación y los dos tapones globales.
+
+# Progreso Fase 8 — La publicación del mes
+
+**Spec:** `docs/superpowers/specs/2026-10-08-fase8-publicacion-del-mes.md`
+**Plan:** `docs/superpowers/plans/2026-10-08-fase8-publicacion-del-mes.md` (6 tareas)
+
+La primera de **Operación diaria**, que son **28 endpoints en siete módulos** —no los 23 que estimé
+antes de contarlos—. Esta fase entrega sólo el calendario: cuatro endpoints, de los que la pantalla usa
+tres, pero es la pantalla más difícil del proyecto, con un trabajo en segundo plano y una acción que
+escribe para todo el salón de una vez.
+
+- [x] T1 — Los meses que se pueden ofrecer
+- [x] T2 — El hook y el sondeo
+- [x] T3 — Los selectores y el estado en la URL
+- [x] T4+T5 — Resumen, conflictos, publicar y seguir el trabajo _(juntas: mismos archivos)_
+- [x] T6 — Verificación, README y tracker
+
+## Decisiones cerradas con Cesar
+
+1. **Se empieza por la publicación del mes, sola.** Entrega por sí misma y es lo que obligaba a un `curl`.
+2. **Una sola pantalla con el estado en la URL**, no un asistente con pasos.
+3. **El trabajo se sigue en pantalla pero no la bloquea.**
+4. **Resumen y conflictos arriba; las listas completas, plegadas.**
+
+## Por qué no hay asistente
+
+`previsualizar` es **de sólo lectura y síncrono a propósito**, y su resultado es **función pura de
+`(salaId, anio, mes)`**. Entonces no existe estado de asistente que se pueda perder: con los tres
+parámetros en la URL, recargar, compartir el enlace o volver con el botón de atrás dan lo mismo, sin
+una línea de máquina de estados.
+
+Inventar pasos con memoria habría sido una segunda fuente de verdad para algo que el servidor ya sabe.
+
+## El `volverA` sin query: el mismo error, ya diagnosticado en este repo
+
+Las pantallas del panel armaban el `volverA` del 401 con el camino pelado. Al volver del login, el
+admin aterrizaba **sin sala y sin mes** — que en el calendario _son_ el estado.
+
+Lo notable es cómo apareció: no leyendo código, sino **un comentario del propio repo que ya había
+diagnosticado este error en otro lado** (`admin/layout.tsx`): «este `volverA` NO CONSERVABA NADA…
+Parecía que funcionaba, que es peor que no estar». El diagnóstico estaba escrito y nadie lo había
+aplicado hacia adelante.
+
+Arreglado con `lib/destino-de-login.ts`, **un helper y no cuatro líneas iguales**: cuatro sitios son
+cuatro donde el quinto se olvida. `SIN_QUERY` queda como constante **con nombre y docblock** para las
+pantallas que hoy no usan `useSearchParams`; un `''` suelto se lee como un default que nadie decidió.
+
+## Cuatro formas de que un test exista y no pueda fallar
+
+**Lo más transferible de esta fase.** Las cuatro pasan desapercibidas igual: el test está ahí, tiene
+buen nombre, y pasa — pero pasaría igual con el bug puesto. Y son peores que un test ausente, porque el
+ausente se nota leyendo la lista y éstos ocupan el lugar del que haría falta.
+
+### 1. Autorreferencial
+
+El `it.each` de `armazon.spec.tsx` comparaba el DOM contra `enlacesPara(rol)`. Agregar una entrada a
+`ENLACES_DEL_PANEL` **mueve los dos lados a la vez** y el test sigue en verde. Tenía dientes para lo que
+fue escrito —un enlace cableado en el JSX bajo un `if` de rol— y **ninguno** para «una entrada de más en
+la lista declarativa».
+
+**Una lista blanca derivada del mismo sitio que audita no es una lista blanca.** Tiene que estar escrita
+a mano en algún punto de la cadena: esa redundancia es lo que la hace capaz de contradecir al código.
+
+Ese mismo archivo ya había enseñado otra forma de fallar en la Fase 7: la lista blanca **comprobada con
+un solo rol**.
+
+### 2. Premisa destruida por el código bajo prueba
+
+El test «el último día del mes todavía ofrece ese mes» le pasa un `Date` del día 30 justamente para
+ejercitar ese borde. La mutación `ahora.setUTCDate(1)` lo reescribe **antes de leerlo**: el borde se
+evapora y el test sigue verde, con un nombre que ya no describe nada.
+
+### 3. Montado en el caso ciego
+
+El test del 401 de `usuarios/page.spec.tsx` montaba **sin filtros**, o sea que fijaba el `volverA` en el
+único escenario donde no hay query que conservar: era **estructuralmente incapaz** de distinguir un
+destino que se lleva el query de uno que lo tira.
+
+Apareció dos veces más en la misma fase. Una, para rechazar una instrucción mía: resolver `publicadoPor`
+contra el listado de personas habría sido código muerto, porque ese listado **nunca devuelve
+administradores**, y el test que lo cubriera tendría que inventar un admin en una respuesta que la API
+no produce. Y otra, en el test de centinelas de un agente **a los diez minutos de escribirlo**: los dos
+alumnos sembrados resolvían, así que la distinción entre «pinto el nombre» y «pinto el id si no hay
+nombre» no existía. Se cerró con un tercer centinela ausente de la lista.
+
+### 4. Verde por casualidad ortográfica
+
+`expect(document.body.innerHTML).not.toMatch(/publicar/i)` pasaba **porque el texto vecino dice
+«Publicando…», que no contiene «publicar»**. El propio implementador lo detectó y dejó un comentario
+pidiendo que nadie cambiara esa palabra — y ahí está la señal: **una defensa que necesita un comentario
+rogando que nadie toque una palabra ya falló.** Se reemplazó por fijar el conjunto entero de `<button>`.
+
+## Las mutaciones abiertas: cuatro de cuatro, y tres ejes nuevos
+
+| #   | Qué se agregó                               | El eje que nadie auditaba                                                                           |
+| --- | ------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 17  | `ahora.setUTCDate(1)` «para normalizar»     | **el argumento recibido**: que la función sea pura en lo que **recibe**, no sólo en lo que devuelve |
+| 18  | `setQueryData` con la respuesta de publicar | **dos cachés distintas**: `gcTime: 0` tapa la de mutaciones y esto ensucia la de consultas          |
+| 19  | un `useEffect` que «normaliza» la URL       | **navegar al montar**, no al cambiar algo                                                           |
+| 20  | `data-perfiles` con todos los `perfilId`    | **los atributos**: los tests miraban texto, roles, recuentos y rutas                                |
+
+La 18 es la más instructiva: la defensa estaba puesta —`gcTime: 0` en todas las mutaciones— y el ataque
+usó el otro almacén. Además, TypeScript no la veía (`setQueryData` con una clave sin `DataTag` infiere
+`unknown`) y ningún test montaba los dos hooks sobre **el mismo** `QueryClient`, que es como viven en la
+pantalla real. El daño era exacto: el mes guardado pierde `publicacion`, el sondeo lee `undefined` y
+**para** — justo en el único momento para el que existe.
+
+La 20 es la más grande en volumen: el plan trae las **listas completas**, así que no era un id suelto
+sino todos los alumnos de la sala en el código fuente de la página.
+
+## Trampas nuevas
+
+**El mes corrido no distingue «mes 13» de «enero del año siguiente»**: `2026*12 + 13` y `2027*12 + 1`
+son el mismo número. Un test de secuencia basado en meses corridos es por tanto **estructuralmente
+ciego** a una mutación que fije el año. Por eso el rango `1..12` va en su propio test: es una afirmación
+sobre la **forma** de cada elemento, no sobre la distancia entre dos.
+
+**La lista blanca, aplicada a una secuencia.** Los tests miraban `[0]`, `slice(0, 3)` y
+`toHaveLength(12)`: un mes repetido en la posición 7 pasaba los siete. El agujero no era «la salida
+acepta campos de más» sino **«la cola de la lista acepta cualquier cosa»** — la cabeza siempre estuvo
+vigilada.
+
+**Con temporizadores falsos, `userEvent` se cuelga** esperando un `setTimeout` que nadie adelanta. En
+los specs del sondeo va `fireEvent`.
+
+**TanStack agrupa los avisos a los observadores en un temporizador**, y uno programado _durante_ un
+avance de cero no entra en ese mismo avance: los ayudantes de espera avanzan vueltas de 1 ms, no de 0.
+
+## Estado final
+
+|                   |                                                   |
+| ----------------- | ------------------------------------------------- |
+| `apps/web`        | **802 tests / 41 suites**, tsc limpio, `build` OK |
+| `apps/api`        | **1291 / 65**, sin tocar                          |
+| `packages/shared` | **103 / 4**, sin tocar                            |
+
+De 676 tests en web al empezar la fase.
+
+## Deuda anotada
+
+- **El 401 del POST de publicar no manda al login** (sí muestra «Tu sesión caducó»). Cablearlo exige
+  unir la señal de la mutación con la de las dos consultas, y hacerlo a la ligera crea una **segunda
+  fuente de navegación**, que es justo lo que un test vigila. Queda para su propia tarea.
+- **`publicadoPor` se muestra como id.** Resolverlo exige tocar `usuarios.service.listar`, que filtra
+  por alumnos y profesores y nunca devuelve administradores.
+- Sigue en pie la deuda de las fases anteriores: el profesor sin pantalla propia, `main.ts` sin
+  `enableShutdownHooks()`, el envío masivo sin tope, la rotación de la clave de cifrado, y el contenedor
+  `api` del compose roto por falta de `@nestjs/throttler`.
+
+## Siguiente paso
+
+Lo que queda de Operación diaria: **turnos y reservas** (9 endpoints: ver y editar un turno, la
+suplencia, anotar a alguien a mano, cancelar, reasignar) y **la configuración operativa** (15: salas,
+horarios de profesor, vacaciones, ausencias). Después, las áreas de Dinero (~9) y Análisis (los siete
+reportes de la 6A, que siguen sin cara).

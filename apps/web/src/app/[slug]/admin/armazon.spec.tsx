@@ -12,6 +12,28 @@ function enlacesDelDocumento(): [string, string][] {
   ]);
 }
 
+/**
+ * Los enlaces que hoy ve CUALQUIERA de los tres roles que entran al panel.
+ *
+ * Esta escrito a mano a proposito: es la lista blanca. Derivarlo de
+ * `ENLACES_DEL_PANEL` haria que agregar una entrada cambiara a la vez lo que se
+ * pinta y lo que se espera, y el test se quedaria sin dientes justo para la
+ * familia de error que importa —agregar algo sin quitar nada—.
+ */
+const ENLACES_DE_HOY: [string, string][] = [
+  ['Inicio', '/mi-gym/admin'],
+  ['Calendario', '/mi-gym/admin/calendario'],
+  ['Personas', '/mi-gym/admin/usuarios'],
+  ['Invitaciones', '/mi-gym/admin/invitaciones'],
+];
+
+/** Los tres roles que entran al panel, y lo que le toca a cada uno. */
+const ESPERADO_POR_ROL = {
+  ADMIN_OPERATIVO: ENLACES_DE_HOY,
+  ADMIN_SALON: ENLACES_DE_HOY,
+  SUPERADMIN: ENLACES_DE_HOY,
+} as const;
+
 describe('la navegacion se dibuja desde el rol', () => {
   // LISTA BLANCA, no lista negra: se fija el conjunto ENTERO. Un enlace de mas
   // —el error que ningun test de presencia ve— rompe esto.
@@ -22,11 +44,7 @@ describe('la navegacion se dibuja desde el rol', () => {
       </Armazon>,
     );
 
-    expect(enlacesDelDocumento()).toEqual([
-      ['Inicio', '/mi-gym/admin'],
-      ['Personas', '/mi-gym/admin/usuarios'],
-      ['Invitaciones', '/mi-gym/admin/invitaciones'],
-    ]);
+    expect(enlacesDelDocumento()).toEqual(ESPERADO_POR_ROL.ADMIN_OPERATIVO);
   });
 
   // La lista blanca de arriba mira UN rol, y al panel entran tres. Un enlace
@@ -34,6 +52,11 @@ describe('la navegacion se dibuja desde el rol', () => {
   // nada, que es la familia de error que ningun test de presencia ve— se cuela
   // entero por ese hueco. Esto ata el DOM a la lista declarativa para TODOS los
   // roles que entran, no solo para el de abajo.
+  //
+  // Y la segunda afirmacion ata la lista declarativa a lo ESCRITO A MANO. Hace
+  // falta porque la primera, sola, se compara contra si misma: agregar una
+  // entrada a `ENLACES_DEL_PANEL` mueve los dos lados a la vez y el test sigue
+  // verde. Se midio — la Tarea 3 agrego Calendario y este test no se entero.
   it.each(['ADMIN_OPERATIVO', 'ADMIN_SALON', 'SUPERADMIN'] as const)(
     'un %s no ve ni un enlace que no este en la lista declarativa',
     (rol) => {
@@ -43,12 +66,13 @@ describe('la navegacion se dibuja desde el rol', () => {
         </Armazon>,
       );
 
-      expect(enlacesDelDocumento()).toEqual(
-        enlacesPara(rol).map((enlace) => [
-          enlace.texto,
-          enlace.ruta === '' ? '/mi-gym/admin' : `/mi-gym/admin/${enlace.ruta}`,
-        ]),
-      );
+      const deLaLista: [string, string][] = enlacesPara(rol).map((enlace) => [
+        enlace.texto,
+        enlace.ruta === '' ? '/mi-gym/admin' : `/mi-gym/admin/${enlace.ruta}`,
+      ]);
+
+      expect(enlacesDelDocumento()).toEqual(deLaLista);
+      expect(deLaLista).toEqual(ESPERADO_POR_ROL[rol]);
     },
   );
 
