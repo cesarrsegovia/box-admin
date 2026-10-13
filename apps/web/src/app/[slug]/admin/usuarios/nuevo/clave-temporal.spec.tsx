@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Advertencia } from '@boxadmin/shared';
 import { ClaveTemporal } from './clave-temporal';
-import { espiarLaConsola, SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
+import { SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
 
 /**
  * El centinela de esta pantalla: la contraseña temporal del alta.
@@ -58,22 +58,17 @@ function contenidoDe(almacen: Storage): Record<string, string> {
 }
 
 /**
- * El tapon de la consola, en CADA test de este archivo.
- *
- * No es una comprobacion mas: es la dimension de "lo que la pantalla dice fuera
- * del DOM", que no auditaba ningun spec de `apps/web`. Va en `afterEach` para
- * que cubra tambien los tests que se escriban despues sin acordarse de el.
+ * Lo que la pantalla dice FUERA DEL DOM lo vigila `vigilarLosCanalesDeSalida`
+ * desde `vitest.setup.ts`, en todos los specs: la consola, el titulo de la
+ * pagina y el nombre de la pestaña, contra los secretos del panel y contra lo
+ * que cada spec registre con `vigilarEstosDatos`. Dejo de ser manual cuando se
+ * vio que solo cinco de cuarenta y nueve specs se habian acordado de pedirlo.
  */
-let comprobarLaConsola: (centinela: string) => void = () => {};
-
 beforeEach(() => {
   escribirEnPortapapeles.mockResolvedValue(undefined);
-  comprobarLaConsola = espiarLaConsola();
 });
 
 afterEach(() => {
-  comprobarLaConsola(CLAVE);
-
   vi.restoreAllMocks();
   vi.clearAllMocks();
   localStorage.clear();

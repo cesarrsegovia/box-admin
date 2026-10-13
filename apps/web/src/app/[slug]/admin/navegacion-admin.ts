@@ -18,6 +18,7 @@ export interface EnlaceDelPanel {
 export const ENLACES_DEL_PANEL: readonly EnlaceDelPanel[] = [
   { ruta: '', texto: 'Inicio', minimo: 'ADMIN_OPERATIVO' },
   { ruta: 'calendario', texto: 'Calendario', minimo: 'ADMIN_OPERATIVO' },
+  { ruta: 'turnos', texto: 'Turnos', minimo: 'ADMIN_OPERATIVO' },
   { ruta: 'usuarios', texto: 'Personas', minimo: 'ADMIN_OPERATIVO' },
   { ruta: 'invitaciones', texto: 'Invitaciones', minimo: 'ADMIN_OPERATIVO' },
 ];

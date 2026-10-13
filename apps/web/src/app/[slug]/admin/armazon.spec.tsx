@@ -23,6 +23,7 @@ function enlacesDelDocumento(): [string, string][] {
 const ENLACES_DE_HOY: [string, string][] = [
   ['Inicio', '/mi-gym/admin'],
   ['Calendario', '/mi-gym/admin/calendario'],
+  ['Turnos', '/mi-gym/admin/turnos'],
   ['Personas', '/mi-gym/admin/usuarios'],
   ['Invitaciones', '/mi-gym/admin/invitaciones'],
 ];

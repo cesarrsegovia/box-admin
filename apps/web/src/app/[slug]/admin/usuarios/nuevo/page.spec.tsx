@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AltaUsuarioRespuesta, PackPublico, SalaPublica } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
 import PaginaDeAlta from './page';
-import { espiarLaConsola, SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
+import { SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
 
 /**
  * El centinela de esta pantalla: la contraseña temporal que devuelve el alta.
@@ -274,24 +274,17 @@ function volcadoDelCliente(cliente: QueryClient): string {
 }
 
 /**
- * El tapon de la consola, en CADA test de este archivo.
- *
- * Un `console.info('[alta]', respuesta)` en el manejador del alta sobrevivia a
- * las cincuenta pruebas de esta pantalla: todas miran el DOM, la URL, los
- * `push`, los cuerpos, los almacenes, el portapapeles y las dos caches, y
- * ninguna miraba lo que la pantalla DICE. Va en `afterEach` para que lo herede
- * tambien lo que se escriba despues.
+ * Lo que la pantalla dice FUERA DEL DOM lo vigila `vigilarLosCanalesDeSalida`
+ * desde `vitest.setup.ts`, en todos los specs: la consola, el titulo de la
+ * pagina y el nombre de la pestaña, contra los secretos del panel y contra lo
+ * que cada spec registre con `vigilarEstosDatos`. Dejo de ser manual cuando se
+ * vio que solo cinco de cuarenta y nueve specs se habian acordado de pedirlo.
  */
-let comprobarLaConsola: (centinela: string) => void = () => {};
-
 beforeEach(() => {
   escribirEnPortapapeles.mockResolvedValue(undefined);
-  comprobarLaConsola = espiarLaConsola();
 });
 
 afterEach(() => {
-  comprobarLaConsola(CLAVE);
-
   vi.restoreAllMocks();
   vi.clearAllMocks();
   localStorage.clear();

@@ -1777,6 +1777,89 @@ Y **`publicadoPor` se muestra como id, no como nombre**. No es un olvido: el lis
 por alumnos y profesores y **nunca devuelve administradores**, así que resolver ese id contra él sería
 código muerto por construcción. Mostrarlo feo es mejor que perder el dato de auditoría.
 
+## Turnos y reservas — Fase 9
+
+Las pantallas que permiten **tocar** el mes que la Fase 8 genera: ver un turno, editarlo, poner una
+suplencia, anotar a alguien, cancelarle y reasignarle la reserva. Es lo que recepción hace todo el día y
+hasta aquí exigía un `curl`.
+
+| Ruta                        | Qué es                                        | Rol               |
+| --------------------------- | --------------------------------------------- | ----------------- |
+| `/{slug}/admin/turnos`      | Listado con cinco filtros en la URL           | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/turnos/{id}` | La ficha: datos, profesora, anotados y borrar | `ADMIN_OPERATIVO` |
+
+### El endpoint que faltaba
+
+Es la única vez en tres fases que se tocó la API, y por un solo endpoint de lectura:
+**`GET /turnos/:id/reservas`**.
+
+El admin podía **crear** una reserva, **cancelarla** y **reasignarla** — pero **no tenía de dónde sacar
+el id** salvo de la respuesta del POST que él mismo acababa de hacer. Dos endpoints que existían y nadie
+podía usar. El único listado de alumnos de una clase (`GET /mis-clases/:turnoId/alumnos`) exige que el
+turno sea **del profesor que llama**.
+
+No se reusó `AlumnoEnClase`: tiene `perfilId`, `nombreCompleto` y `asistio`, y **no trae el id de la
+reserva**, que es justamente lo que hace falta. El contrato nuevo es `ReservaEnTurno`, y devuelve
+**todas** las reservas —activas y canceladas— porque un solo endpoint sirve a los dos usos y ver quién
+canceló recuperable es contexto que el admin quiere.
+
+### Cancelar no es una sola cosa
+
+Hay que elegir entre **recuperable** y **definitiva**, y la diferencia no es técnica: según
+`ConsumoDePack`, las clases consumidas son «las no canceladas **y las canceladas como DEFINITIVA**».
+
+⚠️ **Una definitiva le gasta la clase al alumno y una recuperable se la devuelve.**
+
+Por eso la pantalla no pregunta «¿tipo de cancelación?» con dos siglas: pregunta qué le pasa a la clase
+—«se la devolvemos: vuelve a su pack» / «se la gastamos: la pierde igual que si hubiera venido»— que es
+la decisión real y la que el admin tiene que poder explicarle a alguien. **Y no hay valor por defecto**:
+elegir por él sería decidir en nombre del alumno.
+
+No usa el diálogo de confirmación del resto del panel, y no es un olvido: un diálogo de sí/no no puede
+cargar una decisión con dos desenlaces distintos.
+
+### Los errores son casi todos de negocio
+
+Los mensajes son del servidor y se muestran **tal cual**: están escritos para quien está en el
+mostrador. Turno completo con su número, alguien que ya está anotado, una reserva ya cancelada, un
+destino lleno.
+
+⚠️ **Dos no se tratan como el resto del panel.**
+
+**Hay un 403 que no es de rol.** Reasignar a un turno de una sala a la que el alumno no tiene acceso
+devuelve «El usuario no tiene acceso a la sala del turno destino». El panel traduce los 403 a «hace
+falta ser tal rol», y acá eso sería **mentir**: el admin tiene el rol de sobra; el que no tiene acceso
+es el alumno. Este 403 muestra su mensaje tal cual.
+
+**Hay un 409 que sí es reintentable.** Cuando dos peticiones tocan el mismo turno a la vez: «Otra
+peticion esta tocando este turno ahora mismo; reintenta en unos segundos.» Los otros 409 piden **otra
+acción**; éste pide **lo mismo, más tarde**, y la pantalla ofrece reintentar.
+
+### Lo que la pantalla evita antes de que pase
+
+**Al anotar sólo se ofrece a quien tiene acceso a la sala** (`useUsuarios({ salaId })`), que es la
+condición exacta que el endpoint exige: traer el padrón entero sería ofrecer un 403 cuya causa no se ve.
+Pero **no se esconde a quien ya está anotado**, porque eso sí se ve —está en la lista de abajo— y
+esconderlo dejaría al admin buscando a alguien que no aparece.
+
+**Los destinos de reasignar llevan su ocupación escrita** (`18:00 · Flow (7/10)`), para que el 409 de
+«destino completo» se evite mirando.
+
+**Borrar dice de entrada si hay anotados**, porque la API da 409 con el número y el borrado es físico.
+Y aun así maneja el 409, por si alguien se anota en el medio. **El cupo bajo, en cambio, no se bloquea**:
+el recuento es el de la última lectura, y adivinar el 409 le negaría al admin un cambio que la API sí
+aceptaría.
+
+### Lo que esta fase NO trae
+
+**La configuración operativa** —salas, horarios de profesor, vacaciones, ausencias—, que son 12
+endpoints y cierran Operación diaria. **Crear un turno a mano**: `POST /turnos` existe, pero el camino
+normal es publicar el mes. **Pasar lista**, que es del profesor y tiene su propio rol. Y las **pantallas
+de profesor**, que siguen sin existir.
+
+**Mover un turno de sala** tampoco se ofrece, y no es una omisión: el DTO no lo acepta porque «mover un
+turno de sala invalidaría los accesos de quienes ya reservaron».
+
 ## Tests
 
 Unitarios:

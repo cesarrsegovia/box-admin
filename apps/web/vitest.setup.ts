@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
-import { vigilarElTitulo } from './src/test/espia-de-consola';
+import { vigilarLosCanalesDeSalida } from './src/test/espia-de-consola';
 
 /**
  * La limpieza del DOM entre tests NO es automatica con Vitest.
@@ -19,10 +19,14 @@ afterEach(() => {
 });
 
 /**
- * El tapon del titulo de la pagina, en TODOS los specs.
+ * EL TAPON DE LOS TRES CANALES QUE NO SON EL DOM, EN TODOS LOS SPECS.
  *
- * Va aqui y no en cada spec porque es una dimension, no un caso: ninguna
- * pantalla deberia tener que acordarse de pedirlo para que se le audite lo que
- * publica en `document.title`. Ver el comentario de `vigilarElTitulo`.
+ * `console.*`, `document.title` y `window.name`. Va aqui y no en cada spec
+ * porque es una DIMENSION, no un caso: ninguna pantalla deberia tener que
+ * acordarse de pedirlo para que se le audite lo que publica fuera del marcado,
+ * y la que no se acuerde es justamente la que lo va a necesitar.
+ *
+ * Vigila los secretos del panel siempre, y lo que cada spec agregue con
+ * `vigilarEstosDatos`. Ver el comentario de `vigilarLosCanalesDeSalida`.
  */
-vigilarElTitulo();
+vigilarLosCanalesDeSalida();

@@ -63,21 +63,44 @@ export function useReservasDelTurno(turnoId: string) {
 }
 
 /**
- * Tras cualquier escritura hay que invalidar el turno Y sus reservas Y la
- * lista: el cupo ocupado cambia en los tres sitios.
+ * Tras escribir SOBRE EL TURNO: la ficha y la lista.
+ *
+ * El nombre, la fecha, las horas, el cupo y la profesora salen en los dos
+ * sitios, asi que los dos se quedan rancios. LAS RESERVAS NO: ninguno de esos
+ * cinco campos cambia quien esta anotado.
  */
-function useInvalidar(turnoId: string) {
+function useInvalidarTurno(turnoId: string) {
   const cliente = useQueryClient();
 
   return () => {
     void cliente.invalidateQueries({ queryKey: clavesDeTurnos.uno(turnoId) });
-    void cliente.invalidateQueries({ queryKey: clavesDeTurnos.reservas(turnoId) });
     void cliente.invalidateQueries({ queryKey: ['turnos'] });
   };
 }
 
+/**
+ * Tras escribir SOBRE QUIEN ESTA ANOTADO: ademas, la lista de reservas.
+ *
+ * ESTO ESTABA JUNTO Y NO DEBIA. Mientras nadie observaba `reservas`, invalidarla
+ * tras cualquier escritura era un no-op y no se notaba. Desde que la ficha
+ * tiene bloque de anotados, esa consulta SI tiene observador: con la version
+ * unica, cambiar la hora de un turno —o poner una suplente— volvia a pedir la
+ * lista de quien esta anotado, con sus nombres, por una escritura que no la
+ * toca. Se vio escribiendo la lista blanca de `guardar los datos pide ESTO y
+ * nada mas`, que gano una lectura que nadie habia pedido.
+ */
+function useInvalidarAnotados(turnoId: string) {
+  const cliente = useQueryClient();
+  const invalidarTurno = useInvalidarTurno(turnoId);
+
+  return () => {
+    void cliente.invalidateQueries({ queryKey: clavesDeTurnos.reservas(turnoId) });
+    invalidarTurno();
+  };
+}
+
 export function useActualizarTurno(id: string) {
-  const invalidar = useInvalidar(id);
+  const invalidar = useInvalidarTurno(id);
 
   return useMutation<TurnoPublico, ErrorDeApi, Record<string, unknown>>({
     mutationFn: (datos) => pedir<TurnoPublico>(`/turnos/${id}`, { metodo: 'PATCH', cuerpo: datos }),
@@ -87,7 +110,7 @@ export function useActualizarTurno(id: string) {
 }
 
 export function useAsignarProfesor(id: string) {
-  const invalidar = useInvalidar(id);
+  const invalidar = useInvalidarTurno(id);
 
   return useMutation<TurnoPublico, ErrorDeApi, string | null>({
     mutationFn: (profesorId) =>
@@ -108,7 +131,7 @@ export function useBorrarTurno(id: string) {
 }
 
 export function useAnotar(turnoId: string) {
-  const invalidar = useInvalidar(turnoId);
+  const invalidar = useInvalidarAnotados(turnoId);
 
   return useMutation<ReservaCreada, ErrorDeApi, string>({
     mutationFn: (perfilId) =>
@@ -125,7 +148,7 @@ export function useAnotar(turnoId: string) {
  * en su nombre.
  */
 export function useCancelar(turnoId: string) {
-  const invalidar = useInvalidar(turnoId);
+  const invalidar = useInvalidarAnotados(turnoId);
 
   return useMutation<ReservaPublica, ErrorDeApi, { id: string; tipo: TipoCancelacion }>({
     mutationFn: ({ id, tipo }) =>
@@ -136,7 +159,7 @@ export function useCancelar(turnoId: string) {
 }
 
 export function useReasignar(turnoId: string) {
-  const invalidar = useInvalidar(turnoId);
+  const invalidar = useInvalidarAnotados(turnoId);
 
   return useMutation<ReservaPublica, ErrorDeApi, { id: string; destinoId: string }>({
     mutationFn: ({ id, destinoId }) =>

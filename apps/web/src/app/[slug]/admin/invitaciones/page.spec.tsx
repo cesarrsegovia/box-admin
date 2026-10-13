@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ClaveInvitacionPublica, PackPublico, SalaPublica } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
-import { espiarLaConsola, SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
+import { SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
 import { CAMPOS_DE_LA_CLAVE } from './formulario';
 import PaginaDeInvitaciones from './page';
 
@@ -328,27 +328,15 @@ async function enviar(sesion: Sesion, texto: string): Promise<void> {
   await esperar();
 }
 
-// ---------------------------------------------------------------------------
-// El tapon de la consola, en CADA test de este archivo
-// ---------------------------------------------------------------------------
-
 /**
- * Lo que la pantalla DICE fuera del DOM.
- *
- * Un `console.info('[invitaciones]', clave)` sobrevive a todos los tests de
- * abajo —miran el DOM, los cuerpos, las rutas, los almacenes y las dos caches—
- * y deja la credencial en el buffer de la consola de una maquina de mostrador
- * que usan cuatro personas por turno.
+ * Lo que la pantalla dice FUERA DEL DOM lo vigila `vigilarLosCanalesDeSalida`
+ * desde `vitest.setup.ts`, en todos los specs: la consola, el titulo de la
+ * pagina y el nombre de la pestaña, contra los secretos del panel y contra lo
+ * que cada spec registre con `vigilarEstosDatos`. Dejo de ser manual cuando se
+ * vio que solo cinco de cuarenta y nueve specs se habian acordado de pedirlo.
  */
-let comprobarLaConsola: (centinela: string) => void = () => {};
-
-beforeEach(() => {
-  comprobarLaConsola = espiarLaConsola();
-});
 
 afterEach(() => {
-  comprobarLaConsola(CODIGO);
-
   vi.restoreAllMocks();
   vi.clearAllMocks();
   localStorage.clear();

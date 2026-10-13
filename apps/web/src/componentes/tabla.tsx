@@ -26,11 +26,20 @@ export function Tabla<T>({
   filas,
   claveDeFila,
   enlaceDeFila,
+  etiqueta,
   vacio,
 }: {
   columnas: readonly ColumnaDeTabla<T>[];
   filas: readonly T[];
   claveDeFila: (fila: T) => string;
+  /**
+   * El nombre de la tabla, para cuando hay MAS DE UNA en la misma pantalla.
+   *
+   * Sin el, "los anotados" y "las canceladas" son dos tablas indistinguibles
+   * para quien navega con lector de pantalla, y tambien para un test que quiera
+   * afirmar sobre una de las dos.
+   */
+  etiqueta?: string;
   /** Si se da, la fila entera lleva a ese destino. */
   enlaceDeFila?: (fila: T) => string;
   /**
@@ -45,7 +54,7 @@ export function Tabla<T>({
   if (filas.length === 0) return <>{vacio}</>;
 
   return (
-    <table className="w-full border-collapse text-sm">
+    <table aria-label={etiqueta} className="w-full border-collapse text-sm">
       <thead className="hidden md:table-header-group">
         <tr className="border-b border-slate-200 text-left">
           {columnas.map((columna) => (

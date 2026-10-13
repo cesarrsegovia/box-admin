@@ -359,17 +359,36 @@ describe('useReasignar', () => {
 // Las invalidaciones: las TRES claves
 // ---------------------------------------------------------------------------
 
-/** Las tres claves que tiene que tocar cualquier escritura sobre un turno. */
+/**
+ * Las tres claves que tiene que tocar una escritura sobre LOS ANOTADOS.
+ *
+ * El cupo ocupado se ve en los tres sitios. Invalidar a medias se nota como
+ * "cancele y el cupo sigue igual" o "anote a alguien y la grilla no cambio".
+ */
 function esperarLasTres(espia: MockInstance<QueryClient['invalidateQueries']>) {
-  // El cupo ocupado se ve en los tres sitios. Invalidar a medias se nota como
-  // "cancele y el cupo sigue igual" o "anote a alguien y la grilla no cambio".
   expect(espia).toHaveBeenCalledWith({ queryKey: ['turno', 't1'] });
   expect(espia).toHaveBeenCalledWith({ queryKey: ['reservas-de-turno', 't1'] });
   expect(espia).toHaveBeenCalledWith({ queryKey: ['turnos'] });
 }
 
+/**
+ * Y las DOS —sin las reservas— que toca una escritura sobre EL TURNO.
+ *
+ * LA MITAD QUE IMPORTA ES LA NEGATIVA. Cambiar la hora, el cupo o la profesora
+ * no cambia quien esta anotado, y desde que la ficha tiene bloque de anotados
+ * esa consulta tiene observador: invalidarla de mas es volver a pedir la lista
+ * de nombres de los alumnos por una escritura que no los toca. Sin el
+ * `not.toHaveBeenCalledWith`, "invalida lo suyo" y "invalida todo" son
+ * indistinguibles, que es justo como esto llego hasta aqui.
+ */
+function esperarLasDosDelTurno(espia: MockInstance<QueryClient['invalidateQueries']>) {
+  expect(espia).toHaveBeenCalledWith({ queryKey: ['turno', 't1'] });
+  expect(espia).toHaveBeenCalledWith({ queryKey: ['turnos'] });
+  expect(espia).not.toHaveBeenCalledWith({ queryKey: ['reservas-de-turno', 't1'] });
+}
+
 describe('invalidacion tras una escritura', () => {
-  it('actualizar el turno invalida las tres', async () => {
+  it('actualizar el turno invalida las dos suyas, y NO las reservas', async () => {
     dobleDeFetch({ id: 't1' });
 
     const { result, cliente } = montar(() => useActualizarTurno('t1'));
@@ -378,10 +397,10 @@ describe('invalidacion tras una escritura', () => {
     result.current.mutate({ cupo: 12 });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    esperarLasTres(espia);
+    esperarLasDosDelTurno(espia);
   });
 
-  it('asignar la profesora invalida las tres', async () => {
+  it('asignar la profesora invalida las dos suyas, y NO las reservas', async () => {
     dobleDeFetch({ id: 't1' });
 
     const { result, cliente } = montar(() => useAsignarProfesor('t1'));
@@ -390,7 +409,7 @@ describe('invalidacion tras una escritura', () => {
     result.current.mutate('p1');
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    esperarLasTres(espia);
+    esperarLasDosDelTurno(espia);
   });
 
   it('anotar a alguien invalida las tres', async () => {

@@ -2009,3 +2009,172 @@ Lo que queda de Operación diaria: **turnos y reservas** (9 endpoints: ver y edi
 suplencia, anotar a alguien a mano, cancelar, reasignar) y **la configuración operativa** (15: salas,
 horarios de profesor, vacaciones, ausencias). Después, las áreas de Dinero (~9) y Análisis (los siete
 reportes de la 6A, que siguen sin cara).
+
+# Progreso Fase 9 — Turnos y reservas
+
+**Spec:** `docs/superpowers/specs/2026-10-10-fase9-turnos-y-reservas.md`
+**Plan:** `docs/superpowers/plans/2026-10-10-fase9-turnos-y-reservas.md` (6 tareas)
+
+Las pantallas que permiten **tocar** el mes que la Fase 8 genera. Sin esto se podía publicar un mes
+entero y después no mover nada de él.
+
+- [x] T1 — El endpoint que faltaba (API)
+- [x] T2 — Los hooks
+- [x] T3 — El listado de turnos
+- [x] T4 — La ficha: datos, profesora y borrar
+- [x] T5 — Los anotados: listar, anotar, cancelar, reasignar
+- [x] T6 — Verificación, README y tracker
+
+## La decisión que abrió la fase: tocar la API
+
+**No había forma de que un admin viera quién está anotado en un turno.** `TurnoPublico` trae un
+contador; el único listado de alumnos de una clase exige que el turno sea **del profesor que llama**.
+
+Resultado: el admin podía crear una reserva, cancelarla y reasignarla, pero **no tenía de dónde sacar el
+id** salvo de la respuesta del POST que él mismo acababa de hacer. **Dos endpoints que existían y nadie
+podía usar.**
+
+Es la misma forma del hueco de la Fase 6B con los ids de los testimonios, y se resolvió igual: **un
+endpoint de lectura que falta se agrega donde se descubre.** Fue el único cambio en `apps/api` de toda
+la fase.
+
+## Cancelar no es una sola cosa
+
+Según `ConsumoDePack`, las clases consumidas son «las no canceladas **y las canceladas como
+DEFINITIVA**». O sea: **una definitiva le gasta la clase al alumno y una recuperable se la devuelve.**
+
+La pantalla pregunta qué le pasa a la clase, no el tipo con dos siglas, y **no tiene valor por
+defecto**: elegir por él sería decidir en nombre del alumno. Es la misma clase de problema que la
+contraseña temporal de la Fase 7 —una decisión cuyo costo lo paga otra persona— y se resuelve igual,
+haciéndola explícita.
+
+## Las mutaciones abiertas: cinco de cinco, y cinco ejes nuevos
+
+| #   | Qué se agregó                                | El eje que nadie auditaba                                                                        |
+| --- | -------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 21  | un log con los nombres resueltos             | **la otra puerta por la que salen los datos**: la lista blanca cubre el _cuerpo_ de la respuesta |
+| 22  | `invalidateQueries()` sin filtro             | **el alcance de una invalidación**                                                               |
+| 23  | `history.replaceState` por detrás del router | **la History API real**, no el router doblado                                                    |
+| 24  | un `prefetchQuery` tras guardar              | **lo que una acción pide DESPUÉS de escribir**                                                   |
+| 25  | `window.name` con la lista de anotados       | **el único almacén no atado al origen**                                                          |
+
+**La 25 es la más aguda de las veinticinco.** `window.name` no es `sessionStorage` con otro nombre:
+`sessionStorage` muere al cambiar de origen y esto no, así que la lista de quién está anotado viaja **a
+la siguiente web que esa pestaña abra**, en una máquina de mostrador que usan cuatro personas por turno.
+
+**La 22 es la más instructiva.** Era invisible _por construcción_: los unitarios montan el hook solo, y
+con un único consumidor del `QueryClient` una invalidación global y una dirigida **son
+indistinguibles**. No faltaba un caso, faltaba el escenario donde la distinción existe. De ahí salió
+`src/test/consulta-ajena.ts`, que deja una consulta ajena y activa en el mismo cliente — con dato
+sembrado **y** `staleTime: Infinity`, porque con el valor por defecto la consulta nace rancia y el
+centinela no distingue nada.
+
+**La 21 tenía un agravante medido:** en los e2e la salida del `Logger` de Nest no aparece en absoluto,
+así que el e2e tampoco podría haberla visto nunca. Se cerró interceptando `process.stdout.write` y no
+`Logger.prototype.log`, porque espiar el método dejaría pasar `logger.debug` o `console.log` — verde por
+casualidad ortográfica.
+
+## Lo que fallaba estaba en nuestras propias defensas
+
+Esta fase casi no encontró bugs de producto. Encontró **defensas que no defendían**:
+
+**Los tapones compartidos eran uno, no tres.** `vitest.setup.ts` registraba sólo el del título;
+`espiarLaConsola()` había que engancharlo spec por spec, así que `console.*` estaba sin vigilar en 44 de
+49 archivos. **Y el del título era una lista negra de tres literales**: un `document.title` con el
+nombre de una profesora pasaba en verde. El patrón contra el que el repo predica, aplicado al revés y en
+infraestructura compartida. Lo encontraron **dos agentes por caminos independientes**.
+
+Ahora `vigilarLosCanalesDeSalida()` vigila los tres canales en los 49 specs contra **un registro común**
+que cada spec amplía con lo que sembró.
+
+**El analizador del `gcTime` tenía dos agujeros.** Delimitaba el bloque de opciones por sangría, así que
+una mutación declarada a otra profundidad **heredaba el `gcTime: 0` de la de al lado**. Y leía el fuente
+con comentarios, así que un «`gcTime: 0`, como todas las de este archivo» **vestía a una mutación
+desnuda**. Ahora cuenta llaves y analiza con comentarios y textos vaciados.
+
+**Y el guardia que debía impedir que el analizador pasara con las manos vacías era autorreferencial**:
+preguntaba «¿no saqué nada?» con la misma expresión que extraía. Se descubrió porque **el test que debía
+fallar no falló**.
+
+**El `gcTime` nunca se había propagado.** La regla se decidió y se midió en la Fase 7, pero
+`use-acciones-de-turno` y `use-comprobantes` quedaron fuera porque no los tocamos entonces — y
+`useSubirComprobante` guardaba el **`File` entero**, o sea el comprobante de pago del alumno, cinco
+minutos en el `QueryClient`. **Una decisión que no se propaga en el momento en que se toma queda a
+merced de que alguien vuelva a pasar por ahí.**
+
+Ahora un **único barrido** sobre `src/hooks/*.ts` cubre 23 mutaciones en 7 archivos, y un archivo nuevo
+**nace cubierto sin necesitar su propio spec**.
+
+## El hallazgo que no es de código: un guardia que filtra al fallar
+
+`expect(x).not.toContain(secreto)` **imprime el secreto en el informe.** El fallo de una contraseña
+filtrada la filtraba otra vez — al registro de CI, que la guarda más tiempo y la lee más gente que la
+consola del mostrador.
+
+Cambiado a `expect(texto.includes(valor), 'la consola dijo claveDelReset').toBe(false)`: lo único que se
+publica es el nombre del dato.
+
+Y otro del mismo cierre: los specs llaman a `vi.restoreAllMocks()` en su propio `afterEach`, que con el
+orden de hooks de Vitest corre **antes** que el tapón. Sin re-enganchar el espía en cada `beforeEach`, a
+partir del segundo test de cada archivo habría estado mirando una consola que ya nadie dobla: **verde y
+ciego**.
+
+## Los errores de este plan
+
+1. **La lista blanca de claves que di estaba mal ordenada.** `.sort()` compara carácter a carácter, así
+   que `'cancelacionTipo'` va antes que `'canceladaEn'`. Copiada tal cual, el test quedaba **en rojo con
+   el código correcto**.
+2. **Vengo diciendo mal lo del build de `shared`.** Los dos configs de jest mapean `@boxadmin/shared` a
+   `src/`, no a `dist/`. El build hace falta para `tsc` y para `apps/web`, pero **un test en verde no
+   prueba que el `dist` esté al día**.
+3. **Afirmé que había dos tapones globales. Había uno.**
+4. **Cité el comentario del servicio en vez del mensaje que viaja** en el 409 del cupo.
+5. **Escribí una aserción verde por casualidad ortográfica**: `/necesit/i` sobre un mensaje que dice
+   «Para esto hace falta ser X. Tu rol no alcanza». No fijaba nada.
+6. **«Es una línea en `bloque-borrar.tsx`» habría sido código muerto**: la URL de la ficha no llevaba
+   los filtros, porque el enlace de fila del listado no propagaba el query. El arreglo estaba en el otro
+   extremo del camino.
+
+Las seis las encontraron los agentes al verificar en vez de acomodarse, y las seis habrían quedado como
+tests en verde que no prueban nada.
+
+## Trampas nuevas
+
+**`vitest run "turnos/[id]"` sólo funciona desde PowerShell**: por Bash los corchetes se comen el patrón
+y da «No test files found».
+
+**Un helper de peticiones necesita el método pegado a la ruta.** Tras escribir, la invalidación vuelve a
+pedir el recurso, y sin el método esa lectura legítima y la escritura que la causó son la misma cadena.
+
+**`document.cookie` es el tercer almacén y el único que viaja**: se adjunta a cada petición y acaba en
+los logs del servidor. Ningún test del repo lo miraba.
+
+## Estado final
+
+|                   |                                                   |
+| ----------------- | ------------------------------------------------- |
+| `apps/web`        | **971 tests / 49 suites**, tsc limpio, `build` OK |
+| `apps/api`        | **1299 / 65**                                     |
+| E2E de la API     | **212 / 13**                                      |
+| `packages/shared` | 103 / 4                                           |
+
+De 802 tests en web y 1291 en la API al empezar la fase.
+
+## Deuda anotada
+
+- **Un segundo 403 que no es de rol, en anotar**, con un mensaje que le pone una ruta de API delante a
+  quien está en el mostrador: «Asignasela con `PATCH /usuarios/:id/salas`». Es `apps/api`.
+- **`use-rutinas.ts` no tiene un solo test**, con 3 mutaciones. El `gcTime` ya lo cubre el barrido.
+- **Sobre-invalidación de `/mi-pack`** en `use-acciones-de-turno`: se invalida también al entrar y salir
+  de la **lista de espera**, que no consume clases. Medido: 1 → 2 peticiones, en el teléfono del alumno.
+- El helper de la consulta ajena **no detecta eso**: mide «no toca lo que no es de nadie», y no puede
+  juzgar si una clave **propia** de un hook sobra para una acción concreta.
+- Sigue en pie la deuda vieja: el profesor sin pantalla, `main.ts` sin `enableShutdownHooks()`, el envío
+  masivo sin tope, la rotación de la clave de cifrado, y el contenedor `api` del compose roto por falta
+  de `@nestjs/throttler`.
+
+## Siguiente paso
+
+**La configuración operativa** —salas, horarios de profesor, vacaciones y ausencias, 12 endpoints—, que
+cierra Operación diaria y son los datos de los que se alimenta el calendario. Después **Análisis** (los
+siete reportes de la 6A, que llevan tres fases sin cara), **Dinero** (9) y **Configuración** (14).
