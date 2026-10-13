@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Param, Patch, Post, Query } from '@nestjs/common';
-import type { JwtPayload, ReservaCreada, ReservaPublica } from '@boxadmin/shared';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import type { JwtPayload, ReservaCreada, ReservaEnTurno, ReservaPublica } from '@boxadmin/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { aTipoCancelacion, CancelarReservaDto } from './dto/cancelar-reserva.dto';
@@ -19,6 +19,18 @@ export class ReservasDeTurnoController {
     @Body() dto: CrearReservaDto,
   ): Promise<ReservaCreada> {
     return this.reservas.crear(actor, turnoId, dto);
+  }
+
+  /**
+   * NO LLEVA `@CurrentUser()`, y no es un olvido: el aislamiento por inquilino
+   * lo pone la extension de Prisma a partir del contexto de la peticion, no un
+   * `tenantId` que el handler le pase. Pedir el actor aqui solo para no usarlo
+   * sugeriria que el filtro se hace a mano.
+   */
+  @Roles('ADMIN_OPERATIVO')
+  @Get()
+  listar(@Param('turnoId') turnoId: string): Promise<ReservaEnTurno[]> {
+    return this.reservas.listarDeTurno(turnoId);
   }
 }
 

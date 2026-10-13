@@ -10,6 +10,7 @@ import type {
   Advertencia,
   JwtPayload,
   ReservaCreada,
+  ReservaEnTurno,
   ReservaPublica,
   TipoCancelacion,
 } from '@boxadmin/shared';
@@ -77,6 +78,27 @@ interface AvisosPendientes {
 
 /** El perfil con lo que hace falta para decidir sobre una reserva. */
 const PERFIL_PARA_RESERVAR = { pack: true, salas: { select: { salaId: true } } } as const;
+
+/**
+ * Fila de reserva con el nombre del alumno resuelto, para la ficha del turno.
+ *
+ * Es el mismo truco que `ReservaConAlumno` en `mis-clases.service.ts`: el tipo
+ * que Prisma infiere para un `findMany` con `include` anidado no se puede
+ * nombrar sin arrastrar los generados, asi que se declara lo que de verdad se
+ * lee y se reinterpreta la fila. Declarar MENOS de lo que trae la consulta es
+ * deliberado: lo que no esta aqui no se puede mapear por accidente.
+ */
+interface ReservaConAlumno {
+  id: string;
+  perfilId: string;
+  origen: ReservaEnTurno['origen'];
+  esPrueba: boolean;
+  pagoRealizado: boolean;
+  asistio: boolean | null;
+  canceladaEn: Date | null;
+  cancelacionTipo: TipoCancelacion | null;
+  perfil: { usuario: { nombreCompleto: string } };
+}
 
 @Injectable()
 export class ReservasService {
@@ -467,6 +489,62 @@ export class ReservasService {
     await this.invalidarStats(actor);
 
     return reasignada;
+  }
+
+  /**
+   * Las reservas de un turno, con el nombre del alumno resuelto.
+   *
+   * POR QUE EXISTE. El admin ya podia cancelar (`DELETE /reservas/:id`) y
+   * reasignar (`PATCH /reservas/:id/reasignar`), pero no tenia de donde sacar
+   * el id salvo de la respuesta del POST que el mismo acababa de hacer:
+   * `TurnoPublico.reservasActivas` es un CONTADOR, no la lista. Dos endpoints
+   * que existian y nadie podia usar.
+   *
+   * POR QUE NO SE REUSA `listaDeAlumnos` DE MIS-CLASES. Hace esta misma
+   * consulta, pero con dos cosas que aqui estorban: filtra `canceladaEn: null`
+   * y pasa por `exigirTurnoPropio(..., perfil.id)`, que exige que el turno sea
+   * del profesor que llama. Un admin no tiene perfil de profesora, asi que no
+   * pasa nunca. Y su `AlumnoEnClase` no trae el id de la reserva, que es
+   * justamente lo unico que el admin necesita.
+   *
+   * LAS CANCELADAS SALEN. Un solo endpoint sirve a los dos usos y la pantalla
+   * las separa; ver quien cancelo como RECUPERABLE es contexto que el admin
+   * quiere, y es informacion de su propio gimnasio.
+   */
+  async listarDeTurno(turnoId: string): Promise<ReservaEnTurno[]> {
+    // `findFirst` y no `findUnique`: la extension de aislamiento rechaza las
+    // operaciones de where unico (UnsafeUniqueOperationError) porque no hay
+    // donde inyectarle el filtro de tenant.
+    //
+    // Y va ANTES de la lista, no en su lugar: una lista vacia y "ese turno no
+    // existe" son cosas distintas, y el admin que se equivoco de enlace tiene
+    // que poder distinguirlas. El 404 es tambien el aislamiento por inquilino:
+    // el turno de otro gimnasio no existe para este cliente de Prisma.
+    const turno = await this.prisma.db.turno.findFirst({ where: { id: turnoId } });
+    if (!turno) throw new NotFoundException('Turno inexistente');
+
+    const reservas = await this.prisma.db.reserva.findMany({
+      where: { turnoId },
+      include: { perfil: { include: { usuario: { select: { nombreCompleto: true } } } } },
+      orderBy: { perfil: { usuario: { nombreCompleto: 'asc' } } },
+    });
+
+    // Mapeo a mano, campo por campo. NADA DE SPREAD DE LA FILA: un `select` es
+    // una promesa sobre la CONSULTA y el mapeo una sobre la RESPUESTA, y solo
+    // la segunda sobrevive al dia en que alguien ensanche el `include` para
+    // depurar algo. En la Fase 6B, auditar por lista negra dejo pasar un campo
+    // nuevo que atraveso siete tests.
+    return (reservas as unknown as ReservaConAlumno[]).map((reserva) => ({
+      id: reserva.id,
+      perfilId: reserva.perfilId,
+      nombreCompleto: reserva.perfil.usuario.nombreCompleto,
+      origen: reserva.origen,
+      esPrueba: reserva.esPrueba,
+      pagoRealizado: reserva.pagoRealizado,
+      asistio: reserva.asistio,
+      canceladaEn: reserva.canceladaEn?.toISOString() ?? null,
+      cancelacionTipo: reserva.cancelacionTipo,
+    }));
   }
 
   /**

@@ -41,6 +41,19 @@ interface ContextoDeReversion {
  * Por eso cada mutacion guarda la lista anterior entera en `onMutate` y la
  * restaura en `onError`, y por eso todas invalidan en `onSettled`: el estado
  * real lo tiene el servidor.
+ *
+ * Y LAS CUATRO LLEVAN `gcTime: 0`, como el resto de las mutaciones del
+ * proyecto. Esto no es una pantalla de admin: es la del alumno, y el
+ * `QueryClient` es uno solo para toda la aplicacion y dura lo que dura la
+ * pestaña. Sin esto, TanStack conserva cada mutacion cinco minutos despues de
+ * que su componente se desmonte, con lo que se MANDO (`variables`: el id del
+ * turno, el de la reserva) y lo que VOLVIO dentro. `reset()` no lo arregla: no
+ * limpia nada, solo desengancha al observador y programa el recolector con el
+ * `gcTime` que haya.
+ *
+ * Va en el HOOK y no en la pantalla a proposito, como se decidio en la Fase 7:
+ * limpiar desde quien llama protege a un solo llamador, y una limpieza que
+ * vive lejos del sitio que ensucia es una que el proximo llamador no copia.
  */
 export function useAccionesDeTurno(desde: string, hasta: string) {
   const cliente = useQueryClient();
@@ -80,6 +93,7 @@ export function useAccionesDeTurno(desde: string, hasta: string) {
     },
     onError: (_error, _turnoId, contexto) => revertir(contexto),
     onSettled: refrescar,
+    gcTime: 0,
   });
 
   const cancelar = useMutation<
@@ -104,6 +118,7 @@ export function useAccionesDeTurno(desde: string, hasta: string) {
     },
     onError: (_error, _variables, contexto) => revertir(contexto),
     onSettled: refrescar,
+    gcTime: 0,
   });
 
   const anotarme = useMutation<unknown, ErrorDeApi, string, ContextoDeReversion>({
@@ -124,6 +139,7 @@ export function useAccionesDeTurno(desde: string, hasta: string) {
     },
     onError: (_error, _turnoId, contexto) => revertir(contexto),
     onSettled: refrescar,
+    gcTime: 0,
   });
 
   /**
@@ -155,6 +171,7 @@ export function useAccionesDeTurno(desde: string, hasta: string) {
     },
     onError: (_error, _variables, contexto) => revertir(contexto),
     onSettled: refrescar,
+    gcTime: 0,
   });
 
   return { reservar, cancelar, anotarme, salirme };

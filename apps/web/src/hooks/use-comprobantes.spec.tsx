@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { vigilarUnaConsultaAjena } from '@/test/consulta-ajena';
 import { useSubirComprobante } from './use-comprobantes';
 
 function montar() {
@@ -12,7 +13,9 @@ function montar() {
     <QueryClientProvider client={cliente}>{children}</QueryClientProvider>
   );
 
-  return renderHook(() => useSubirComprobante(), { wrapper: envoltorio });
+  // El `cliente` sale junto al hook para poder mirar que paso en la cache: sin
+  // el, el alcance de la invalidacion no se puede auditar desde aqui.
+  return { ...renderHook(() => useSubirComprobante(), { wrapper: envoltorio }), cliente };
 }
 
 function archivo(nombre = 'transferencia.pdf', tipo = 'application/pdf'): File {
@@ -148,5 +151,38 @@ describe('useSubirComprobante', () => {
 
     await waitFor(() => expect(hook.result.current.isError).toBe(true));
     expect(hook.result.current.error?.message).toMatch(/conexion/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// El ALCANCE de la invalidacion: no tocar lo que no es suyo
+// ---------------------------------------------------------------------------
+
+describe('una escritura no refresca consultas ajenas', () => {
+  // En un spec que monta el hook SOLO, una invalidacion global y una dirigida
+  // dan exactamente el mismo resultado: no hay ninguna otra consulta a la que
+  // la diferencia pueda notarse. Ver `src/test/consulta-ajena.ts`.
+
+  it('subir un comprobante', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url === '/api/bx/comprobantes') return Promise.resolve(respuestaDeCreacion());
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: 'comp-1' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      }),
+    );
+
+    const hook = montar();
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(hook.cliente);
+
+    hook.result.current.mutate(archivo());
+    await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+
+    await sinTocarLoAjeno();
   });
 });

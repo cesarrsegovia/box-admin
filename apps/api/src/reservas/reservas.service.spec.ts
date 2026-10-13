@@ -58,6 +58,9 @@ function crearServicio() {
     count: jest.fn().mockResolvedValue(0), // turno vacio
     create: jest.fn().mockResolvedValue(RESERVA),
     update: jest.fn().mockResolvedValue(RESERVA),
+    // Desde la Fase 9, `listarDeTurno` lee las reservas del turno con el nombre
+    // del alumno resuelto. Por defecto vacio: cada caso siembra las suyas.
+    findMany: jest.fn().mockResolvedValue([]),
   };
 
   // `crear` busca una reserva duplicada (sin `include`) y espera null; `cancelar`
@@ -867,5 +870,187 @@ describe('ReservasService invalida el cache de reportes DESPUES del commit', () 
     );
 
     expect(cache.invalidar).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Una fila de reserva tal y como la devuelve Prisma con el `include` del
+ * nombre: la fila ENTERA de la tabla mas la relacion.
+ *
+ * Trae `tenantId`, `turnoId`, `createdAt` y `updatedAt` a proposito. Son los
+ * campos que el mapeo a mano tiene que dejar fuera, y si el doble no los
+ * tuviera, el caso de las claves exactas no distinguiria un mapeo de un spread.
+ */
+const FILA_DE_RESERVA = {
+  ...RESERVA,
+  asistio: null as boolean | null,
+  perfil: { usuario: { nombreCompleto: 'Ana Perez' } },
+};
+
+const ORDEN_POR_NOMBRE = { perfil: { usuario: { nombreCompleto: 'asc' } } };
+
+describe('listarDeTurno', () => {
+  it('devuelve las reservas del turno con el nombre resuelto', async () => {
+    const { servicio, reserva } = crearServicio();
+    reserva.findMany.mockResolvedValue([FILA_DE_RESERVA]);
+
+    const filas = await servicio.listarDeTurno('turno-1');
+
+    expect(filas).toEqual([
+      {
+        id: 'res-1',
+        perfilId: 'perf-1',
+        nombreCompleto: 'Ana Perez',
+        origen: 'ADMIN',
+        esPrueba: false,
+        pagoRealizado: false,
+        asistio: null,
+        canceladaEn: null,
+        cancelacionTipo: null,
+      },
+    ]);
+    expect(reserva.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { turnoId: 'turno-1' } }),
+    );
+  });
+
+  it('devuelve TAMBIEN las canceladas', async () => {
+    // Un solo endpoint sirve a los dos usos; la pantalla las separa. Ver quien
+    // cancelo recuperable es contexto que el admin quiere.
+    const { servicio, reserva } = crearServicio();
+    reserva.findMany.mockResolvedValue([
+      {
+        ...FILA_DE_RESERVA,
+        id: 'res-cancelada',
+        canceladaEn: new Date('2026-10-09T12:30:00.000Z'),
+        cancelacionTipo: 'RECUPERABLE',
+      },
+    ]);
+
+    const filas = await servicio.listarDeTurno('turno-1');
+
+    expect(filas).toHaveLength(1);
+    expect(filas[0]).toMatchObject({
+      id: 'res-cancelada',
+      canceladaEn: '2026-10-09T12:30:00.000Z',
+      cancelacionTipo: 'RECUPERABLE',
+    });
+
+    // Y no solo sale en la respuesta: NO se le pide a la base que las filtre.
+    // Sin esto, un `canceladaEn: null` en el `where` seguiria en verde mientras
+    // el doble devolviera la cancelada igualmente.
+    const [args] = reserva.findMany.mock.calls[0] as [{ where: Record<string, unknown> }];
+    expect(args.where).toEqual({ turnoId: 'turno-1' });
+  });
+
+  it('las claves de cada fila son EXACTAMENTE las del contrato', async () => {
+    const { servicio, reserva } = crearServicio();
+    reserva.findMany.mockResolvedValue([FILA_DE_RESERVA]);
+
+    const [fila] = await servicio.listarDeTurno('turno-1');
+
+    // LISTA BLANCA, no lista negra. El mapeo va campo por campo precisamente
+    // para que ensanchar el `select` para depurar algo no se filtre a la
+    // respuesta: un `select` es una promesa sobre la CONSULTA y el mapeo una
+    // sobre la RESPUESTA, y solo la segunda sobrevive a ese dia.
+    // OJO CON EL ORDEN: `.sort()` compara caracter a caracter, asi que
+    // 'cancelacionTipo' va ANTES de 'canceladaEn' ('a' < 'e' en la septima
+    // letra). Escribirlo "en orden alfabetico de palabra" deja el caso en rojo
+    // con el codigo correcto.
+    expect(Object.keys(fila).sort()).toEqual([
+      'asistio',
+      'cancelacionTipo',
+      'canceladaEn',
+      'esPrueba',
+      'id',
+      'nombreCompleto',
+      'origen',
+      'pagoRealizado',
+      'perfilId',
+    ]);
+  });
+
+  it('NO devuelve el tenantId ni el turnoId', async () => {
+    const { servicio, reserva } = crearServicio();
+    reserva.findMany.mockResolvedValue([FILA_DE_RESERVA]);
+
+    const filas = await servicio.listarDeTurno('turno-1');
+
+    // Dicho de frente y aparte de la lista blanca: son los dos campos que un
+    // spread de la fila colaria, y el `tenantId` es el id interno de OTRO
+    // gimnasio en cuanto alguien se equivoque de cliente de Prisma.
+    expect(filas[0]).not.toHaveProperty('tenantId');
+    expect(filas[0]).not.toHaveProperty('turnoId');
+    expect(JSON.stringify(filas)).not.toContain('gym-1');
+  });
+
+  it('ordena por nombre', async () => {
+    const { servicio, reserva } = crearServicio();
+    reserva.findMany.mockResolvedValue([FILA_DE_RESERVA]);
+
+    await servicio.listarDeTurno('turno-1');
+
+    // Se comprueba el `orderBy` QUE SE LE PIDE A POSTGRES, no el orden del
+    // array que devuelve el doble: el doble devuelve lo que le pongas, asi que
+    // ordenar en el test seria autorreferencial. El orden de verdad lo prueba
+    // el e2e con dos alumnos sembrados al reves.
+    expect(reserva.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: ORDEN_POR_NOMBRE }),
+    );
+  });
+
+  it('un turno inexistente da 404 y no una lista vacia', async () => {
+    // Una lista vacia y "ese turno no existe" son cosas distintas, y el admin
+    // que se equivoco de enlace tiene que poder distinguirlas.
+    const { servicio, turno, reserva } = crearServicio();
+    turno.findFirst.mockResolvedValue(null);
+
+    await expect(servicio.listarDeTurno('turno-fantasma')).rejects.toThrow(NotFoundException);
+    expect(reserva.findMany).not.toHaveBeenCalled();
+  });
+
+  it('un turno sin reservas da una lista vacia', async () => {
+    const { servicio, reserva } = crearServicio();
+    reserva.findMany.mockResolvedValue([]);
+
+    await expect(servicio.listarDeTurno('turno-1')).resolves.toEqual([]);
+  });
+
+  it('NO escribe los nombres de los alumnos en el log', async () => {
+    // LA OTRA PUERTA POR LA QUE SALEN LOS DATOS DE UNA PERSONA. La lista blanca
+    // de arriba cubre el CUERPO de la respuesta, que es la puerta que todo el
+    // mundo mira. El log no: un `this.logger.log(...)` de depuracion con los
+    // nombres resueltos deja los 60 unitarios y los 8 e2e en verde y manda los
+    // nombres y apellidos de los alumnos de un gimnasio al agregador de logs,
+    // que no esta aislado por inquilino y que guarda durante meses.
+    //
+    // SE INTERCEPTA LA SALIDA, NO EL `Logger`. Espiar `Logger.prototype.log`
+    // dejaria pasar `logger.debug`, `console.log` o cualquier otro nombre, y
+    // una defensa que depende de que nadie cambie una palabra es una defensa
+    // que esta verde por casualidad. Por stdout/stderr pasan todas.
+    const { servicio, reserva } = crearServicio();
+    reserva.findMany.mockResolvedValue([
+      { ...FILA_DE_RESERVA, perfil: { usuario: { nombreCompleto: 'Zoe Vera Quintanilla' } } },
+    ]);
+
+    const escrito: string[] = [];
+    const capturar = (chunk: unknown): boolean => {
+      escrito.push(String(chunk));
+      return true;
+    };
+    const stdout = jest.spyOn(process.stdout, 'write').mockImplementation(capturar);
+    const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(capturar);
+
+    try {
+      const filas = await servicio.listarDeTurno('turno-1');
+      // La premisa, dicha en voz alta: el nombre TIENE que estar en los datos,
+      // o este caso no estaria comprobando nada.
+      expect(filas[0].nombreCompleto).toBe('Zoe Vera Quintanilla');
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+
+    expect(escrito.join('')).not.toContain('Zoe Vera');
   });
 });

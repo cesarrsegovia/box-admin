@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { TurnoDisponible } from '@boxadmin/shared';
+import { vigilarUnaConsultaAjena } from '@/test/consulta-ajena';
 import { claves } from './use-calendario';
 import { useAccionesDeTurno } from './use-acciones-de-turno';
 
@@ -212,5 +213,78 @@ describe('useAccionesDeTurno — sin conexion', () => {
     // Offline se lee, no se escribe, y se dice.
     expect(hook.result.current.reservar.error?.message).toMatch(/conexion/i);
     expect(turnoEnCache(cliente).disponibilidad.motivo).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// El ALCANCE de la invalidacion: no tocar lo que no es suyo
+// ---------------------------------------------------------------------------
+
+/**
+ * `refrescar()` invalida tres claves a mano. Lo que esto fija es que no sean
+ * mas: en un spec que monta el hook SOLO, una invalidacion global y una
+ * dirigida dan exactamente el mismo resultado, porque no hay ninguna otra
+ * consulta a la que la diferencia pueda notarse. Ver `src/test/consulta-ajena.ts`.
+ *
+ * OJO con lo que esto NO mide: si una de las tres claves sobra para una accion
+ * concreta, el centinela no se entera. Eso es una pregunta sobre que es "suyo",
+ * no sobre el alcance.
+ */
+describe('las acciones no refrescan consultas ajenas', () => {
+  function dobleOk() {
+    const doble = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', doble);
+    return doble;
+  }
+
+  it('reservar', async () => {
+    dobleOk();
+    const { cliente, hook } = montar();
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
+
+    hook.result.current.reservar.mutate('turno-1');
+    await waitFor(() => expect(hook.result.current.reservar.isSuccess).toBe(true));
+
+    await sinTocarLoAjeno();
+  });
+
+  it('cancelar', async () => {
+    dobleOk();
+    const { cliente, hook } = montar();
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
+
+    hook.result.current.cancelar.mutate({ turnoId: 'turno-1', reservaId: 'r1' });
+    await waitFor(() => expect(hook.result.current.cancelar.isSuccess).toBe(true));
+
+    await sinTocarLoAjeno();
+  });
+
+  it('anotarse en la lista de espera', async () => {
+    dobleOk();
+    const { cliente, hook } = montar();
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
+
+    hook.result.current.anotarme.mutate('turno-1');
+    await waitFor(() => expect(hook.result.current.anotarme.isSuccess).toBe(true));
+
+    await sinTocarLoAjeno();
+  });
+
+  it('salirse de la lista de espera', async () => {
+    dobleOk();
+    const { cliente, hook } = montar();
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
+
+    hook.result.current.salirme.mutate({ turnoId: 'turno-1', entradaId: 'e1' });
+    await waitFor(() => expect(hook.result.current.salirme.isSuccess).toBe(true));
+
+    await sinTocarLoAjeno();
   });
 });

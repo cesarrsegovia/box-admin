@@ -1,10 +1,9 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { EstadoJob, MesCalendarioPublico, PlanDeMes } from '@boxadmin/shared';
+import { vigilarUnaConsultaAjena } from '@/test/consulta-ajena';
 import {
   ESPERA_DEL_SONDEO,
   ESTADOS_FINALES,
@@ -502,45 +501,32 @@ describe('publicar no toca la cache de consultas', () => {
 });
 
 // ---------------------------------------------------------------------------
-// LAS MUTACIONES, COMO CONJUNTO
+// El ALCANCE de la invalidacion: no tocar lo que no es suyo
 // ---------------------------------------------------------------------------
 
-/**
- * Lo mismo que en `use-usuarios.spec`: la propiedad es del ARCHIVO, no de cada
- * hook. Un test por hook protege a los que hay hoy y deja nacer desnudo al de
- * manana, porque hay que acordarse de sumarlo a la lista.
- */
-// Desde la raiz de Vitest (`apps/web`), no desde `import.meta.url`: bajo jsdom
-// esa URL no es `file:` y `readFileSync` la rechaza.
-const FUENTE = readFileSync(resolve(process.cwd(), 'src/hooks/use-calendario-admin.ts'), 'utf8');
+describe('una escritura no refresca consultas ajenas', () => {
+  // Hoy `usePublicarMes` no invalida nada —lo hace la pantalla, con la clave
+  // del mes— y por eso este test pasa sin esfuerzo. Vale igual: lo que fija es
+  // que el dia que esta mutacion gane un refresco, ese refresco sea DIRIGIDO.
+  // Una invalidacion global es indistinguible de una dirigida en un spec que
+  // monta el hook solo, y aqui ademas hay un sondeo de tres segundos que una
+  // invalidacion ancha reanimaria en cada publicacion. Ver `consulta-ajena.ts`.
 
-/** Por cada `useMutation` del archivo, el hook que lo contiene y si esta tapado. */
-function mutacionesDelArchivo(): Record<string, boolean> {
-  const porHook: Record<string, boolean> = {};
+  it('publicar el mes', async () => {
+    dobleDeFetch(ENCOLADA);
 
-  const llamadas = /useMutation\s*[<(]/g;
+    const { result, cliente } = montar(() => usePublicarMes(ELEGIDO));
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
 
-  for (let hallada = llamadas.exec(FUENTE); hallada !== null; hallada = llamadas.exec(FUENTE)) {
-    const cierre = FUENTE.indexOf('\n  });', hallada.index);
-    const opciones = FUENTE.slice(hallada.index, cierre === -1 ? FUENTE.length : cierre);
+    act(() => result.current.mutate());
+    await asentar();
+    expect(result.current.isSuccess).toBe(true);
 
-    const previos = [...FUENTE.slice(0, hallada.index).matchAll(/export function (\w+)/g)];
-    const nombre = previos.at(-1)?.[1] ?? `(sin nombre, posicion ${hallada.index})`;
-
-    porHook[nombre] = opciones.includes('gcTime: 0');
-  }
-
-  return porHook;
-}
-
-describe('ninguna mutacion sin gcTime', () => {
-  it('TODAS las mutaciones del archivo lo llevan, las de hoy y las de manana', () => {
-    const porHook = mutacionesDelArchivo();
-
-    // Un conjunto vacio cumple cualquier cosa que se le pida: si el parseo no
-    // encuentra nada, el test tiene que caer y no pasar con las manos vacias.
-    expect(Object.keys(porHook).length).toBeGreaterThanOrEqual(1);
-
-    expect(Object.entries(porHook).filter(([, tapada]) => !tapada)).toEqual([]);
+    await sinTocarLoAjeno();
   });
 });
+
+// El `gcTime: 0` de las mutaciones de este archivo lo fija
+// `mutaciones-sin-gctime.spec.ts`, que barre TODOS los hooks. Aqui vivia un
+// analizador copiado que solo miraba este archivo: tres copias, y los cuatro
+// archivos de hooks sin spec propio quedaban afuera.

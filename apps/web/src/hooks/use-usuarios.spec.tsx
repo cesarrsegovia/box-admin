@@ -1,9 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { vigilarUnaConsultaAjena } from '@/test/consulta-ajena';
 import {
   queryDeFiltros,
   useActualizarSalas,
@@ -420,70 +419,91 @@ describe('ninguna peticion de mas', () => {
 });
 
 // ---------------------------------------------------------------------------
-// LAS MUTACIONES, COMO CONJUNTO
+// El ALCANCE de la invalidacion: no tocar lo que no es suyo
 // ---------------------------------------------------------------------------
 
-/**
- * TODAS las mutaciones de este archivo llevan `gcTime: 0`, y eso se comprueba
- * de una vez.
- *
- * Por defecto TanStack conserva cada mutacion cinco minutos despues de que su
- * componente se desmonte, con lo que se MANDO (`variables`) y lo que VOLVIO
- * (`data`) dentro. El `QueryClient` es uno solo para toda la aplicacion y dura
- * lo que dura la pestaña. Aqui pasan las DOS contraseñas temporales del sistema
- * —la del alta y la del reseteo—, que se ven una sola vez, y el texto de las
- * fichas medicas editadas.
- *
- * Esto se lee del CODIGO FUENTE, y no es por pereza. Un test por hook da la
- * propiedad equivocada: protege a los seis que hay hoy y deja nacer al septimo
- * desnudo, porque hay que acordarse de sumarlo a la lista. Lo que hace falta
- * garantizar es que el ARCHIVO no tenga ni una mutacion sin tapar, y eso es una
- * propiedad del archivo, no de cada hook. Una mutacion nueva nace cubierta: si
- * se agrega sin `gcTime`, este test cae solo y nombra al hook.
- *
- * Es ademas la clase de proteccion que se "limpia" sin querer: seis lineas
- * iguales repetidas parecen ruido copiado, y sin test que las defienda el
- * proximo que pase las borra y nada avisa. Ya nos paso con el `@Public()` de la
- * fase anterior.
- */
-// Desde la raiz de Vitest (`apps/web`), no desde `import.meta.url`: bajo jsdom
-// esa URL no es `file:` y `readFileSync` la rechaza.
-const FUENTE = readFileSync(resolve(process.cwd(), 'src/hooks/use-usuarios.ts'), 'utf8');
+describe('una escritura no refresca consultas ajenas', () => {
+  // Los tests de invalidacion de arriba usan `toHaveBeenCalledWith`, que nunca
+  // pregunta con que MAS se llamo, y los de conteo cuentan peticiones en un
+  // cliente donde no hay nada mas abierto. Entre los dos queda un hueco: una
+  // invalidacion global cumple todo lo anterior y en un spec de hook —que
+  // monta el hook SOLO— es indistinguible de una dirigida. Ver
+  // `consulta-ajena.ts`.
 
-/** Por cada `useMutation` del archivo, el hook que lo contiene y si esta tapado. */
-function mutacionesDelArchivo(): Record<string, boolean> {
-  const porHook: Record<string, boolean> = {};
+  it('actualizar la ficha', async () => {
+    dobleDeFetch({ id: 'u1' });
 
-  // `useMutation` seguido de `<` o `(`: asi no cuenta la linea del `import`
-  // (`useMutation,`) ni las veces que un comentario lo nombre. Las dos formas,
-  // con genericos y sin ellos, para que valga para lo que se escriba manana.
-  const llamadas = /useMutation\s*[<(]/g;
+    const { result, cliente } = montar(() => useActualizarUsuario('u1'));
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
 
-  for (let hallada = llamadas.exec(FUENTE); hallada !== null; hallada = llamadas.exec(FUENTE)) {
-    // El bloque de opciones termina en el `});` a dos espacios de sangria, que
-    // es como cierran todos los hooks de este archivo.
-    const cierre = FUENTE.indexOf('\n  });', hallada.index);
-    const opciones = FUENTE.slice(hallada.index, cierre === -1 ? FUENTE.length : cierre);
+    result.current.mutate({ nombreCompleto: 'Ana' });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    // El nombre sale del `export function` mas cercano hacia atras, para que el
-    // fallo diga a QUE hook le falta y no un numero de linea.
-    const previos = [...FUENTE.slice(0, hallada.index).matchAll(/export function (\w+)/g)];
-    const nombre = previos.at(-1)?.[1] ?? `(sin nombre, posicion ${hallada.index})`;
+    await sinTocarLoAjeno();
+  });
 
-    porHook[nombre] = opciones.includes('gcTime: 0');
-  }
+  it('cambiar las salas', async () => {
+    dobleDeFetch({ id: 'u1' });
 
-  return porHook;
-}
+    const { result, cliente } = montar(() => useActualizarSalas('u1'));
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
 
-describe('ninguna mutacion sin gcTime', () => {
-  it('TODAS las mutaciones del archivo lo llevan, las de hoy y las de manana', () => {
-    const porHook = mutacionesDelArchivo();
+    result.current.mutate(['s1']);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    // Sin esto, un parseo que no encontrara nada pasaria el test con las manos
-    // vacias: un conjunto vacio cumple cualquier cosa que se le pida.
-    expect(Object.keys(porHook).length).toBeGreaterThanOrEqual(6);
+    await sinTocarLoAjeno();
+  });
 
-    expect(Object.entries(porHook).filter(([, tapada]) => !tapada)).toEqual([]);
+  it('fijar el estado de pago', async () => {
+    dobleDeFetch({ id: 'u1' });
+
+    const { result, cliente } = montar(() => useFijarEstadoDePago('u1'));
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
+
+    result.current.mutate({ alDia: false });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await sinTocarLoAjeno();
+  });
+
+  it('la baja', async () => {
+    dobleDeFetch({ id: 'u1' });
+
+    const { result, cliente } = montar(() => useDarDeBaja('u1'));
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
+
+    result.current.mutate();
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await sinTocarLoAjeno();
+  });
+
+  it('el alta', async () => {
+    dobleDeFetch({ id: 'u9', passwordTemporal: 'x', advertencias: [] });
+
+    const { result, cliente } = montar(() => useCrearPersona('alumno'));
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
+
+    result.current.mutate({ nombreCompleto: 'Ana' });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await sinTocarLoAjeno();
+  });
+
+  it('resetear la contraseña', async () => {
+    dobleDeFetch({ usuarioId: 'u1', passwordTemporal: 'Perro-Azul-71' });
+
+    const { result, cliente } = montar(() => useResetearPassword('u1'));
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
+
+    result.current.mutate();
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await sinTocarLoAjeno();
   });
 });
+
+// El `gcTime: 0` de las mutaciones de este archivo lo fija
+// `mutaciones-sin-gctime.spec.ts`, que barre TODOS los hooks. Aqui vivia un
+// analizador copiado que solo miraba este archivo: tres copias, y los cuatro
+// archivos de hooks sin spec propio quedaban afuera.

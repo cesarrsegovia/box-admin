@@ -161,6 +161,31 @@ export interface ReservaPublica {
 
 export interface ReservaCreada extends ReservaPublica, ConAdvertencias {}
 
+/**
+ * Una reserva tal y como la ve el admin en la ficha de un turno.
+ *
+ * NO es `AlumnoEnClase` (el de la pantalla del profesor), que tiene `perfilId`,
+ * `nombreCompleto` y `asistio` y **no trae el id de la reserva**. Ese id es
+ * justamente lo que el admin necesita para cancelar o reasignar: sin el, los
+ * dos endpoints que ya existen no se pueden usar.
+ *
+ * Lleva el nombre resuelto porque un listado de ids no se puede operar: el
+ * admin tiene que saber a quien esta cancelando.
+ */
+export interface ReservaEnTurno {
+  id: string;
+  perfilId: string;
+  nombreCompleto: string;
+  origen: OrigenReserva;
+  esPrueba: boolean;
+  pagoRealizado: boolean;
+  /** `null` = todavia no se paso lista. */
+  asistio: boolean | null;
+  /** ISO 8601, o `null` si sigue activa. */
+  canceladaEn: string | null;
+  cancelacionTipo: TipoCancelacion | null;
+}
+
 /** Consumo del pack de un perfil, siempre derivado de las reservas. */
 export interface ConsumoDePack {
   /** Reservas que cuentan: las no canceladas y las canceladas como DEFINITIVA. */

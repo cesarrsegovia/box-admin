@@ -31,6 +31,18 @@ export function useComprobantes() {
  *
  * El tercer paso existe porque ni S3 ni el adaptador local pueden avisar a la
  * API de que el PUT termino.
+ *
+ * `gcTime: 0`, y aqui es lo MENOS prescindible de todo el proyecto: las
+ * `variables` de esta mutacion son el `File`. El comprobante de pago del alumno
+ * —la foto o el PDF de su transferencia— es el valor que TanStack guardaria
+ * cinco minutos despues de que la pantalla se desmonte, en el `QueryClient`
+ * unico de la aplicacion, legible desde la consola. Es el mismo problema que la
+ * contraseña temporal del panel, con un archivo en vez de una cadena.
+ *
+ * `reset()` no sustituye a esto: no limpia nada, solo desengancha al observador
+ * y programa el recolector con el `gcTime` que haya. Y va en el HOOK y no en la
+ * pantalla por lo decidido en la Fase 7: una limpieza que vive lejos del sitio
+ * que ensucia es una que el proximo llamador no copia.
  */
 export function useSubirComprobante() {
   const cliente = useQueryClient();
@@ -74,5 +86,6 @@ export function useSubirComprobante() {
       });
     },
     onSuccess: () => cliente.invalidateQueries({ queryKey: claves.comprobantes() }),
+    gcTime: 0,
   });
 }
