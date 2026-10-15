@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import type { Pack, Perfil, Sala, Usuario } from '@prisma/client';
+import type { Pack, Sala } from '@prisma/client';
 import {
   desdeFechaISO,
   rolAlcanza,

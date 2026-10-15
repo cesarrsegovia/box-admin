@@ -75,7 +75,9 @@ describe('Aislamiento por claves foraneas compuestas (e2e)', () => {
 
   it('la base rechaza una fila de usuarios_salas que cruce perfil de B con sala de A', async () => {
     const { a, b } = await crearDosGimnasios();
-    const salaDeA = await prisma.base.sala.create({ data: { tenantId: a.id, nombre: 'Sala de A' } });
+    const salaDeA = await prisma.base.sala.create({
+      data: { tenantId: a.id, nombre: 'Sala de A' },
+    });
     const perfilDeB = await crearPerfilEn(b.id, 'alumno.b@test.local');
 
     // Fila coherente consigo misma (tenantId = B, perfil de B) pero que apunta a
@@ -96,7 +98,9 @@ describe('Aislamiento por claves foraneas compuestas (e2e)', () => {
   it('la base rechaza una reserva del gimnasio A sobre un turno del gimnasio B', async () => {
     const { a, b } = await crearDosGimnasios();
     const perfilDeA = await crearPerfilEn(a.id, 'alumno.a@test.local');
-    const salaDeB = await prisma.base.sala.create({ data: { tenantId: b.id, nombre: 'Sala de B' } });
+    const salaDeB = await prisma.base.sala.create({
+      data: { tenantId: b.id, nombre: 'Sala de B' },
+    });
     const turnoDeB = await prisma.base.turno.create({
       data: {
         tenantId: b.id,
@@ -125,7 +129,9 @@ describe('Aislamiento por claves foraneas compuestas (e2e)', () => {
     // Prisma valida bastante por su cuenta; esta prueba va directa al motor para
     // dejar claro que quien dice que no es Postgres, no el cliente.
     const { a, b } = await crearDosGimnasios();
-    const salaDeA = await prisma.base.sala.create({ data: { tenantId: a.id, nombre: 'Sala de A' } });
+    const salaDeA = await prisma.base.sala.create({
+      data: { tenantId: a.id, nombre: 'Sala de A' },
+    });
     const perfilDeB = await crearPerfilEn(b.id, 'alumno.b@test.local');
 
     const error = await capturarError(() =>

@@ -145,6 +145,11 @@ function inventario(): Record<string, Defensa> {
   const encontradas: Record<string, Defensa> = {};
 
   for (const archivo of archivosDeControllers(join(__dirname, '..', '..'))) {
+    // `require` y no `import()`: esto recorre los archivos por RUTA en un
+    // bucle SINCRONO para leerles los metadatos, y un import dinamico es una
+    // promesa. Es deliberado, no una importacion al viejo estilo que alguien
+    // se olvido de modernizar.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const modulo = require(archivo) as Record<string, unknown>;
 
     for (const exportado of Object.values(modulo)) {

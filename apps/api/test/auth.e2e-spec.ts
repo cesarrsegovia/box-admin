@@ -31,7 +31,10 @@ describe('Auth (e2e)', () => {
   }
 
   function crearTenant(slug: string, nombre = `Tenant ${slug}`) {
-    return http().post('/auth/tenants').set('x-bootstrap-key', CLAVE_BOOTSTRAP).send({ nombre, slug });
+    return http()
+      .post('/auth/tenants')
+      .set('x-bootstrap-key', CLAVE_BOOTSTRAP)
+      .send({ nombre, slug });
   }
 
   function registrarAdmin(slug: string, email: string, password = PASSWORD) {
@@ -235,14 +238,10 @@ describe('Auth (e2e)', () => {
       const tokenNuevo = rotacion.body.refreshToken;
       expect(tokenNuevo).not.toBe(tokenViejo);
 
-      const reusoDelViejo = await http()
-        .post('/auth/refresh')
-        .send({ refreshToken: tokenViejo });
+      const reusoDelViejo = await http().post('/auth/refresh').send({ refreshToken: tokenViejo });
       expect(reusoDelViejo.status).toBe(401);
 
-      const usoDelNuevo = await http()
-        .post('/auth/refresh')
-        .send({ refreshToken: tokenNuevo });
+      const usoDelNuevo = await http().post('/auth/refresh').send({ refreshToken: tokenNuevo });
       expect(usoDelNuevo.status).toBe(401);
     });
 

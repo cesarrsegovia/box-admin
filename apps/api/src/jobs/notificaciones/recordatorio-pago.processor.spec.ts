@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import type { Job } from 'bullmq';
 import { getTenantContext } from '../../common/tenant/tenant-context';
 import type { MensajeroService } from '../../comunicacion/mensajero.service';
 import type { PagosService } from '../../pagos/pagos.service';

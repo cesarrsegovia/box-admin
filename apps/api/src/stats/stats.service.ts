@@ -37,8 +37,6 @@ import {
   type PagoParaCaja,
   type PerfilConPack,
   type ReservaParaMetricas,
-  type TurnoParaListado,
-  type TurnoParaMetricas,
 } from './stats.datos';
 
 /**

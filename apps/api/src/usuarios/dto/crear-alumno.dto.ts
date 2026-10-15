@@ -1,7 +1,6 @@
 import {
   ArrayUnique,
   IsArray,
-  IsBoolean,
   IsEmail,
   IsInt,
   IsNotEmpty,
