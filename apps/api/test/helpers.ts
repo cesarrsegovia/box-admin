@@ -11,7 +11,25 @@ export interface EntornoE2E {
   prisma: PrismaService;
 }
 
-/** Levanta la aplicación completa con la misma configuración que `main.ts`. */
+/**
+ * Levanta la aplicación completa con la configuración de `main.ts` que importa
+ * para una petición: el pipe de validación y el filtro de excepciones.
+ *
+ * NO es "la misma configuración que main.ts", y la diferencia está escrita
+ * porque un comentario que dejó de ser verdad es peor que no tenerlo. Lo que
+ * `main.ts` hace y esto no:
+ *
+ * - `enableShutdownHooks()`. Aquí cada suite llama a `app.close()` a mano en su
+ *   `afterAll`, que ejecuta los mismos `onModuleDestroy` sin depender de ninguna
+ *   señal. Registrar los oyentes del proceso en cada suite e2e no aportaría
+ *   nada y además los iría acumulando sobre el proceso de Jest.
+ * - `trust proxy`, helmet, compression y CORS: configuración de despliegue, con
+ *   un reverse proxy y un navegador delante, que ningún e2e tiene.
+ * - El marcado del cuerpo en `/archivos-locales`, que es del adaptador local.
+ *
+ * Si algún día uno de esos puntos pasa a tener consecuencia observable desde una
+ * petición, el sitio donde se arregla es aquí.
+ */
 export async function crearAppDeTest(): Promise<EntornoE2E> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 

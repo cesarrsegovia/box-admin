@@ -74,6 +74,43 @@ import { RECORDATORIO_PAGO_QUEUE, type DatosDiarios } from './colas';
 type JobDiario = Job<DatosDiarios & { gimnasiosHechos?: string[] }>;
 
 /**
+ * PAUSA ENTRE CORREOS DE LA TANDA MASIVA, en milisegundos.
+ *
+ * POR QUE HAY RITMO Y NO TOPE, que es la pregunta que se hace quien lee esto:
+ * el bucle de abajo es secuencial, asi que nunca fue una avalancha simultanea
+ * —pero eran 500 correos SEGUIDOS contra el mismo SMTP sin una sola pausa, y
+ * eso es exactamente lo que los proveedores frenan o directamente bloquean.
+ *
+ * La alternativa obvia —un tope de N por ejecucion— esta DESCARTADA: cortar la
+ * tanda significa que a algun moroso no se le avisa, y no avisarle es peor que
+ * tardar. El job puede durar mas; nadie se queda sin su recordatorio.
+ *
+ * EL DEFECTO, 200 ms = 5 envios por segundo:
+ *
+ * - Por abajo, es el orden de magnitud que respetan los limites de los SMTP
+ *   compartidos, que es lo que tiene un gimnasio y no un relay propio.
+ * - Por arriba, 500 morosos son ~100 s de tanda. Sigue siendo corta para un
+ *   cron de madrugada y no se acerca a nada que duela: el lock del job lo
+ *   renueva el worker cada 15 s y esta pausa deja el event loop LIBRE (es un
+ *   timer, no trabajo), asi que no acerca el job al camino de "atascado".
+ * - Y el riesgo de una tanda mas larga es conocido y acotado: una tanda
+ *   interrumpida pierde la del gimnasio en curso, que es el intercambio que
+ *   toda esta fase ya eligio (ver `JobDiario`).
+ *
+ * CONFIGURABLE, con el mismo molde que `common/throttling.ts`: constante de
+ * modulo leida de `process.env` con el valor de produccion como DEFECTO, para
+ * que olvidarse de la variable deje el sistema en el lado seguro. No es un dato
+ * del payload: no depende del job sino del SMTP del despliegue, y
+ * `RegistroDeCrones` —que es quien encola— no tiene nada que decir al respecto.
+ *
+ * `validar-entorno.ts` la rechaza si viene con algo que no sea un entero >= 0:
+ * `Number('rapido')` es NaN, `setTimeout(fn, NaN)` dispara al instante, y eso
+ * seria un despliegue que cree tener ritmo y manda los 500 correos pegados sin
+ * una linea de log que lo diga.
+ */
+export const PAUSA_ENTRE_EMAILS_MS = Number(process.env.PAUSA_ENTRE_EMAILS_MS ?? 200);
+
+/**
  * EL RECORDATORIO DE PAGO. UN JOB, N EMAILS — y ahi esta toda la diferencia con
  * sus dos hermanos.
  *
@@ -241,10 +278,33 @@ export class RecordatorioPagoProcessor extends WorkerHost {
           // gimnasios entre vueltas del bucle, y hay un test que lo fija.
           `/${tenant.slug}/mi-pack`,
         );
+
+        // EL RITMO. Va DESPUES de cada envio y no entre los de este gimnasio: de
+        // la otra forma el ultimo correo de un gimnasio y el primero del
+        // siguiente salen pegados, y con treinta gimnasios de pocos alumnos no
+        // habria ritmo en absoluto. El precio es una pausa de mas al final de la
+        // tanda, que no le importa a nadie.
+        //
+        // Ver `PAUSA_ENTRE_EMAILS_MS` para por que es ritmo y no tope.
+        await this.pausar(PAUSA_ENTRE_EMAILS_MS);
       }
 
       return pendientes.length;
     });
+  }
+
+  /**
+   * La unica linea de este processor que toca el reloj, y esta sola en un
+   * metodo por eso: es la costura por la que los tests la sustituyen.
+   *
+   * Sin ella, un test que manda tres correos costaria tres pausas de verdad, y
+   * el precio lo pagaria la suite entera cada vez que corre. Es el mismo criterio
+   * que el `ahoraISO` del payload, que existe para que la fecha de corte no sea
+   * el reloj real: aqui el dato configurable vive en el entorno —es del SMTP del
+   * despliegue, no del job— y lo inyectable es el que espera.
+   */
+  protected pausar(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

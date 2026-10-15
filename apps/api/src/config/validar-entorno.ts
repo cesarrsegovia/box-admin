@@ -144,6 +144,32 @@ export function validarEntorno(config: Record<string, unknown>): Record<string, 
     );
   }
 
+  // PAUSA_ENTRE_EMAILS_MS: el ritmo de la tanda de recordatorios de pago, el
+  // unico camino del sistema que manda correo masivo. AUSENTE ES VALIDO y vale
+  // el defecto del codigo (200 ms), que es el valor seguro.
+  //
+  // Se valida —y las THROTTLE_* de al lado no— por el mismo criterio que
+  // JOBS_RECURRENTES: lo que se rechaza aqui es un valor que APAGA una
+  // proteccion de produccion en silencio. `Number('rapido')` es NaN y
+  // `setTimeout(fn, NaN)` dispara al instante; `Number('')` es 0. En los dos
+  // casos el despliegue cree tener ritmo y manda los correos pegados, que es
+  // justo lo que esa pausa viene a evitar, sin una linea de log que lo diga.
+  // Las THROTTLE_*, en cambio, se aflojan a proposito en los .env de test y su
+  // efecto se nota en el primer 429 que no llega.
+  //
+  // Ojo con la cadena vacia: aqui NO vale la regla de WEB_ORIGIN ("vacia es
+  // como ausente"), porque vacia no cae en el defecto, cae en 0.
+  const pausa = config.PAUSA_ENTRE_EMAILS_MS;
+  if (pausa !== undefined) {
+    const ms = typeof pausa === 'string' ? Number(pausa) : NaN;
+    if (pausa === '' || !Number.isInteger(ms) || ms < 0) {
+      throw new Error(
+        `PAUSA_ENTRE_EMAILS_MS debe ser un entero de milisegundos >= 0, no ${JSON.stringify(pausa)}. ` +
+          'Ausente equivale al defecto del codigo (200 ms); 0 desactiva la pausa.',
+      );
+    }
+  }
+
   // Opcional a proposito: un despliegue solo-API no tiene frontend al que
   // abrirle la puerta, y exigirla obligaria a inventar un valor. Una cadena
   // vacia cuenta como ausente: es lo que deja un .env con la clave escrita y

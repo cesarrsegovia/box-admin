@@ -245,6 +245,55 @@ describe('validarEntorno — comunicacion', () => {
   });
 });
 
+describe('validarEntorno — pausa entre correos de la tanda masiva', () => {
+  it('ausente es valido: el defecto del codigo son 200 ms', () => {
+    // ENTORNO_COMPLETO no la define. Exigirla romperia todos los despliegues
+    // que hoy no la tienen, y el defecto ya es el valor seguro.
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO })).not.toThrow();
+  });
+
+  it('acepta un entero de milisegundos', () => {
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, PAUSA_ENTRE_EMAILS_MS: '500' }),
+    ).not.toThrow();
+  });
+
+  it('acepta 0, que es "sin pausa" y es lo que ponen los tests', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, PAUSA_ENTRE_EMAILS_MS: '0' })).not.toThrow();
+  });
+
+  it('rechaza un valor que no sea un numero', () => {
+    // Es el caso que esta validacion existe para atrapar, y es silencioso:
+    // `Number('rapido')` es NaN, `setTimeout(fn, NaN)` dispara AL INSTANTE, y el
+    // despliegue cree tener ritmo mientras manda los 500 correos pegados. Ni una
+    // linea de log lo diria. Mismo criterio que JOBS_RECURRENTES.
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, PAUSA_ENTRE_EMAILS_MS: 'rapido' })).toThrow(
+      /PAUSA_ENTRE_EMAILS_MS/,
+    );
+  });
+
+  it('rechaza la cadena vacia, que es lo que deja un .env a medio rellenar', () => {
+    // Y es el caso mas traicionero de todos: `Number('')` es 0, o sea que una
+    // clave escrita sin valor APAGA el ritmo en silencio. Aqui no vale la regla
+    // de WEB_ORIGIN —"vacia es como ausente"—, porque vacia no cae en el defecto.
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, PAUSA_ENTRE_EMAILS_MS: '' })).toThrow(
+      /PAUSA_ENTRE_EMAILS_MS/,
+    );
+  });
+
+  it('rechaza un negativo', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, PAUSA_ENTRE_EMAILS_MS: '-100' })).toThrow(
+      /PAUSA_ENTRE_EMAILS_MS/,
+    );
+  });
+
+  it('rechaza un decimal: son milisegundos enteros', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO, PAUSA_ENTRE_EMAILS_MS: '1.5' })).toThrow(
+      /PAUSA_ENTRE_EMAILS_MS/,
+    );
+  });
+});
+
 describe('validarEntorno — zona horaria', () => {
   it('acepta una zona IANA con region y ciudad', () => {
     expect(() =>

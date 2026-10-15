@@ -15,7 +15,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
-async function bootstrap(): Promise<void> {
+export async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
   // Sin esto, detras de un reverse proxy TODAS las peticiones comparten la IP
@@ -73,7 +73,43 @@ async function bootstrap(): Promise<void> {
 
   app.useGlobalFilters(new AllExceptionsFilter());
 
+  // EL CIERRE ORDENADO. Sin esta linea Nest NO escucha las senales del proceso,
+  // y todo el cierre que hay escrito en el repo no se ejecutaba NUNCA: un
+  // SIGTERM —que es como para un contenedor cualquier orquestador, y como
+  // reinicia un deploy— mataba la API en seco.
+  //
+  // Lo que pasa a correr, que estaba escrito y muerto:
+  //
+  // - `PrismaService.onModuleDestroy` → `$disconnect()`: sin el, el pool de
+  //   conexiones se corta de golpe y Postgres las recoge por timeout.
+  // - `CacheRedis.onModuleDestroy` → cierra su ioredis.
+  // - El `onApplicationShutdown` del explorador de @nestjs/bullmq, que hace
+  //   `worker.close()` en los SEIS processors (generacion-mes, health-check y
+  //   los cuatro de notificaciones). Esto es lo que mas pesa aqui: `close()`
+  //   espera a que el job EN CURSO termine en vez de abandonarlo. Y los jobs de
+  //   este sistema no son recalculables a voluntad — uno publica el mes entero
+  //   de un salon creando turnos y reservas, otro manda correo a los morosos.
+  //   Abandonado a mitad, el primero deja un mes a medio crear y el segundo
+  //   deja media tanda enviada que el reintento vuelve a mandar.
+  //
+  // VA ANTES DEL `listen` a proposito: al reves queda una ventana —corta, pero
+  // real— en la que la API ya acepta peticiones y encola trabajo, y un SIGTERM
+  // en ese hueco sigue siendo el cierre brusco de siempre.
+  //
+  // Sin argumentos = las senales que Nest lista en `ShutdownSignal`, SIGTERM y
+  // SIGINT entre ellas. Hay un argumento razonable para acotarlo a esas dos
+  // (la lista completa incluye SIGSEGV y compania, donde correr limpieza async
+  // es dudoso, y SIGUSR2, que es la que usa nodemon para reiniciar); se deja el
+  // default de Nest, que es lo que cualquiera espera leer aqui.
+  app.enableShutdownHooks();
+
   await app.listen(config.get<number>('PORT') ?? 3000, '0.0.0.0');
 }
 
-void bootstrap();
+// Solo arranca cuando este archivo ES el programa (`node dist/main`). Sin esta
+// guarda, importarlo desde un test ejecutaria el bootstrap de verdad —levantar
+// AppModule entero y escuchar en un puerto— como efecto del `import`, y la
+// configuracion de arriba quedaria sin forma de comprobarse.
+if (require.main === module) {
+  void bootstrap();
+}

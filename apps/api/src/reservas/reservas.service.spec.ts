@@ -1028,9 +1028,16 @@ describe('listarDeTurno', () => {
     // dejaria pasar `logger.debug`, `console.log` o cualquier otro nombre, y
     // una defensa que depende de que nadie cambie una palabra es una defensa
     // que esta verde por casualidad. Por stdout/stderr pasan todas.
+    // EL CENTINELA, EN UN SOLO SITIO. Antes el dato se escribia tres veces a
+    // mano y la tercera era MAS CORTA que las otras ('Zoe Vera' contra 'Zoe
+    // Vera Quintanilla'): casaba por subcadena, asi que el dia que alguien
+    // cambiara el nombre del fixture el test habria seguido en verde un rato
+    // antes de dejar de comprobar nada. Se lee de aqui, y se mueve con el.
+    const ALUMNO_CENTINELA = { nombreCompleto: 'Zoe Vera Quintanilla' };
+
     const { servicio, reserva } = crearServicio();
     reserva.findMany.mockResolvedValue([
-      { ...FILA_DE_RESERVA, perfil: { usuario: { nombreCompleto: 'Zoe Vera Quintanilla' } } },
+      { ...FILA_DE_RESERVA, perfil: { usuario: { ...ALUMNO_CENTINELA } } },
     ]);
 
     const escrito: string[] = [];
@@ -1045,12 +1052,25 @@ describe('listarDeTurno', () => {
       const filas = await servicio.listarDeTurno('turno-1');
       // La premisa, dicha en voz alta: el nombre TIENE que estar en los datos,
       // o este caso no estaria comprobando nada.
-      expect(filas[0].nombreCompleto).toBe('Zoe Vera Quintanilla');
+      expect(filas[0].nombreCompleto).toBe(ALUMNO_CENTINELA.nombreCompleto);
     } finally {
       stdout.mockRestore();
       stderr.mockRestore();
     }
 
-    expect(escrito.join('')).not.toContain('Zoe Vera');
+    // ⚠️ NO `expect(escrito.join('')).not.toContain(nombre)`: cuando ESE falla,
+    // Jest IMPRIME EL TEXTO RECIBIDO — o sea que el test que existe para
+    // detectar una fuga de nombres, al detectarla, la publica entera en el
+    // registro de CI, que guarda mas tiempo y lo lee mas gente. Esta forma
+    // publica la ETIQUETA del dato que se escapo y nunca su valor.
+    const centinelas: Record<string, string> = {
+      'nombre completo del alumno': ALUMNO_CENTINELA.nombreCompleto,
+    };
+
+    const filtrados = Object.entries(centinelas)
+      .filter(([, valor]) => escrito.join('').includes(valor))
+      .map(([etiqueta]) => etiqueta);
+
+    expect(filtrados).toEqual([]);
   });
 });
