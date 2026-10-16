@@ -136,9 +136,30 @@ function unaSala(cambios: Partial<SalaPublica> = {}): SalaPublica {
   };
 }
 
+/**
+ * DOS IDS, Y NUNCA EL MISMO VALOR.
+ *
+ * `UsuarioResumen` trae los dos porque son dos espacios de id distintos:
+ *
+ *  - `id` es el del USUARIO (`Usuario.id`), que es lo que lleva la URL de su
+ *    ficha, `/usuarios/:id`, y nada mas.
+ *  - `perfilId` es el del PERFIL (`Perfil.id`), la fila por gimnasio. Es lo que
+ *    nombra `Turno.profesorId` —`profesor Perfil? @relation(fields: [tenantId,
+ *    profesorId], references: [tenantId, id])`—, asi que es lo que la API
+ *    compara en `where.profesorId` y lo que tiene que viajar en `?profesorId=`.
+ *
+ * Se siembran DISTINTOS a proposito y con nombres que dicen cual es cual: si
+ * coincidieran, ningun test podria distinguir cual de los dos mando el filtro, y
+ * un filtro que devuelve siempre la lista vacia pasaria por bueno.
+ *
+ * ESTO NO LO PROTEGE NINGUNA ASERCION, Y NO PUEDE PROTEGERLO: una asercion solo
+ * compara valores, y dos ids con el mismo valor no se distinguen comparando. La
+ * separacion de los dos espacios vive AQUI, en el fixture. Quien los iguale no
+ * rompe ningun test; rompe la capacidad de todos ellos de ver el bug.
+ */
 function unaProfesora(cambios: Partial<UsuarioResumen> = {}): UsuarioResumen {
   return {
-    id: 'p1',
+    id: 'usuario-de-ana',
     tenantId: 't-del-gimnasio',
     nombreCompleto: 'Ana Gomez',
     email: 'ana@gym.test',
@@ -375,11 +396,37 @@ describe('los filtros', () => {
   });
 
   it('lee los filtros DE la URL al cargar', () => {
-    montar({ turnos: [], busqueda: '?desde=2026-10-01&hasta=2026-10-31&salaId=s1&profesorId=p1' });
+    montar({
+      turnos: [],
+      busqueda: '?desde=2026-10-01&hasta=2026-10-31&salaId=s1&profesorId=perfil-de-ana',
+    });
 
     expect(rutasPedidas()).toContain(
-      '/turnos?desde=2026-10-01&hasta=2026-10-31&salaId=s1&profesorId=p1',
+      '/turnos?desde=2026-10-01&hasta=2026-10-31&salaId=s1&profesorId=perfil-de-ana',
     );
+  });
+
+  /**
+   * EL FILTRO MANDA EL `perfilId`, NO EL `id` DEL USUARIO.
+   *
+   * La API resuelve `where.profesorId` contra la columna que referencia a
+   * `Perfil`, asi que con el id del usuario NO da error: devuelve CERO turnos,
+   * que parece un resultado legitimo. Es el peor de los tres sintomas de esta
+   * confusion porque es invisible —nadie ve un 404, solo una lista vacia que
+   * podria ser cierta—, y por eso hace falta fijarlo con una asercion y no
+   * confiar en que un error lo delate.
+   *
+   * La segunda asercion no es redundante: dice CUAL es el valor equivocado. Con
+   * el fixture dando los dos ids distintos, la primera ya alcanza, pero esta
+   * deja escrito de que espacio de id se trata cada uno.
+   */
+  it('el filtro de profesora manda su perfilId en la URL, NO el id de su usuario', async () => {
+    montar({ turnos: [] });
+
+    await elegirFiltro('Profesora', 'Ana Gomez');
+
+    expect(empujar).toHaveBeenCalledWith('/mi-gym/admin/turnos?profesorId=perfil-de-ana');
+    expect(empujar).not.toHaveBeenCalledWith('/mi-gym/admin/turnos?profesorId=usuario-de-ana');
   });
 
   it('soloLibres en false se manda igual', () => {
@@ -409,11 +456,18 @@ describe('los filtros', () => {
   });
 
   it('los controles muestran lo que dice la URL', () => {
-    montar({ turnos: [], busqueda: '?desde=2026-10-01&salaId=s1&profesorId=p1&soloLibres=false' });
+    // El `?profesorId=` lleva el `perfilId`: es el unico valor que casa con
+    // alguna `<option>`, y un `<select>` cuyo `value` no casa con ninguna se
+    // queda en la primera. O sea que esta asercion tambien fija, de rebote, que
+    // el selector y la URL hablan el MISMO espacio de id.
+    montar({
+      turnos: [],
+      busqueda: '?desde=2026-10-01&salaId=s1&profesorId=perfil-de-ana&soloLibres=false',
+    });
 
     expect(screen.getByLabelText('Desde')).toHaveValue('2026-10-01');
     expect(screen.getByLabelText('Sala')).toHaveValue('s1');
-    expect(screen.getByLabelText('Profesora')).toHaveValue('p1');
+    expect(screen.getByLabelText('Profesora')).toHaveValue('perfil-de-ana');
     expect(screen.getByLabelText('Lugar')).toHaveValue('false');
   });
 
@@ -573,19 +627,32 @@ describe('cuando la peticion falla', () => {
 
 describe('al DOM no llega lo que ninguna columna necesita', () => {
   /**
-   * Los ids de sala y de profesora SI estan: son el `value` de sus `<option>`,
-   * y sin ellos el filtro no podria escribir la URL. Lo que no tiene por que
-   * estar es todo lo demas, y lo que se pinta viaja al navegador aunque este
-   * escondido en un `data-*`, en un `title` o en una celda tapada por CSS.
+   * ESTE TEST AFIRMABA QUE EL `perfilId` DE LA PROFESORA NO LLEGA AL DOM, Y ERA
+   * AL REVES.
    *
-   * El `tenantId` es justo el dato que la Fase 0 se ocupo de que no cruzara
-   * entre gimnasios; el `perfilId` es la llave con la que se anota a alguien.
+   * La premisa ya estaba escrita aqui —«los ids de sala y de profesora SI
+   * estan: son el `value` de sus `<option>`, y sin ellos el filtro no podria
+   * escribir la URL»— pero la lista de centinelas metia el `perfilId`, porque el
+   * filtro mandaba el id del usuario. El `perfilId` ES el id de la profesora a
+   * efectos de este filtro: tiene que estar, y el que no tiene nada que hacer
+   * aqui es el `id` del usuario, que solo sirve para `/usuarios/:id`.
+   *
+   * Lo que se pinta viaja al navegador aunque este escondido en un `data-*`, en
+   * un `title` o en una celda tapada por CSS. El `tenantId` sigue siendo el
+   * centinela de siempre: es justo el dato que la Fase 0 se ocupo de que no
+   * cruzara entre gimnasios.
    */
-  it('ni el tenantId del turno, ni el de la sala, ni el perfilId de la profesora', () => {
+  it('ni el tenantId del turno, ni el de la sala, ni el id de usuario de la profesora', () => {
     montar({
       turnos: [unTurno({ tenantId: 'tenant-del-turno' })],
       salas: [unaSala({ tenantId: 'tenant-de-la-sala' })],
-      profesoras: [unaProfesora({ tenantId: 'tenant-de-la-profe', perfilId: 'perfil-secreto' })],
+      profesoras: [
+        unaProfesora({
+          tenantId: 'tenant-de-la-profe',
+          id: 'usuario-centinela',
+          perfilId: 'perfil-de-ana',
+        }),
+      ],
     });
 
     const html = document.body.innerHTML;
@@ -593,9 +660,14 @@ describe('al DOM no llega lo que ninguna columna necesita', () => {
       'tenant-del-turno',
       'tenant-de-la-sala',
       'tenant-de-la-profe',
-      'perfil-secreto',
+      'usuario-centinela',
     ]) {
       expect(html).not.toContain(valor);
     }
+
+    // Y la otra mitad: sin el `perfilId` en el marcado el filtro no tendria
+    // valor que escribir en la URL. Sin esta asercion, el test pasaria tambien
+    // con un `<option>` sin `value`, que es un filtro roto de otra manera.
+    expect(html).toContain('perfil-de-ana');
   });
 });

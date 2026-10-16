@@ -216,9 +216,14 @@ export function FiltrosDelListado() {
         >
           <option value="">Todas</option>
           {(profesoras ?? []).map((profesora) => (
-            // El `id` del USUARIO, que es lo que `profesorId` nombra en el
-            // turno. El `perfilId` es otra cosa y es lo que piden las reservas.
-            <option key={profesora.id} value={profesora.id}>
+            // EL `perfilId`, NO EL `id` DEL USUARIO. `Turno.profesorId`
+            // referencia a `Perfil` —`profesor Perfil? @relation(fields:
+            // [tenantId, profesorId], references: [tenantId, id])`—, asi que la
+            // API compara `where.profesorId` contra un `perfilId`. Mandar el id
+            // del usuario no da error: devuelve CERO turnos, que parece un
+            // resultado legitimo y no lo es. `useUsuarios` trae los dos campos
+            // justamente porque son dos espacios de id distintos.
+            <option key={profesora.perfilId} value={profesora.perfilId}>
               {profesora.nombreCompleto}
             </option>
           ))}

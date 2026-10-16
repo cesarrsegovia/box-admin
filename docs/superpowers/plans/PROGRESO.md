@@ -2428,10 +2428,8 @@ De 971 tests en web al empezar la fase.
   documentada y con tres tests. Si algún día la API las honra, hay que borrar esos tests a mano.
 - **El defecto de `repartirPorCampo`**, que ordena por longitud del nombre y manda el mensaje al campo
   equivocado. Arreglarlo es tocar `errores.ts`, del que cuelgan muchos specs.
-- ⚠️ **El filtro de profesora de `turnos/filtros.tsx` devuelve SIEMPRE lista vacía.** Pone
-  `value={profesora.id}` —el id del **usuario**— donde va el `perfilId`, **con un comentario que lo
-  afirma al revés**. `Turno.profesorId` referencia a `Perfil`. Es un **bug vivo de la Fase 8**; no se
-  tocó porque no era de esta tarea y rompería los tests de la Fase 9. **Pendiente, y es de producto.**
+- ✅ **El id de la profesora: ARREGLADO el 2026-10-16** (ver el apartado de abajo). Era un bug vivo de
+  la Fase 8 con **tres** síntomas, no uno.
 - **Los specs viejos siguen con su copia a mano** del andamiaje de hooks.
   `src/test/andamiaje-de-hooks.tsx` nació en la T1 (`montar`, `dobleDeFetch`, `dobleDe204`,
   `dobleQueFalla`, `llamada`, `cacheDeConsultas`) y lo usan los cuatro hooks nuevos; unificar los viejos
@@ -2491,3 +2489,97 @@ entorno. Se ejecutan en el panel, a mano.
       el interruptor de **Activa**. Las dos tienen que dar el mismo 409 con el número de turnos.
 - [ ] **Comprobar que no hay entradas del panel en `Cache Storage`** (DevTools → Application). El
       service worker es de la web pública; el panel no se cachea.
+
+---
+
+# Arreglo posterior — el id de la profesora (2026-10-16)
+
+El primer punto de la deuda de la Fase 10, hecho. Salió de la T3, al verificar que `profesorId` es un
+`perfilId`: **un solo error de concepto con tres síntomas**, y el que estaba anotado era el más leve.
+
+| Síntoma | Qué pasa | Cómo se ve |
+| --- | --- | --- |
+| El filtro de `turnos/filtros.tsx` | Filtra la columna que referencia a `Perfil` con un id de usuario | **Nada.** Devuelve cero turnos, que parece un resultado legítimo |
+| **Asignar suplencia** (`bloque-profesora.tsx`) | `exigirProfesoraConAccesoALaSala` hace `perfil.findFirst({where:{id}})` → **404 «Perfil inexistente»** | **El bloque entero de la Fase 9 nunca funcionó**, y el mensaje le dice al del mostrador que no existe un perfil que acaba de elegir de un desplegable |
+| La opción fantasma | `faltaLaPuesta` compara `profesora.id` contra `puesta.id`, **cruzando los dos espacios** → siempre `true` | Toda profesora asignada aparece duplicada como «(dada de baja)», y el selector arranca en esa opción |
+
+Verificado contra `schema.prisma:374`, `aTurnoPublico` (`turnos.service.ts:58`, que pone
+`id: turno.profesorId` dentro de `profesor`) y `horarios-profesor.service.ts:307`.
+
+El arreglo son dos líneas de valor más una comparación; el `useState(turno.profesor?.id ?? '')` **no
+hubo que tocarlo**: una vez que las opciones llevan `perfilId`, la siembra ya casa.
+
+**El barrido del resto de `apps/web` no encontró más sitios.** Lo demás ya estaba bien y lo documenta:
+`admin/horarios/`, `bloque-anotados.tsx`, `bloque-vacaciones.tsx`, `bloque-dias-fijos.tsx` y
+`calendario/plan.tsx`. En los 13 specs con fixtures de personas, `id` y `perfilId` nunca coinciden.
+
+## La quinta forma de que un test no pueda fallar: el fixture habla el idioma del código
+
+Las cuatro conocidas son: autorreferencial, premisa destruida, montado en el caso ciego, y verde por
+casualidad ortográfica. **Ésta es nueva y es por el lado de la ENTRADA.**
+
+El fixture daba `id: 'prof-1'` y `perfilId: 'p-prof-1'`, o sea que **los dos espacios sí estaban
+separados** y el test podía distinguirlos. Pero el turno se sembraba así:
+
+```tsx
+unTurno({ profesor: { id: 'prof-4', nombreCompleto: 'Dani Rios' } })
+```
+
+`'prof-4'` es un id de **usuario** en el vocabulario de ese mismo fixture, y ahí el servidor manda un
+`perfilId`. **El fixture se construyó desde la creencia del código en vez de desde el contrato**:
+código y test de acuerdo, los dos equivocados respecto de la API. Ninguna aserción sobre un dato mal
+sembrado puede delatar nada — el fixture no era evidencia independiente.
+
+### Y la medición que lo cierra
+
+Se midió la mutación «sembrar los dos ids iguales», con un matiz que corrige la predicción del
+encargo. Mutar **sólo** la línea del fixture (`perfilId: \`p-${id}\`` → `perfilId: id`) hace caer 6
+tests, **pero por desajuste de literales**: el fixture deja de ser coherente consigo mismo y
+`'p-prof-2'` ya no existe como opción. Eso no mide el cruce de espacios, mide que se rompió el fixture.
+
+La medición honesta es colapsar el fixture **y** ajustar las aserciones a ese valor, que es lo que
+habría escrito quien lo construyera así desde el principio. Hecho eso y aplicado encima el bug
+original: **10 tests en verde, los dos nuevos incluidos.**
+
+**No es que ninguna aserción lo cace: es que ninguna aserción PUEDE cazarlo.** Una aserción compara
+valores, y dos ids con el mismo valor no se distinguen comparando. La separación de los dos espacios
+vive en el fixture y no hay otro sitio donde ponerla. Por eso no se "arregló" con un test —no tiene
+arreglo por esa vía—: queda **medido y escrito en los dos fixtures**, diciendo que quien iguale esas
+dos líneas no rompe ningún test, sino la capacidad de todos ellos de ver el bug.
+
+## Un centinela que contradecía a su propio comentario
+
+`turnos/page.spec.tsx` tenía **`ni el tenantId del turno, ni el de la sala, ni el perfilId de la
+profesora`**, afirmando que el `perfilId` no llega al DOM. Con el arreglo **tiene** que llegar: es el
+`value` del `<option>`. Y el comentario que encabeza esa misma lista ya decía lo contrario, por
+escrito: «los ids de sala y de profesora SÍ están: son el `value` de sus `<option>`, y sin ellos el
+filtro no podría escribir la URL».
+
+Invertido: el centinela ahora es el **id de usuario**, que es el que no tiene nada que hacer en esa
+pantalla, más un `toContain` del `perfilId` que fija la otra mitad.
+
+## Tests, antes y después
+
+**Nuevos (2):** «el filtro de profesora manda su perfilId en la URL, NO el id de su usuario» (no
+existía nada que fijara ese `router.push`) y «una profesora activa y puesta NO aparece duplicada como
+dada de baja» — **el caso sano, que es el que faltaba**: el test que había sólo montaba la profesora
+dada de baja de verdad, donde la opción fantasma y la legítima son indistinguibles. Caso ciego, y se
+confirmó midiendo: la mutación de `faltaLaPuesta` **no** hace caer ese test viejo.
+
+**Cambiados de sentido**, todos endureciéndose y no aflojándose:
+
+- «asignar una profesora manda su id» → «…manda su perfilId, NO el id de su usuario», con un
+  `not.toEqual` del id de usuario.
+- «la que ya esta puesta viene elegida en el selector» → «…por su perfilId», **y ahora afirma también
+  el texto de la opción**, porque un `toHaveValue` solo pasaría igual apuntando a la opción fantasma.
+- «una profesora dada de baja no se ofrece…»: fixture corregido más un `not.toContain` del id de
+  usuario.
+- En el spec de la lista, `id: 'p1'` → `id: 'usuario-de-ana'`: **`'p1'` parecía un perfilId y era un
+  id de usuario.** El nombre de una variable de fixture también miente.
+
+## Estado
+
+| | |
+| --- | --- |
+| `apps/web` | **1255 tests / 57 suites**, tsc limpio |
+| `apps/api` | 1320 / 66 — sin tocar |

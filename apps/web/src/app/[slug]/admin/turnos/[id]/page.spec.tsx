@@ -68,6 +68,33 @@ function unTurno(cambios: Partial<TurnoPublico> = {}): TurnoPublico {
   };
 }
 
+/**
+ * DOS IDS, Y NUNCA EL MISMO VALOR.
+ *
+ * `UsuarioResumen` trae los dos porque son dos espacios de id distintos:
+ *
+ *  - `id` es el del USUARIO (`Usuario.id`). Es lo que lleva la URL de la ficha
+ *    de la persona, `/usuarios/:id`, y nada mas.
+ *  - `perfilId` es el del PERFIL (`Perfil.id`), que es la fila por gimnasio.
+ *    Es lo que nombran `Turno.profesorId` —`profesor Perfil? @relation(fields:
+ *    [tenantId, profesorId], references: [tenantId, id])`—, el `profesorId` de
+ *    `AsignarProfesorDto` —que el service valida con `perfil.findFirst`— y el
+ *    `perfilId` de las reservas.
+ *
+ * Por eso `perfilId` se deriva con el prefijo `p-` y JAMAS es igual al `id`: si
+ * coincidieran, ningun test podria distinguir cual de los dos mando la
+ * pantalla, y toda asercion sobre ese dato pasaria por las dos razones.
+ *
+ * ESTO NO LO PROTEGE NINGUNA ASERCION, Y NO PUEDE PROTEGERLO. Esta medido: con
+ * los dos ids sembrados iguales y las aserciones ajustadas a ese valor, el bug
+ * original —mandar el `id` del usuario al asignar y comparar `profesora.id`
+ * contra `puesta.id`— pasa los tests de este bloque EN VERDE, los nuevos
+ * incluidos. Una asercion solo puede comparar valores, y dos ids con el mismo
+ * valor no se pueden distinguir por comparacion: la separacion de los dos
+ * espacios vive AQUI, en el fixture, y en ningun otro sitio. Quien toque estas
+ * dos lineas no rompe ningun test; rompe la capacidad de todos ellos de ver el
+ * bug.
+ */
 function unaProfesora(id: string, nombreCompleto: string, activo = true): UsuarioResumen {
   return {
     id,
@@ -85,6 +112,27 @@ function unaProfesora(id: string, nombreCompleto: string, activo = true): Usuari
 }
 
 const PROFESORAS = [unaProfesora('prof-1', 'Ana Perez'), unaProfesora('prof-2', 'Beto Diaz')];
+
+/**
+ * LA PROFESORA DE UN TURNO SE SIEMBRA CON SU `perfilId`, NO CON EL ID DEL
+ * USUARIO.
+ *
+ * El servidor arma ese dato en `aTurnoPublico` con `id: turno.profesorId`, y
+ * esa columna referencia a `Perfil`. O sea que `TurnoPublico.profesor.id` ES un
+ * `perfilId`, y sembrarlo con un `'prof-N'` seria sembrar lo que el codigo creia
+ * en vez de lo que el servidor manda: el fixture y la pantalla coincidirian, los
+ * dos equivocados, y ninguna asercion sobre el dato podria delatarlo.
+ *
+ * Se usa esta funcion y no un objeto a mano para que la traduccion
+ * `'prof-2'` -> `'p-prof-2'` viva en UN solo lugar y siga la misma convencion
+ * que `unaProfesora`.
+ */
+function laProfesoraDelTurno(
+  idDeUsuario: string,
+  nombreCompleto: string,
+): NonNullable<TurnoPublico['profesor']> {
+  return { id: `p-${idDeUsuario}`, nombreCompleto };
+}
 
 // ---------------------------------------------------------------------------
 // El servidor de mentira
@@ -633,16 +681,31 @@ describe('el bloque de la profesora', () => {
     expect(rutasPedidas()).toEqual(['/usuarios?tipo=profesor']);
   });
 
-  it('asignar una profesora manda su id', async () => {
+  /**
+   * EL `perfilId`, NO EL `id` DEL USUARIO.
+   *
+   * `AsignarProfesorDto.profesorId` termina en `Turno.profesorId`, que
+   * referencia a `Perfil`, y el service lo valida antes con
+   * `perfil.findFirst({ where: { id: profesorId } })`. Con el id del usuario,
+   * asignar una suplencia contesta 404 «Perfil inexistente» para una profesora
+   * que el admin acaba de elegir de un desplegable.
+   *
+   * Las dos aserciones hacen falta. La primera dice que se mando el `perfilId`;
+   * la segunda, que NO se mando el id del usuario. Como el fixture da los dos
+   * distintos, la primera ya alcanza, pero la segunda deja escrito cual es el
+   * error que se esta vigilando.
+   */
+  it('asignar una profesora manda su perfilId, NO el id de su usuario', async () => {
     await montar({ turno: unTurno({ profesor: null }) });
 
     await clicEn('Cambiar profesora');
-    await userEvent.setup().selectOptions(screen.getByLabelText('Profesora a cargo'), 'prof-2');
+    await userEvent.setup().selectOptions(screen.getByLabelText('Profesora a cargo'), 'p-prof-2');
     await clicEn('Guardar profesora');
 
     expect(escrituras()).toEqual([
-      ['/turnos/t1/profesor', { metodo: 'PATCH', cuerpo: { profesorId: 'prof-2' } }],
+      ['/turnos/t1/profesor', { metodo: 'PATCH', cuerpo: { profesorId: 'p-prof-2' } }],
     ]);
+    expect(cuerpoEnviado()).not.toEqual({ profesorId: 'prof-2' });
   });
 
   /**
@@ -652,7 +715,7 @@ describe('el bloque de la profesora', () => {
    * da por ausente y el turno se queda como estaba, en silencio y en verde.
    */
   it('quitar la profesora manda null EXPLICITO, no omite la clave', async () => {
-    await montar({ turno: unTurno({ profesor: { id: 'prof-1', nombreCompleto: 'Ana Perez' } }) });
+    await montar({ turno: unTurno({ profesor: laProfesoraDelTurno('prof-1', 'Ana Perez') }) });
 
     await clicEn('Cambiar profesora');
     await userEvent.setup().selectOptions(screen.getByLabelText('Profesora a cargo'), '');
@@ -666,7 +729,7 @@ describe('el bloque de la profesora', () => {
     await montar({ turno: unTurno({ profesor: null }) });
 
     await clicEn('Cambiar profesora');
-    await userEvent.setup().selectOptions(screen.getByLabelText('Profesora a cargo'), 'prof-2');
+    await userEvent.setup().selectOptions(screen.getByLabelText('Profesora a cargo'), 'p-prof-2');
     await clicEn('Guardar profesora');
 
     expect(peticiones()).toEqual([
@@ -676,12 +739,55 @@ describe('el bloque de la profesora', () => {
     ]);
   });
 
-  it('la que ya esta puesta viene elegida en el selector', async () => {
-    await montar({ turno: unTurno({ profesor: { id: 'prof-2', nombreCompleto: 'Beto Diaz' } }) });
+  /**
+   * EL SELECTOR ARRANCA EN LA QUE YA ESTA PUESTA.
+   *
+   * No en «Sin profesora» ni en una opcion fantasma. El valor inicial sale de
+   * `turno.profesor.id`, que es un `perfilId`, asi que tiene que casar con el
+   * `value` de la opcion de esa misma profesora —que tambien es su `perfilId`—.
+   * Con los dos lados hablando idiomas distintos, el `<select>` arranca en lo
+   * que haya, y guardar sin tocar nada guardaria otra cosa que la que la
+   * pantalla muestra.
+   *
+   * Se mira ademas el TEXTO de la opcion elegida: un `toHaveValue` solo pasaria
+   * igual si el valor casara con una opcion duplicada «(dada de baja)», que es
+   * justo el otro sintoma de esta misma confusion.
+   */
+  it('el selector arranca en la profesora que ya esta puesta, por su perfilId', async () => {
+    await montar({ turno: unTurno({ profesor: laProfesoraDelTurno('prof-2', 'Beto Diaz') }) });
 
     await clicEn('Cambiar profesora');
 
-    expect(screen.getByLabelText('Profesora a cargo')).toHaveValue('prof-2');
+    const selector = screen.getByLabelText<HTMLSelectElement>('Profesora a cargo');
+
+    expect(selector).toHaveValue('p-prof-2');
+    expect(selector.selectedOptions[0]?.textContent).toBe('Beto Diaz');
+  });
+
+  /**
+   * EL CASO SANO, QUE ES EL QUE NO EXISTIA.
+   *
+   * El unico test que habia montaba a una profesora dada de baja DE VERDAD, y
+   * ahi la opcion fantasma y la legitima son indistinguibles: las dos dicen
+   * «(dada de baja)» y las dos llevan el mismo valor. Es el caso ciego, y por
+   * eso `faltaLaPuesta` podia comparar `profesora.id` contra `puesta.id`
+   * —cruzando los dos espacios de id, o sea dando SIEMPRE `true`— sin que
+   * cayera nada.
+   *
+   * Aqui la profesora puesta esta ACTIVA y en el padron: su opcion tiene que
+   * aparecer UNA sola vez y sin ningun «(dada de baja)» pegado.
+   */
+  it('una profesora activa y puesta NO aparece duplicada como dada de baja', async () => {
+    await montar({ turno: unTurno({ profesor: laProfesoraDelTurno('prof-2', 'Beto Diaz') }) });
+
+    await clicEn('Cambiar profesora');
+
+    const textos = [...screen.getByLabelText('Profesora a cargo').querySelectorAll('option')].map(
+      (opcion) => opcion.textContent,
+    );
+
+    expect(textos).toEqual(['Sin profesora', 'Ana Perez', 'Beto Diaz']);
+    expect(textos.join(' ')).not.toContain('dada de baja');
   });
 
   /**
@@ -692,7 +798,7 @@ describe('el bloque de la profesora', () => {
    */
   it('una profesora dada de baja no se ofrece, pero la del turno sigue estando', async () => {
     await montar({
-      turno: unTurno({ profesor: { id: 'prof-4', nombreCompleto: 'Dani Rios' } }),
+      turno: unTurno({ profesor: laProfesoraDelTurno('prof-4', 'Dani Rios') }),
       profesoras: [
         ...PROFESORAS,
         unaProfesora('prof-4', 'Dani Rios', false),
@@ -706,15 +812,20 @@ describe('el bloque de la profesora', () => {
       (opcion) => opcion.getAttribute('value'),
     );
 
-    expect(opciones).toContain('prof-4');
-    expect(opciones).not.toContain('prof-5');
+    // Los valores son `perfilId`: el de la puesta esta y el de la otra dada de
+    // baja no. Y se mira tambien que el id del USUARIO no ande por ahi, porque
+    // una opcion con `value="prof-4"` pasaria el `toContain` de arriba si este
+    // test usara el otro espacio de id.
+    expect(opciones).toContain('p-prof-4');
+    expect(opciones).not.toContain('p-prof-5');
+    expect(opciones).not.toContain('prof-4');
   });
 
   it('cancelar el cambio no llama a la API', async () => {
     await montar();
 
     await clicEn('Cambiar profesora');
-    await userEvent.setup().selectOptions(screen.getByLabelText('Profesora a cargo'), 'prof-2');
+    await userEvent.setup().selectOptions(screen.getByLabelText('Profesora a cargo'), 'p-prof-2');
     await clicEn('Cancelar');
 
     expect(escrituras()).toEqual([]);
@@ -725,7 +836,7 @@ describe('el bloque de la profesora', () => {
     laApiFalla(new ErrorDeApi('Esa profesora no tiene acceso a la sala del turno', 400));
 
     await clicEn('Cambiar profesora');
-    await userEvent.setup().selectOptions(screen.getByLabelText('Profesora a cargo'), 'prof-2');
+    await userEvent.setup().selectOptions(screen.getByLabelText('Profesora a cargo'), 'p-prof-2');
     await clicEn('Guardar profesora');
 
     expect(screen.getByText(/no tiene acceso a la sala/i)).toBeInTheDocument();

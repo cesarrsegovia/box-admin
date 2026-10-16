@@ -66,6 +66,15 @@ function SelectorDeProfesora({
   const asignar = useAsignarProfesor(turno.id);
   const { data: profesoras, isPending, error } = useUsuarios({ tipo: 'profesor' });
 
+  /**
+   * `TurnoPublico.profesor.id` ES UN `perfilId`, no el id del usuario.
+   *
+   * `aTurnoPublico` lo arma con `id: turno.profesorId`, y esa columna
+   * referencia a `Perfil`. Por eso sembrar el selector con el, y por eso cada
+   * `<option>` lleva el `perfilId` de su profesora y no el `id` de su usuario:
+   * si los dos lados no hablaran el mismo idioma, el valor inicial no casaria
+   * con ninguna opcion y el desplegable arrancaria en cualquier otra cosa.
+   */
   const [elegida, setElegida] = useState(turno.profesor?.id ?? '');
   const [fallo, setFallo] = useState<string | null>(null);
 
@@ -82,8 +91,12 @@ function SelectorDeProfesora({
    */
   const asignables = (profesoras ?? []).filter((profesora) => profesora.activo);
   const puesta = turno.profesor;
+  // CONTRA EL `perfilId`, que es el espacio de id del que sale `puesta.id`.
+  // Comparado contra `profesora.id` —el del usuario— esto cruza los dos
+  // espacios y da SIEMPRE `true`: cualquier turno con profesora asignada
+  // mostraria una opcion duplicada «(dada de baja)» aunque este activa.
   const faltaLaPuesta =
-    puesta !== null && !asignables.some((profesora) => profesora.id === puesta.id);
+    puesta !== null && !asignables.some((profesora) => profesora.perfilId === puesta.id);
 
   const opciones = [
     // "Sin profesora" SIEMPRE: quitarla es una accion legitima del turno, no la
@@ -92,7 +105,15 @@ function SelectorDeProfesora({
     ...(faltaLaPuesta
       ? [{ valor: puesta.id, texto: `${puesta.nombreCompleto} (dada de baja)` }]
       : []),
-    ...asignables.map((profesora) => ({ valor: profesora.id, texto: profesora.nombreCompleto })),
+    // El `perfilId`, que es lo que `AsignarProfesorDto.profesorId` nombra: el
+    // service lo valida con `perfil.findFirst({ where: { id: profesorId } })`.
+    // Con el id del usuario, asignar una suplencia contesta 404 «Perfil
+    // inexistente» para una profesora que el admin acaba de elegir del
+    // desplegable.
+    ...asignables.map((profesora) => ({
+      valor: profesora.perfilId,
+      texto: profesora.nombreCompleto,
+    })),
   ];
 
   async function guardar(): Promise<void> {
