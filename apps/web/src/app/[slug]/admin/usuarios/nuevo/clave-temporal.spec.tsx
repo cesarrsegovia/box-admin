@@ -45,18 +45,6 @@ function montar(advertencias: Advertencia[] = [], alTerminar = vi.fn()) {
   return { sesion, alTerminar };
 }
 
-/** Todo lo que un almacen del navegador tiene dentro, sin preguntar por claves. */
-function contenidoDe(almacen: Storage): Record<string, string> {
-  const guardado: Record<string, string> = {};
-
-  for (let indice = 0; indice < almacen.length; indice += 1) {
-    const clave = almacen.key(indice);
-    if (clave !== null) guardado[clave] = almacen.getItem(clave) ?? '';
-  }
-
-  return guardado;
-}
-
 /**
  * Lo que la pantalla dice FUERA DEL DOM lo vigila `vigilarLosCanalesDeSalida`
  * desde `vitest.setup.ts`, en todos los specs: la consola, el titulo de la
@@ -71,8 +59,9 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
-  localStorage.clear();
-  sessionStorage.clear();
+  // Los almacenes del navegador los deja como estaban —y ademas los AUDITA— el
+  // tapon global de `vitest.setup.ts`. Limpiarlos aqui, en un `afterEach` del
+  // spec que corre ANTES que el suyo, lo dejaria mirando unos almacenes vacios.
 });
 
 describe('la pantalla de la clave temporal', () => {
@@ -259,19 +248,5 @@ describe('recargar no la hace desaparecer en silencio', () => {
     window.dispatchEvent(evento);
 
     expect(evento.defaultPrevented).toBe(false);
-  });
-});
-
-describe('la clave no se guarda en ningun sitio del navegador', () => {
-  it('ni en localStorage ni en sessionStorage, ni antes ni despues de copiarla', async () => {
-    const { sesion } = montar([{ codigo: 'SIN_SALAS', mensaje: 'No tiene salas asignadas' }]);
-
-    await sesion.click(screen.getByRole('button', { name: /copiar/i }));
-    await sesion.click(screen.getByLabelText(/ya la anote/i));
-
-    expect({ local: contenidoDe(localStorage), sesion: contenidoDe(sessionStorage) }).toEqual({
-      local: {},
-      sesion: {},
-    });
   });
 });

@@ -313,8 +313,9 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
   falloDeEscritura = null;
-  localStorage.clear();
-  sessionStorage.clear();
+  // Los almacenes del navegador los deja como estaban —y ademas los AUDITA— el
+  // tapon global de `vitest.setup.ts`. Limpiarlos aqui, en un `afterEach` del
+  // spec que corre ANTES que el suyo, lo dejaria mirando unos almacenes vacios.
 });
 
 // ---------------------------------------------------------------------------
@@ -950,18 +951,5 @@ describe('lo que no sale de aqui', () => {
     await montar({ reservas: [ANA, BETO] });
 
     expect(document.body.innerHTML).not.toContain(TENANT);
-  });
-
-  it('no queda nada en el almacenamiento del navegador', async () => {
-    await montar({ reservas: [ANA, BETO] });
-
-    await clicEn('Anotar a alguien');
-    await userEvent.setup().selectOptions(screen.getByLabelText('Persona a anotar'), 'p-ana');
-    await clicEn('Anotar');
-
-    expect({ local: { ...localStorage }, sesion: { ...sessionStorage } }).toEqual({
-      local: {},
-      sesion: {},
-    });
   });
 });

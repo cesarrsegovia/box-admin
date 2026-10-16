@@ -26,6 +26,9 @@ const ENLACES_DE_HOY: [string, string][] = [
   ['Turnos', '/mi-gym/admin/turnos'],
   ['Personas', '/mi-gym/admin/usuarios'],
   ['Invitaciones', '/mi-gym/admin/invitaciones'],
+  ['Salas', '/mi-gym/admin/salas'],
+  ['Horarios', '/mi-gym/admin/horarios'],
+  ['Cierres', '/mi-gym/admin/ausencias'],
 ];
 
 /** Los tres roles que entran al panel, y lo que le toca a cada uno. */

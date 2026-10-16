@@ -93,9 +93,9 @@ beforeEach(() => {
 afterEach(() => {
   soltarLaHistoryApi();
   vi.clearAllMocks();
-  localStorage.clear();
-  sessionStorage.clear();
-  limpiarLasGalletas();
+  // Los almacenes del navegador los deja como estaban —y ademas los AUDITA— el
+  // tapon global de `vitest.setup.ts`. Limpiarlos aqui, en un `afterEach` del
+  // spec que corre ANTES que el suyo, lo dejaria mirando unos almacenes vacios.
 });
 
 // ---------------------------------------------------------------------------
@@ -258,50 +258,6 @@ function enlacesDelDocumento(): (string | null)[] {
 /** Las rutas pedidas, EN ORDEN y SIN deduplicar. */
 function rutasPedidas(): string[] {
   return pedirEspia.mock.calls.map(([ruta]) => ruta as string);
-}
-
-/** Todo lo que un almacen del navegador tiene dentro, sin preguntar por claves. */
-function contenidoDe(almacen: Storage): Record<string, string> {
-  const guardado: Record<string, string> = {};
-
-  for (let indice = 0; indice < almacen.length; indice += 1) {
-    const clave = almacen.key(indice);
-    if (clave !== null) guardado[clave] = almacen.getItem(clave) ?? '';
-  }
-
-  return guardado;
-}
-
-/**
- * LAS GALLETAS, que son el tercer almacen y el unico que VIAJA.
- *
- * `localStorage` y `sessionStorage` se quedan en el disco de la maquina.
- * `document.cookie` ademas se adjunta a cada peticion que sale al mismo
- * dominio: lo que se guarde aqui acaba en las cabeceras de toda llamada a la
- * API y en los registros de acceso del servidor, sin que nadie lo haya pedido.
- *
- * Se lee ENTERO, no por clave: una lista negra siempre va una clave por detras.
- */
-function galletasDelDocumento(): Record<string, string> {
-  const guardadas: Record<string, string> = {};
-
-  for (const trozo of document.cookie.split(';')) {
-    const limpio = trozo.trim();
-    if (limpio === '') continue;
-
-    const corte = limpio.indexOf('=');
-    if (corte === -1) guardadas[limpio] = '';
-    else guardadas[limpio.slice(0, corte)] = limpio.slice(corte + 1);
-  }
-
-  return guardadas;
-}
-
-/** Caducar lo que haya: jsdom comparte `document.cookie` entre tests. */
-function limpiarLasGalletas(): void {
-  for (const clave of Object.keys(galletasDelDocumento())) {
-    document.cookie = `${clave}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -520,29 +476,15 @@ describe('pintar el listado no trae nada mas', () => {
   });
 
   /**
-   * LO QUE QUEDA EN EL NAVEGADOR CUANDO LA PANTALLA SE CIERRA.
+   * LOS TRES ALMACENES DEL NAVEGADOR YA NO SE MIRAN AQUI.
    *
-   * La cache de consultas se muere con la pestaña. Los tres almacenes de abajo
-   * no. Se miran ENTEROS y no una clave concreta: una lista negra ("que no este
-   * `boxadmin:turnos`") siempre va una clave por detras.
-   *
-   * Las GALLETAS estan aqui por una razon propia: ademas de sobrevivir al
-   * cierre, son el unico almacen que VIAJA. Lo que se guarde ahi se adjunta a
-   * cada peticion al mismo dominio, acaba en las cabeceras de toda llamada a la
-   * API y en los registros de acceso del servidor. Ningun test del repo las
-   * miraba: los de almacenamiento vigilaban los dos `Storage` y paraban ahi.
+   * Este archivo fue el primero en mirar tambien las GALLETAS —el unico
+   * almacen que VIAJA— y lo hacia con su propia copia de `contenidoDe` y
+   * `galletasDelDocumento`, mas un `toEqual` sobre los VALORES que al caer
+   * imprimiria en el informe de CI justamente el dato que se escapo. La
+   * dimension entera subio al tapon global de `vitest.setup.ts`, que la vigila
+   * en TODOS los tests de este archivo y afirma sobre las CLAVES.
    */
-  it('no queda nada en el almacenamiento del navegador', async () => {
-    montar({ turnos: [unTurno({ id: 't1' }), unTurno({ id: 't2' })] });
-
-    await esperar();
-
-    expect({
-      local: contenidoDe(localStorage),
-      sesion: contenidoDe(sessionStorage),
-      galletas: galletasDelDocumento(),
-    }).toEqual({ local: {}, sesion: {}, galletas: {} });
-  });
 
   it('en la cache no queda ni una ficha de turno', async () => {
     // Precargar la ficha de cada fila "para que abra instantanea" es una linea,

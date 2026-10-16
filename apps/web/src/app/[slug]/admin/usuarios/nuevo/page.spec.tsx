@@ -238,18 +238,6 @@ function rolesDelDocumento(rol: string): number {
   return document.querySelectorAll(`[role="${rol}"]`).length;
 }
 
-/** Todo lo que un almacen del navegador tiene dentro, sin preguntar por claves. */
-function contenidoDe(almacen: Storage): Record<string, string> {
-  const guardado: Record<string, string> = {};
-
-  for (let indice = 0; indice < almacen.length; indice += 1) {
-    const clave = almacen.key(indice);
-    if (clave !== null) guardado[clave] = almacen.getItem(clave) ?? '';
-  }
-
-  return guardado;
-}
-
 /**
  * TODO lo que el `QueryClient` tiene guardado, consultas Y mutaciones.
  *
@@ -287,8 +275,9 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
-  localStorage.clear();
-  sessionStorage.clear();
+  // Los almacenes del navegador los deja como estaban —y ademas los AUDITA— el
+  // tapon global de `vitest.setup.ts`. Limpiarlos aqui, en un `afterEach` del
+  // spec que corre ANTES que el suyo, lo dejaria mirando unos almacenes vacios.
 });
 
 // ---------------------------------------------------------------------------
@@ -389,14 +378,13 @@ describe('la contraseña temporal del alta', () => {
 // ---------------------------------------------------------------------------
 
 describe('la clave no deja copias', () => {
-  it('no queda nada en el almacenamiento del navegador', async () => {
-    await darDeAlta();
-
-    expect({ local: contenidoDe(localStorage), sesion: contenidoDe(sessionStorage) }).toEqual({
-      local: {},
-      sesion: {},
-    });
-  });
+  /**
+   * LOS ALMACENES DEL NAVEGADOR YA NO SE MIRAN AQUI: los vigila el tapon
+   * global de `vitest.setup.ts` en TODOS los tests de este archivo, el alta
+   * incluida, y contra `SECRETOS_DEL_PANEL.claveDelAlta` —el mismo centinela
+   * que este spec siembra—. Lo que queda aqui son los almacenes que NO son
+   * del navegador: el portapapeles, la URL y las dos caches.
+   */
 
   it('no se copia sola al portapapeles', async () => {
     await darDeAlta();

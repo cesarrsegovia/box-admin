@@ -2178,3 +2178,316 @@ De 802 tests en web y 1291 en la API al empezar la fase.
 **La configuración operativa** —salas, horarios de profesor, vacaciones y ausencias, 12 endpoints—, que
 cierra Operación diaria y son los datos de los que se alimenta el calendario. Después **Análisis** (los
 siete reportes de la 6A, que llevan tres fases sin cara), **Dinero** (9) y **Configuración** (14).
+
+# Progreso Fase 10 — La configuración operativa
+
+**Spec:** `docs/superpowers/specs/2026-10-15-fase10-configuracion-operativa.md`
+**Plan:** `docs/superpowers/plans/2026-10-15-fase10-configuracion-operativa.md` (6 tareas)
+
+Los datos **de los que se alimenta** el calendario que la Fase 8 publica. Cierra **Operación diaria**.
+**No se tocó ni un endpoint**: son 15 que ya existían y no tenían pantalla.
+
+- [x] T1 — Los cuatro hooks (`use-salas-admin`, `use-horarios`, `use-ausencias`, `use-vacaciones`)
+- [x] T2 — Salas: el catálogo con alta, y la ficha con los cuatro ajustes, activa y baja
+- [x] T3 — Horarios de profesor, con filtros en la URL
+- [x] T4 — Ausencias («Cierres»)
+- [x] T4bis — Sacar la franja horaria de las ausencias (decisión de Cesar, en caliente)
+- [x] T5 — Las vacaciones, en la ficha de la persona
+- [x] T6 — Infraestructura de los canales, verificación, README y tracker
+
+## Las cuatro decisiones que no estaban en el plan y hubo que inventar
+
+**No hay hook de lista de salas.** `GET /salas` no acepta filtros y el service ya recorta por rol, así
+que una «lista de administración» sería **byte por byte la misma petición** que `useSalas()`. Dos claves
+para la misma petición son dos copias que se desincronizan. La pantalla usa `useSalas()`.
+
+**La clave de la ficha es `['sala', id]`, en singular.** Con `['salas', id]`, invalidar el catálogo la
+arrastraría por prefijo y «invalida el catálogo» e «invalida la ficha» serían **el mismo hecho**: dos
+tests que se vuelven uno sin que se note. Caso ciego, evitado antes de escribirlo.
+
+**El test del catálogo no espía `invalidateQueries`**: monta `useSalas()` de verdad y mira si el
+`GET /salas` vuelve a salir. Con el espía sería autorreferencial — la clave invalidada comparada contra
+la misma que el hook usa, verde aunque las dos se desviaran juntas a una clave paralela que ninguna
+pantalla observa.
+
+**Cada ajuste heredable tiene su propio botón y su propia mutación**, para que el cuerpo sea
+literalmente `{ cupoBase: 12 }`. Un único «Guardar» mandaría las ocho claves y **pisaría la herencia en
+silencio**.
+
+## Los errores de este plan
+
+Los diez, sin suavizar. Los encontraron los agentes al verificar en vez de acomodarse.
+
+1. ⚠️ **`/vacaciones` no existe: el controller es `vacaciones-alumnos`.** El módulo, el service y el
+   contrato se llaman sólo «vacaciones», así que deducir la ruta del nombre del módulo da 404 — y un
+   404 en ese GET **se ve en pantalla como «este alumno no tiene vacaciones cargadas»**. Un error de
+   ruta disfrazado de dato vacío, la misma forma del `?salaId=` de la Fase 6A: no falla, **miente**. De
+   ahí salió la decisión de que el estado de error del bloque **no comparta dibujo con el vacío**.
+2. **El borrado de vacaciones es real, no baja lógica.** Lo dice el comentario del propio controller, y
+   devuelve la fila para poder deshacer. Salas y horarios sí son baja lógica. En mi tabla de endpoints
+   las puse a las tres iguales.
+3. ⚠️ **`cupoBase` no hereda del gimnasio: `Tenant` no tiene esa columna**, y el schema dice por escrito
+   por qué no la tiene. **No son cuatro los ajustes heredables: son tres.** Pintar «hereda del gimnasio»
+   habría prometido un valor que no existe, con el síntoma **a un mes de distancia**.
+4. ⚠️ **`profesorId` no es el id del usuario: es el `perfilId`.** El modelo relaciona
+   `profesor Perfil @relation(fields: [tenantId, profesorId])`. De ahí salió un **bug vivo de la Fase
+   8** (ver Deuda).
+5. **Predije que el recuento de T4bis bajaría y no bajó**: 56 → 56, se fueron 3 y entraron 3. Lo que
+   faltaba en la predicción es que **la cobertura no se borra, se reemplaza desde el lado nuevo**.
+6. **«Siete copias a mano» eran once.** La cuenta con la que dimensioné la T6 estaba corta.
+7. **Dije que `use-salas-admin.ts` tenía cuatro escrituras.** Tiene **tres**.
+8. **Dije que `exclusiva` aparecía «en un solo sitio».** Está en los dos DTOs, en `crear`, en el schema
+   y en el contrato. Lo cierto —y lo que importa— es que **ninguna regla lo lee**.
+9. **Dije que el campo muerto de las ausencias era `recuperable`.** También lo son `todoElDia`,
+   `horaInicio` y `horaFin`, y **éstos son peores**: los dos primeros son inertes, la franja **cancela
+   turnos que deberían existir**. Cuatro consumidores mapean sólo `{ salaId, desde, hasta }`.
+10. **Dije que los e2e de la API eran de Playwright.** Son **Jest + supertest**
+    (`apps/api/test/jest-e2e.json`, 13 specs); Playwright es de `apps/web` y es otra cosa. Las dos
+    trampas que advertí —levantar la API en el host, el contenedor `api` roto— **no aplican a estos
+    e2e**: arrancan la app de Nest dentro del proceso de Jest. La del freno de auth sí, porque hay un
+    `throttling.e2e-spec.ts`.
+
+## Las mutaciones abiertas: cinco de cinco, y van 31 de 31
+
+| #   | Qué se agregó                                       | El eje que nadie auditaba                                    |
+| --- | --------------------------------------------------- | ------------------------------------------------------------ |
+| 27  | `retry: 2` en un POST                               | **el camino de error**: los 6 recuentos corrían sobre un 200 |
+| 28  | un `useSalas()` «para precalentar» en la ficha      | **la lista de peticiones**: una lectura de más               |
+| 29  | `localStorage` con la profesora y su tarifa         | **los almacenes del navegador**                              |
+| 30  | un `fetch()` crudo a `/api/bx/stats/caja`           | **la lista blanca espiaba `pedir`, no la red**               |
+| 31  | `<meta name="description">` con nombre y vacaciones | **`document.head`** — sobrevivió los **1272** tests          |
+
+**La 27 es la más cara si pasa.** Los seis `toHaveBeenCalledTimes(1)` del plan corrían todos sobre una
+respuesta **200**, y sobre un 200 no hay reintento que contar: `retry` sólo actúa cuando la petición
+falla. Familia «montado en el caso ciego» — el escenario donde la distinción existe no se montaba nunca.
+Un POST no es idempotente: un 500 **después** de que la fila ya se escribió da **tres cierres
+duplicados**, y en horarios **tres copias se le pagan tres veces a la profesora**, porque la liquidación
+suma las horas de cada patrón. El test fija **«una escritura que falla sale una vez»** y no «el hook no
+declara `retry`»: da igual el mecanismo, se mide cuántas veces salió la petición.
+
+**La 28 enseñó que la lista blanca tiene que ser por rol.** Todo lo demás miraba el DOM y los **cuerpos**
+que salen, y ninguna de esas dos cosas ve una **lectura** de más: una consulta que no se dibuja no cambia
+un nodo y no manda ningún cuerpo. La clave del cierre es que hay **una lista por rol**: la de
+`ADMIN_OPERATIVO` es `['/salas/s1']` y nada más — a quien no puede dar de baja no se le pide la agenda de
+la sala. **Ese test el del rol alto no lo habría visto.**
+
+**La 30 encontró el agujero debajo de una defensa de dos tareas antes.** La lista blanca espiaba `pedir`,
+no la red, así que un `fetch()` crudo iba al proxy con la cookie de sesión y traía la caja del gimnasio a
+una pantalla que no tiene nada que ver con el dinero — rompiendo en silencio la doctrina con la que abre
+`lib/cliente.ts`: «el único fetch del navegador en toda la aplicación». **Sobrevivió los 1233 tests.** Se
+cerró doblando el **`fetch` global** con un doble que **contesta un 200** —para que un fallo sea por la
+aserción y no por un `TypeError`— y afirmando que la lista de destinos es `[]`.
+
+**La 31 es la más aguda de las treinta y una.** React 19 **sube solo al `<head>`** los `<meta>`,
+`<title>` y `<link>` renderizados en cualquier parte del árbol, desde un componente cliente, sin tocar el
+`metadata` de Next ni el layout. Y **todo este repo afirma sobre el `<body>`**: `screen.*`, `innerHTML`,
+el árbol de accesibilidad. Medido con una sonda, no supuesto:
+
+```
+HEAD>>> <meta name="description" content="Ana Perez (ana@gym.test, 11 4444-4444) — 2026-12-24 a 2027-01-05: Viaje...">
+BODY_TIENE_META>>> false
+```
+
+No la vieron: el `body.innerHTML`, las dos listas blancas de peticiones, el doble del `fetch` global, los
+tres almacenes, las dos cachés, el reloj, ni los tres tapones globales. `<meta name="description">` es
+**el** campo que leen por defecto las SDK de analítica, los previsualizadores de enlaces y los
+rastreadores: sale con «ver código fuente» y en cualquier volcado del DOM, y publicaría nombre, correo,
+teléfono y **cuándo esa persona no está en su casa**. Y la línea pasa una revisión sin ruido: **parece
+SEO**. Reportada, no tapada: el arreglo es de infraestructura y motivó el cuarto canal global.
+
+**Un eje más, descartado por estar ya cerrado pero medido igual: el reloj.** Ningún test del paquete
+adelantaba el tiempo. Un `setInterval(() => ausencias.refetch(), 30_000)` cae sólo por el
+`describe('el tiempo')` con timers falsos. Daño: con el token recién caducado, una relectura de fondo
+arranca al admin del formulario a medio escribir.
+
+## Las dos defensas nuevas en `vitest.setup.ts`, y por qué cada una son dos mecanismos
+
+Las dos nacieron de una mutación que sobrevivió, y las dos son **una dimensión, no un caso**: suben al
+tapón global para que las hereden los 57 archivos, en vez de que cada pantalla se acuerde de pedirlas —
+y la que no se acuerde es justamente la que lo va a necesitar.
+
+**El cuarto canal: el `<head>`.** Hacen falta **las dos mitades, y no son la misma**. «No contiene
+centinelas» caza un dato metido en un nodo que **ya estaba**; «no crecieron los nodos» caza el nodo
+**nuevo** aunque lo que lleve dentro no sea ninguno de los datos sembrados — un `<meta>` con la lista de
+las clases del día no lleva centinela y publica el gimnasio entero. El informe nombra **sólo la
+etiqueta** (`<meta>`), nunca el `content`: el nodo que el tapón existe para cazar es justamente el que
+lleva el dato, y copiarlo al registro de CI es el mismo modo de fallo que el espía de la consola evita.
+
+**El quinto canal: los tres almacenes.** También dos mecanismos, y también hacen falta los dos:
+
+- **El estado solo no basta** porque los specs limpian los almacenes en SU propio `afterEach`, que con
+  el orden de hooks de Vitest corre **antes** que el tapón: lo que el test guardó ya no está cuando
+  miramos. Y una escritura seguida de un `removeItem` no deja estado y pasaría.
+- **Las escrituras solas tampoco** porque en jsdom `localStorage.lo = 'x'` —asignación por propiedad—
+  **no pasa por `setItem`**: lo resuelve el proxy del almacén. Medido con una sonda. Ese camino sólo lo
+  ve el estado.
+
+Se afirma sobre las **claves** y no sobre los valores, por lo de siempre: un `toEqual` con los contenidos
+imprimiría en el informe de CI justamente el dato que se escapó. Y los canales se restauran **antes** de
+afirmar, para que el test que ensucia no arrastre a los de atrás — con **el `<head>` como única
+excepción**: arrancarle un nodo que React subió ahí rompe el desmontaje con un «Cannot read properties of
+null (reading 'removeChild')», medido.
+
+**El agujero era del spec, no del repo.** Once pantallas ya tenían el test de los almacenes, **cada una
+con su copia a mano** de `contenidoDe` y `galletasDelDocumento`, y a las demás les faltaba sin que nada
+avisara.
+
+## Dos arreglos de infraestructura de la T6
+
+**El `cleanup()` se movió dentro del tapón, y el orden es la parte delicada.** El tapón se registra
+después de `afterEach(cleanup)`, así que corre **antes** — lo cual es necesario, porque el `<head>` hay
+que mirarlo con el árbol todavía montado. Pero al lanzar una afirmación, Vitest **aborta la cadena** y
+`cleanup()` no corre: el DOM se arrastra y los tests siguientes caen con «Found multiple elements with
+the role», que acusa al inocente. Era **preexistente** —los canales de consola y título ya lo tenían—,
+pero los dos canales nuevos lo hicieron visible.
+
+Medido con la mutación 31 reaplicada, sobre los 89 tests de la ficha de la persona:
+
+|                | tests que caen | líneas «Found multiple elements» |
+| -------------- | -------------- | -------------------------------- |
+| sin el arreglo | 87 de 89       | **74**                           |
+| con el arreglo | 78 de 89       | **0**                            |
+
+Y el canal **sigue viendo la mutación** (68 «metió nodos en el `<head>`» más el centinela del motivo),
+que era la condición para que el arreglo entrara: un canal ciego es peor que el ruido. **No se puede
+mover una línea más arriba**: con el `cleanup()` delante de la foto, React desmonta y se lleva sus
+`<meta>`, y el cuarto canal quedaría ciego en verde sin que nada lo diga. El `afterEach(cleanup)` de
+`vitest.setup.ts` se queda: es idempotente y cubre el caso de que el tapón no llegue a correr.
+
+⚠️ **`pnpm build` estaba ROTO y ni `tsc --noEmit` ni los 1253 tests lo veían.** `ausencias/page.tsx` y
+`horarios/page.tsx` exportaban `filtrosDeLaBusqueda` (y la primera, cuatro ayudantes de texto y una
+constante más), y **Next 15 prohíbe que un `page.tsx` exporte cualquier cosa que no sea el `default`** y
+su lista corta de claves de configuración. Compila con `tsc`, compila con el bundler, y revienta después
+en el paso de «Linting and checking validity of types» con un error sobre `OmitWithTag` y una propiedad
+«not assignable to `never`» que **no se parece en nada a la causa**. Arreglado como ya lo hacía
+`turnos/filtros.tsx`: los filtros a un `filtros.ts` hermano —que el spec importa desde ahí—, y los cuatro
+ayudantes sin `export`, porque nadie los importaba.
+
+## Trampas nuevas
+
+**Un `export` de más en un `page.tsx` es un fallo de `next build`, no de `tsc`.** Es la única
+comprobación del repo que lo ve, y el mensaje no se parece a la causa. Los ayudantes de una pantalla van
+a un archivo hermano.
+
+**`repartirPorCampo` ordena por longitud del nombre**, así que `horaFin debe ser posterior a horaInicio`
+aterriza bajo **Hora de inicio** (`horaInicio` mide 10, `horaFin` mide 7). En vacaciones mordió de verdad
+—«hasta no puede ser anterior a desde» nombra a los dos y **miden lo mismo**, así que gana el primero de
+la lista— y se resolvió pasando `['hasta', 'desde', 'motivo']` a propósito, con test dedicado.
+
+**Un campo en la lista del reparto SIN control que lo pinte se traga la frase en silencio**: `porCampo`
+se la queda y no se dibuja en ningún sitio. Fuera de la lista caería en `sueltas` y saldría en el cartel.
+Camino de silencio, inalcanzable pero silencioso. Por eso `perfilId` y `todoElDia` quedan fuera.
+
+**`Campo` deriva el `id` de la etiqueta**, y la ficha de la persona ya tenía un «Desde» en el bloque de
+días fijos. Dos controles con `id="desde"` rompen el `htmlFor` de los dos. De ahí «No viene desde» / «No
+viene hasta» / «Motivo»; los `name` siguen siendo `desde`/`hasta`/`motivo`, que es lo que necesita el
+reparto.
+
+**Dos controles con el mismo nombre accesible son indistinguibles** para un lector de pantalla y para un
+test: los filtros de horarios se renombraron a «Filtrar por profesora» / «Filtrar por sala».
+
+**`DELETE /horarios-profesor/:id` responde 204 sin cuerpo**, el único de los cuatro.
+
+**La lista blanca por rol no siempre aplica, y se dijo en vez de fingirse**: en horarios los tres roles
+del panel piden lo mismo, porque `ADMIN_OPERATIVO` es el piso del panel entero. La distinción sólo existe
+contra `PROFESOR`/`ALUMNO`/sin proveedor, que piden cero. **Dos listas reales, no tres iguales
+disfrazadas de tres casos** — montarlas habría sido el caso ciego.
+
+## Estado final
+
+|                   |                                                    |
+| ----------------- | -------------------------------------------------- |
+| `apps/web`        | **1253 tests / 57 suites**, tsc limpio, `build` OK |
+| `apps/api`        | **1320 / 66**, eslint en cero — sin tocar          |
+| E2E de la API     | **212 / 13**                                       |
+| `packages/shared` | 103 / 4                                            |
+
+De 971 tests en web al empezar la fase.
+
+## Deuda anotada
+
+**Nueva de esta fase:**
+
+- **Tres campos muertos.** `Sala.exclusiva` y `Ausencia.recuperable` son **inertes**: están en los DTOs,
+  el schema y el contrato, y ninguna regla los lee. **La franja horaria de una ausencia es peor**: un
+  cierre de 18:00 a 20:00 **excluye el día entero**, porque los cuatro consumidores
+  (`generacion-mes.service.ts:202`, `calendario.datos.ts:104`, `liquidacion.datos.ts:80` y
+  `calcular-liquidacion.ts:32-38,87-93`) mapean sólo `{ salaId, desde, hasta }` y deciden con
+  `fechaEnRango`. Hacer que los tres signifiquen algo es **negocio**, no pantalla.
+- ⚠️ **No se puede reactivar un horario dado de baja, y no es culpa de la pantalla.** El DELETE es baja
+  lógica **y además cierra el `hasta` en hoy**; el PATCH acepta `activo: true`, pero `hasta` sólo se
+  puede poner a una fecha, **nunca de vuelta a `null`**
+  (`hasta: dto.hasta ? desdeFechaISO(dto.hasta) : undefined`). Un horario revivido se quedaría con el
+  `hasta` de hoy y **dejaría de etiquetar turnos mañana**. Se decidió **no dibujar el interruptor** en
+  vez de ofrecer media reactivación silenciosa — al revés que la ficha de salas, donde sí lo hay porque
+  allí la reactivación funciona entera. **La puerta entera necesita tocar `apps/api`.**
+- ⚠️ **Un profesor SÍ puede tener vacaciones cargadas por la API**: `VacacionesService.crear` sólo
+  comprueba que el perfil exista, sin mirar el rol — devuelve 201 y guarda la fila, que no hace nada
+  (`planificarMes` cruza vacaciones sólo contra los `perfilId` con **rutinas** en la sala, y la ausencia
+  de una profesora se gestiona con `HorarioProfesorAsignado`). **La restricción es del front**,
+  documentada y con tres tests. Si algún día la API las honra, hay que borrar esos tests a mano.
+- **El defecto de `repartirPorCampo`**, que ordena por longitud del nombre y manda el mensaje al campo
+  equivocado. Arreglarlo es tocar `errores.ts`, del que cuelgan muchos specs.
+- ⚠️ **El filtro de profesora de `turnos/filtros.tsx` devuelve SIEMPRE lista vacía.** Pone
+  `value={profesora.id}` —el id del **usuario**— donde va el `perfilId`, **con un comentario que lo
+  afirma al revés**. `Turno.profesorId` referencia a `Perfil`. Es un **bug vivo de la Fase 8**; no se
+  tocó porque no era de esta tarea y rompería los tests de la Fase 9. **Pendiente, y es de producto.**
+- **Los specs viejos siguen con su copia a mano** del andamiaje de hooks.
+  `src/test/andamiaje-de-hooks.tsx` nació en la T1 (`montar`, `dobleDeFetch`, `dobleDe204`,
+  `dobleQueFalla`, `llamada`, `cacheDeConsultas`) y lo usan los cuatro hooks nuevos; unificar los viejos
+  no era de esta tarea — y cuatro copias más era exactamente lo que `src/test/mutaciones-sin-gctime.ts`
+  condena por escrito.
+- **`Seleccion` se importa desde `usuarios/[id]/controles.tsx`** en vez de estar en
+  `componentes/formulario.tsx`. Su propio comentario invita a subirlo cuando una segunda pantalla lo
+  pida —que es ahora—, pero mover un archivo del que cuelgan 56 specs no era de esta tarea.
+- **`Record<string, unknown>` en los payloads de los hooks**: TypeScript no impide que una pantalla
+  mande `tarifaPorHora: 1500`. **El test lo fija en el cable, no en el tipo.**
+- **La tarifa acepta sólo `.` como separador**; `1500,50` se rechaza en pantalla. En Argentina la coma
+  es lo natural: **falta decidir si se normaliza.**
+- **`use-ausencias.spec.tsx` documenta un cuerpo que la aplicación ya no produce nunca**
+  («`todoElDia: false` SÍ viaja: es un valor, no la ausencia de valor»). El hook es transporte genérico
+  y lo que el test fija sigue siendo verdad; queda con un comentario que lo dice.
+
+**Vieja, y sigue en pie:**
+
+- **`use-rutinas.ts` no tiene un solo test**, con 3 mutaciones. El `gcTime` ya lo cubre el barrido.
+- **Sobre-invalidación de `/mi-pack`** en `use-acciones-de-turno`: se invalida también al entrar y salir
+  de la **lista de espera**, que no consume clases. Medido: 1 → 2 peticiones, en el teléfono del alumno.
+- **El 403 de anotar le pone una ruta de API delante a quien está en el mostrador**: «Asignasela con
+  `PATCH /usuarios/:id/salas`». Es `apps/api`.
+- **El job de recordatorios es idempotente por gimnasio y no por persona.**
+- **La rotación de la clave de cifrado.**
+- **El contenedor `api` del compose está roto** por falta de `@nestjs/throttler`.
+- **Las pantallas de profesor**, que siguen sin existir después de cinco fases.
+
+## Siguiente paso
+
+Quedan tres áreas y las pantallas que faltan:
+
+- **Análisis** — los siete reportes de la 6A, que llevan **cuatro fases sin cara**. Es lo más viejo sin
+  tocar.
+- **Dinero** — 9 endpoints.
+- **Configuración del gimnasio** — 14 endpoints, y son justamente **los valores que las salas heredan**:
+  hoy la ficha de la sala dice «Hereda del gimnasio» y no hay dónde mirar qué dice el gimnasio.
+- **Las pantallas del profesor.**
+
+## El checklist a mano (para Cesar)
+
+Cinco comprobaciones que **ningún test puede hacer** y que no se corrieron: no hay navegador en el
+entorno. Se ejecutan en el panel, a mano.
+
+- [ ] **Entrar como `ADMIN_OPERATIVO`** y comprobar que en **salas** (catálogo y ficha) y en **cierres**
+      no hay **ningún** botón de escritura: ni alta, ni guardar, ni borrar, ni el interruptor de activa.
+      En la ficha de la sala tiene que verse un `<dl>` de sólo lectura, no formularios apagados.
+- [ ] **Ponerle un cupo propio a una sala**, guardarlo, **volver a «Hereda del gimnasio»** en uno de los
+      tres que sí heredan (`minMinutosCancelar` es el bueno: ahí existen los tres estados de verdad), y
+      comprobar que **el valor del gimnasio manda otra vez** — que el `null` explícito restauró la
+      herencia y no dejó el valor viejo pegado.
+- [ ] **Provocar los tres choques de horario** y leer los tres mensajes, que tienen que ser distintos:
+      (a) otra profesora en la misma sala, día y hora; (b) la misma profesora en **otra** sala a la
+      misma hora; (c) **el mismo horario repetido** en la misma sala. Y mirar que el panel «En esa
+      franja ya hay» los anticipaba.
+- [ ] **Intentar dar de baja una sala con turnos futuros**, por las **dos** puertas: el botón de Baja y
+      el interruptor de **Activa**. Las dos tienen que dar el mismo 409 con el número de turnos.
+- [ ] **Comprobar que no hay entradas del panel en `Cache Storage`** (DevTools → Application). El
+      service worker es de la web pública; el panel no se cachea.

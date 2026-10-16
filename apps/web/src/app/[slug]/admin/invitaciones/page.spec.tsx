@@ -266,18 +266,6 @@ function rutasPedidas(): string[] {
   return pedirEspia.mock.calls.map((llamada: unknown[]) => String(llamada[0]));
 }
 
-/** Todo lo que un almacen del navegador tiene dentro, sin preguntar por claves. */
-function contenidoDe(almacen: Storage): Record<string, string> {
-  const guardado: Record<string, string> = {};
-
-  for (let indice = 0; indice < almacen.length; indice += 1) {
-    const clave = almacen.key(indice);
-    if (clave !== null) guardado[clave] = almacen.getItem(clave) ?? '';
-  }
-
-  return guardado;
-}
-
 /** TODO lo que el `QueryClient` tiene guardado: consultas Y mutaciones. */
 function volcadoDelCliente(cliente: QueryClient): string {
   return JSON.stringify({
@@ -339,8 +327,9 @@ async function enviar(sesion: Sesion, texto: string): Promise<void> {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
-  localStorage.clear();
-  sessionStorage.clear();
+  // Los almacenes del navegador los deja como estaban —y ademas los AUDITA— el
+  // tapon global de `vitest.setup.ts`. Limpiarlos aqui, en un `afterEach` del
+  // spec que corre ANTES que el suyo, lo dejaria mirando unos almacenes vacios.
 });
 
 // ---------------------------------------------------------------------------
@@ -891,20 +880,6 @@ describe('el codigo no deja copias donde no se mira', () => {
 
     expect(escribir).toHaveBeenCalledWith(CODIGO);
     expect(escribir).toHaveBeenCalledTimes(1);
-  });
-
-  /**
-   * `localStorage` sobrevive al logout, al cierre del navegador y al cambio de
-   * turno. Los dos almacenes ENTEROS, no una clave concreta: una lista negra
-   * siempre va una clave por detras.
-   */
-  it('no queda nada en el almacenamiento del navegador', async () => {
-    await montarYEsperar({ claves: [unaClave()] });
-
-    expect({
-      local: contenidoDe(localStorage),
-      sesion: contenidoDe(sessionStorage),
-    }).toEqual({ local: {}, sesion: {} });
   });
 
   /**

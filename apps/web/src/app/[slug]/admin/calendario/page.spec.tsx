@@ -63,8 +63,9 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
-  localStorage.clear();
-  sessionStorage.clear();
+  // Los almacenes del navegador los deja como estaban —y ademas los AUDITA— el
+  // tapon global de `vitest.setup.ts`. Limpiarlos aqui, en un `afterEach` del
+  // spec que corre ANTES que el suyo, lo dejaria mirando unos almacenes vacios.
 });
 
 function unaSala(cambios: Partial<SalaPublica> = {}): SalaPublica {
@@ -210,18 +211,6 @@ function textosDe(etiqueta: string): string[] {
  */
 function rutasPedidas(): string[] {
   return pedirEspia.mock.calls.map(([ruta]) => ruta as string).sort();
-}
-
-/** Todo lo que un almacen del navegador tiene dentro, sin preguntar por claves. */
-function contenidoDe(almacen: Storage): Record<string, string> {
-  const guardado: Record<string, string> = {};
-
-  for (let indice = 0; indice < almacen.length; indice += 1) {
-    const clave = almacen.key(indice);
-    if (clave !== null) guardado[clave] = almacen.getItem(clave) ?? '';
-  }
-
-  return guardado;
 }
 
 /** Los `<select>` que hay en el marcado, por su etiqueta. */
@@ -475,22 +464,14 @@ describe('una URL imposible no se manda a la API', () => {
 
 describe('pintar la pantalla no deja rastro', () => {
   /**
-   * `localStorage` sobrevive al cierre del navegador, al logout y al cambio de
-   * turno. Guardar ahi "la ultima sala elegida, para que abra donde estabas"
-   * contradice ademas la decision que gobierna esta pantalla: el estado esta en
-   * la URL, y una preferencia guardada le gana a un enlace compartido sin que
-   * nadie entienda por que ve otro mes que quien se lo mando.
+   * LOS ALMACENES DEL NAVEGADOR YA NO SE MIRAN AQUI.
+   *
+   * `localStorage`, `sessionStorage` y las galletas son una DIMENSION y las
+   * vigila el tapon global de `vitest.setup.ts` en TODOS los tests de este
+   * archivo, afirmando sobre las CLAVES. Aqui vivia una copia a mano de
+   * `contenidoDe` con un `toEqual` sobre los VALORES, que al caer imprimiria
+   * en el informe de CI justamente el dato que se escapo.
    */
-  it('no queda nada en el almacenamiento del navegador', async () => {
-    montar({ busqueda: '?salaId=s1&anio=2026&mes=11' });
-
-    await esperar();
-
-    expect({
-      local: contenidoDe(localStorage),
-      sesion: contenidoDe(sessionStorage),
-    }).toEqual({ local: {}, sesion: {} });
-  });
 
   it('en la cache no queda ninguna consulta de mas', async () => {
     const cliente = montar({ busqueda: '?salaId=s1&anio=2026&mes=11' });

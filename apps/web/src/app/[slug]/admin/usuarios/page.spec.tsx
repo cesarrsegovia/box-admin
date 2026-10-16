@@ -42,8 +42,9 @@ vi.mock('@/lib/cliente', async (original) => ({
 
 afterEach(() => {
   vi.clearAllMocks();
-  localStorage.clear();
-  sessionStorage.clear();
+  // Los almacenes del navegador los deja como estaban —y ademas los AUDITA— el
+  // tapon global de `vitest.setup.ts`. Limpiarlos aqui, en un `afterEach` del
+  // spec que corre ANTES que el suyo, lo dejaria mirando unos almacenes vacios.
 });
 
 function unAlumno(cambios: Partial<UsuarioResumen> = {}): UsuarioResumen {
@@ -134,18 +135,6 @@ async function elegirFiltro(etiqueta: string, opcion: string): Promise<void> {
   if (elegida === undefined) throw new Error(`El filtro "${etiqueta}" no tiene "${opcion}"`);
 
   await usuario.selectOptions(control, elegida);
-}
-
-/** Todo lo que un almacen del navegador tiene dentro, sin preguntar por claves. */
-function contenidoDe(almacen: Storage): Record<string, string> {
-  const guardado: Record<string, string> = {};
-
-  for (let indice = 0; indice < almacen.length; indice += 1) {
-    const clave = almacen.key(indice);
-    if (clave !== null) guardado[clave] = almacen.getItem(clave) ?? '';
-  }
-
-  return guardado;
 }
 
 /**
@@ -444,31 +433,14 @@ describe('pintar el listado no trae nada mas', () => {
   });
 
   /**
-   * LO QUE QUEDA EN EL NAVEGADOR CUANDO LA PANTALLA SE CIERRA.
+   * LOS ALMACENES DEL NAVEGADOR YA NO SE MIRAN AQUI.
    *
-   * La cache de consultas se muere con la pestaña. `localStorage` no: sobrevive
-   * al cierre del navegador, al logout y al cambio de turno. Guardar ahi "la
-   * ultima lista, para que abra instantanea" deja los nombres, los emails y el
-   * `tenantId` de TODO el gimnasio en el disco de una maquina de mostrador que
-   * usan cuatro personas, y los deja legibles desde la consola de cualquiera
-   * que se siente delante — incluido un alumno esperando su turno.
-   *
-   * Ningun test de los de arriba lo veia: todos miran el DOM, la URL o lo que
-   * se pide. Esta mutacion sobrevivio a los 30 antes de existir este test.
-   *
-   * Se miran los DOS almacenes y ENTEROS, no una clave concreta: una lista
-   * negra ("que no este `boxadmin:personas`") siempre va una clave por detras.
+   * Era una copia a mano de `contenidoDe` con un `toEqual` sobre los VALORES
+   * —que al caer imprimiria en el informe de CI justamente el dato que se
+   * escapo—. La dimension entera, los tres almacenes y afirmando sobre las
+   * CLAVES, la vigila ahora el tapon global de `vitest.setup.ts` en TODOS los
+   * tests de este archivo. Lo que queda aqui es la cache, que es otra cosa.
    */
-  it('no queda nada en el almacenamiento del navegador', async () => {
-    montar({ usuarios: [unAlumno({ id: 'u1' }), unAlumno({ id: 'u2' })] });
-
-    await esperar();
-
-    expect({
-      local: contenidoDe(localStorage),
-      sesion: contenidoDe(sessionStorage),
-    }).toEqual({ local: {}, sesion: {} });
-  });
 
   it('en la cache no queda ni una ficha', async () => {
     const cliente = montar({ usuarios: [unAlumno({ id: 'u1' }), unAlumno({ id: 'u2' })] });

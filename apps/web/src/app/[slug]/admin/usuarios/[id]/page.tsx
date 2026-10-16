@@ -12,6 +12,7 @@ import { BloqueDeDatos } from './bloque-datos';
 import { BloqueDeDiasFijos } from './bloque-dias-fijos';
 import { BloqueDeEstadoDePago } from './bloque-estado-pago';
 import { BloqueDeSalas } from './bloque-salas';
+import { BloqueDeVacaciones } from './bloque-vacaciones';
 
 /**
  * La ficha de una persona: todo lo de alguien en un sitio.
@@ -79,6 +80,11 @@ export default function PaginaDeFicha() {
       <BloqueDeSalas usuario={usuario} />
       <BloqueDeEstadoDePago usuario={usuario} />
       <BloqueDeDiasFijos usuario={usuario} />
+      {/* Las vacaciones van PEGADAS a los dias fijos: «que dias viene» y
+          «cuando no viene» son la misma pregunta por los dos lados, y leerlas
+          separadas por el bloque de acciones seria tener que acordarse de una
+          mientras se lee la otra. */}
+      <BloqueDeVacaciones usuario={usuario} />
       <BloqueDeAcciones usuario={usuario} rolDeQuienMira={rolDeQuienMira} />
     </section>
   );

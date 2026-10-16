@@ -1,12 +1,14 @@
+import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
 
 /**
- * LOS TRES CANALES POR LOS QUE UNA PANTALLA DICE ALGO FUERA DEL DOM.
+ * LOS CANALES POR LOS QUE UNA PANTALLA DICE ALGO FUERA DEL `<body>`.
  *
- * `console.*`, `document.title` y `window.name`. Ninguno lo mira un test de
- * pantalla: los tests miran el marcado, los cuerpos, las rutas, los almacenes y
- * las dos caches. Los tres se vigilan juntos, GLOBAL —desde `vitest.setup.ts`—
- * y contra EL MISMO registro de datos vigilados, por tres motivos que ya se
+ * `console.*`, `document.title`, `window.name`, el `<head>` del documento y los
+ * tres almacenes del navegador. Ninguno lo mira un test de pantalla: los tests
+ * miran el marcado DEL CUERPO, los cuerpos de las peticiones, las rutas y las
+ * dos caches. Se vigilan todos juntos, GLOBAL —desde `vitest.setup.ts`— y
+ * contra EL MISMO registro de datos vigilados, por tres motivos que ya se
  * pagaron una vez cada uno:
  *
  * 1. GLOBAL, porque un agujero de canal no es de una pantalla. El espia de la
@@ -109,6 +111,142 @@ function comoTexto(dicho: unknown[]): string {
     .join(' ');
 }
 
+// ---------------------------------------------------------------------------
+// El cuarto canal: la cabecera del documento
+// ---------------------------------------------------------------------------
+
+/**
+ * Los nodos que YA ESTABAN en el `<head>`, para saber cuales aparecieron.
+ *
+ * Se guardan los nodos y no su cuenta: con la cuenta sola, un nodo que
+ * sustituye a otro pasa en verde.
+ */
+function nodosDeLaCabecera(): Element[] {
+  return [...document.head.children];
+}
+
+/**
+ * Como nombrar un nodo del `<head>` en un informe SIN publicar lo que lleva.
+ *
+ * Solo la etiqueta. Ni el `content`, ni el `href`, ni el texto: el nodo que
+ * este tapon existe para cazar es justamente el que lleva el dato dentro, y un
+ * mensaje de fallo que lo copiara lo mandaria al registro de CI, que es el
+ * mismo modo de fallo que el espia de la consola documenta y evita.
+ */
+function etiquetaDe(nodo: Element): string {
+  return `<${nodo.tagName.toLowerCase()}>`;
+}
+
+// ---------------------------------------------------------------------------
+// El quinto canal: los tres almacenes del navegador
+// ---------------------------------------------------------------------------
+
+/**
+ * `localStorage`, `sessionStorage` y las galletas, que son TRES sitios en disco.
+ *
+ * Los dos primeros sobreviven al logout y al cambio de persona —`localStorage`
+ * hasta que alguien borre los datos del sitio—; las galletas ademas VIAJAN: se
+ * adjuntan a cada peticion al mismo dominio y acaban en los registros de acceso
+ * del servidor.
+ */
+type NombreDeAlmacen = 'localStorage' | 'sessionStorage' | 'galletas';
+
+const ALMACENES: readonly NombreDeAlmacen[] = ['localStorage', 'sessionStorage', 'galletas'];
+
+interface EscrituraEnAlmacen {
+  almacen: NombreDeAlmacen;
+  clave: string;
+  valor: string;
+}
+
+/** Lo guardado en un `Storage`, ENTERO. Una lista negra va siempre por detras. */
+function contenidoDe(almacen: Storage): Record<string, string> {
+  const guardado: Record<string, string> = {};
+
+  for (let indice = 0; indice < almacen.length; indice += 1) {
+    const clave = almacen.key(indice);
+    if (clave !== null) guardado[clave] = almacen.getItem(clave) ?? '';
+  }
+
+  return guardado;
+}
+
+/** Las galletas del documento, por nombre. */
+function galletasDelDocumento(): Record<string, string> {
+  const guardadas: Record<string, string> = {};
+
+  for (const trozo of document.cookie.split(';')) {
+    const limpio = trozo.trim();
+    if (limpio === '') continue;
+
+    const corte = limpio.indexOf('=');
+    if (corte === -1) guardadas[limpio] = '';
+    else guardadas[limpio.slice(0, corte)] = limpio.slice(corte + 1);
+  }
+
+  return guardadas;
+}
+
+/** El estado de los tres, en un objeto, para comparar antes y despues. */
+function estadoDeLosAlmacenes(): Record<NombreDeAlmacen, Record<string, string>> {
+  return {
+    localStorage: contenidoDe(localStorage),
+    sessionStorage: contenidoDe(sessionStorage),
+    galletas: galletasDelDocumento(),
+  };
+}
+
+/**
+ * EL DESCRIPTOR ORIGINAL DE `document.cookie`, cogido UNA VEZ al cargar.
+ *
+ * Hay que guardarlo antes de doblar nada: si se leyera desde dentro del
+ * `beforeEach` despues de haber enganchado una vez, el segundo enganche
+ * envolveria al primero y cada escritura se contaria dos veces.
+ */
+const GALLETAS_ORIGINALES = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
+
+/** Lo mismo para `setItem`: el de verdad, cogido antes de doblarlo nunca. */
+const PONER_EN_UN_ALMACEN = Storage.prototype.setItem;
+
+/**
+ * Deja los tres almacenes como estaban al empezar el test.
+ *
+ * Se llama DESPUES de haber sacado la foto de lo guardado y ANTES de afirmar
+ * nada, para que un test que ensucie no arrastre a los que vengan detras.
+ */
+function restaurarLosAlmacenes(alEmpezar: Record<NombreDeAlmacen, Record<string, string>>): void {
+  for (const [almacen, nombre] of [
+    [localStorage, 'localStorage'],
+    [sessionStorage, 'sessionStorage'],
+  ] as const) {
+    almacen.clear();
+
+    for (const [clave, valor] of Object.entries(alEmpezar[nombre])) {
+      PONER_EN_UN_ALMACEN.call(almacen, clave, valor);
+    }
+  }
+
+  for (const clave of Object.keys(galletasDelDocumento())) {
+    if (clave in alEmpezar.galletas) continue;
+    document.cookie = `${clave}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  }
+}
+
+/**
+ * Como nombrar una clave guardada SIN publicar un secreto que venga de clave.
+ *
+ * `localStorage.setItem(claveTemporal, '1')` mete el dato en el NOMBRE, no en
+ * el valor. El informe dice entonces como se llama el dato vigilado y no la
+ * cadena, igual que hace el resto del tapon.
+ */
+function claveSegura(clave: string): string {
+  for (const [nombre, valor] of todoLoVigilado()) {
+    if (valor !== '' && clave.includes(valor)) return `«${nombre}»`;
+  }
+
+  return clave;
+}
+
 /**
  * EL TAPON DE LOS TRES CANALES, en todos los specs.
  *
@@ -142,14 +280,48 @@ function comoTexto(dicho: unknown[]): string {
  * afirma que esta VACIO y no que no contiene tal dato: su gracia es que se
  * lleva CUALQUIER cosa, y un centinela solo cubre la cadena que alguien se
  * acordo de escribir.
+ *
+ * **La cabecera del documento.** React 19 sube SOLO al `<head>` los `<meta>`,
+ * `<title>` y `<link>` que se rendericen en cualquier parte del arbol, desde un
+ * componente cliente, sin tocar el `metadata` de Next ni el layout. Y TODO este
+ * repo afirma sobre el `<body>`: `screen.*`, `document.body.innerHTML`, los
+ * `querySelectorAll` y el arbol de accesibilidad. Un
+ * `<meta name="description" content={...}>` en el bloque de vacaciones de una
+ * ficha —con nombre, correo, telefono y las fechas en que esa persona no esta
+ * en su casa— paso los 1272 tests del paquete: medido con una sonda, el nodo
+ * estaba en el `<head>` y `document.body.querySelector('meta')` daba `null`.
+ * Duele porque `<meta name="description">` es EL campo que las SDK de analitica
+ * mandan por defecto como descripcion de pagina, el que leen los
+ * previsualizadores de enlaces y los rastreadores, y sale entero con «ver
+ * codigo fuente» y en cualquier volcado del DOM. Y la linea pasa una revision
+ * sin hacer ruido: parece SEO. Se afirman LAS DOS MITADES —que no crecio y que
+ * no lleva centinelas— porque no son la misma: ver abajo.
+ *
+ * **Los tres almacenes.** `localStorage`, `sessionStorage` y las galletas. El
+ * agujero no era del repo sino de los specs: siete pantallas tenian el test,
+ * cada una con SU COPIA A MANO de `contenidoDe` y `galletasDelDocumento`, y a
+ * las demas simplemente les faltaba sin que nada avisara. Un
+ * `localStorage.setItem` tras un alta con el nombre de una profesora y su
+ * tarifa —tres lineas que parecen una cortesia, «para rellenar el siguiente
+ * horario»— sobrevivio a los 48 tests de la pantalla de la nomina: deja nombre
+ * y tarifa en el disco de la maquina del mostrador, y sobrevive al logout y al
+ * cambio de persona. Se afirma sobre las CLAVES y no sobre los valores: el
+ * `toEqual` con los contenidos que tenian algunas copias a mano imprimiria en
+ * el informe de CI justamente el dato que se escapo.
  */
 export function vigilarLosCanalesDeSalida(): void {
   const dicho: unknown[] = [];
   let tituloAlEmpezar = '';
+  let cabeceraAlEmpezar = new Set<Element>();
+  let almacenesAlEmpezar = estadoDeLosAlmacenes();
+  const escrito: EscrituraEnAlmacen[] = [];
 
   beforeEach(() => {
     tituloAlEmpezar = document.title;
+    cabeceraAlEmpezar = new Set(nodosDeLaCabecera());
+    almacenesAlEmpezar = estadoDeLosAlmacenes();
     dicho.length = 0;
+    escrito.length = 0;
 
     const consola = console as unknown as Record<string, (...partes: unknown[]) => void>;
 
@@ -166,6 +338,67 @@ export function vigilarLosCanalesDeSalida(): void {
         original?.(...partes);
       });
     }
+
+    /**
+     * LOS ALMACENES SE MIRAN DE DOS FORMAS, Y HACEN FALTA LAS DOS.
+     *
+     * Por el ESTADO (lo que haya guardado al terminar) y por las ESCRITURAS
+     * (doblando `setItem` y el `document.cookie =`). No es redundancia:
+     *
+     * - El estado solo no basta porque los specs limpian los almacenes en SU
+     *   propio `afterEach`, que con el orden de hooks de Vitest corre ANTES que
+     *   este tapon: lo que el test guardo ya no esta cuando miramos. Ademas,
+     *   una escritura seguida de un `removeItem` no deja estado y pasaria.
+     * - Las escrituras solas no bastan porque en jsdom `localStorage.lo = 'x'`
+     *   —asignacion por propiedad— NO pasa por `setItem`: lo resuelve el proxy
+     *   del almacen. Medido con una sonda. Ese camino solo lo ve el estado.
+     */
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      clave: string,
+      valor: string,
+    ) {
+      escrito.push({
+        almacen: this === sessionStorage ? 'sessionStorage' : 'localStorage',
+        clave,
+        valor,
+      });
+
+      // REGISTRA Y DEJA PASAR, como el espia de la consola: tragarse la
+      // escritura cambiaria lo que hace la pantalla bajo prueba.
+      PONER_EN_UN_ALMACEN.call(this, clave, valor);
+    });
+
+    // Las galletas no tienen metodo que doblar: son un ACCESOR de
+    // `Document.prototype`. Se redefine como propiedad propia de `document`
+    // —`vi.restoreAllMocks()` no la toca— y se borra la de la vuelta anterior
+    // antes, para no envolver el enganche de ayer.
+    delete (document as unknown as Record<string, unknown>).cookie;
+
+    const leer = GALLETAS_ORIGINALES?.get;
+    const poner = GALLETAS_ORIGINALES?.set;
+
+    if (leer !== undefined && poner !== undefined) {
+      Object.defineProperty(document, 'cookie', {
+        configurable: true,
+        get: () => leer.call(document) as string,
+        set: (texto: string) => {
+          const corte = String(texto).indexOf('=');
+          const clave = corte === -1 ? String(texto) : String(texto).slice(0, corte);
+          const resto = corte === -1 ? '' : String(texto).slice(corte + 1);
+
+          escrito.push({
+            almacen: 'galletas',
+            clave: clave.trim(),
+            // Solo el VALOR, sin los atributos (`; path=`, `; expires=`): lo
+            // que se guarda es lo de antes del primer punto y coma.
+            valor: (resto.split(';')[0] ?? '').trim(),
+          });
+
+          poner.call(document, texto);
+        },
+      });
+    }
   });
 
   afterEach(() => {
@@ -176,12 +409,88 @@ export function vigilarLosCanalesDeSalida(): void {
     // como segundo o tercer argumento y que la consola expande sola.
     const loDicho = comoTexto(dicho);
 
-    // Los tres canales se devuelven a como estaban ANTES de afirmar nada: si no,
-    // el test que ensucia uno hace caer tambien a los que vengan detras y el
+    /**
+     * LA CABECERA SE LEE AQUI, ANTES DE QUE `cleanup()` DESMONTE.
+     *
+     * Este `afterEach` se registra DESPUES del de `cleanup` en
+     * `vitest.setup.ts`, y Vitest corre los `afterEach` en orden inverso al de
+     * registro, asi que este va primero y el arbol sigue montado. Si corriera
+     * detras, React ya habria quitado sus propios nodos del `<head>` y el
+     * canal se miraria siempre vacio.
+     */
+    const laCabecera = document.head.innerHTML;
+    const aparecidosEnLaCabecera = nodosDeLaCabecera().filter(
+      (nodo) => !cabeceraAlEmpezar.has(nodo),
+    );
+
+    /**
+     * EL DESMONTAJE VA AQUI DENTRO, Y EL ORDEN ES LA PARTE DELICADA.
+     *
+     * `vitest.setup.ts` registra `afterEach(cleanup)` ANTES que este tapon, asi
+     * que con el orden inverso de Vitest el tapon corre primero. Eso es lo que
+     * hace falta —arriba se lee el `<head>` con el arbol todavia montado—, pero
+     * tiene un coste: cuando una de las afirmaciones de abajo LANZA, Vitest
+     * aborta la cadena de `afterEach` y el `cleanup()` de `vitest.setup.ts` NO
+     * llega a correr. El DOM del test que fallo se arrastra al siguiente, que
+     * cae con «Found multiple elements with the role ...» sin tener la culpa:
+     * dos fallos de verdad llegan al informe con ocho lineas de ruido encima,
+     * y la primera que se lee acusa al inocente.
+     *
+     * Se desmonta aqui, DESPUES de la foto de la cabecera y ANTES de afirmar.
+     * El `afterEach(cleanup)` de `vitest.setup.ts` se queda igual: `cleanup()`
+     * es idempotente —vacia su registro de montajes— y sigue cubriendo el caso
+     * de que este tapon no llegue a correr.
+     *
+     * NO se puede mover una linea mas arriba: React 19 sube sus `<meta>` al
+     * `<head>` y se los lleva al desmontar, asi que con el `cleanup()` delante
+     * de la foto el cuarto canal se quedaria CIEGO —en verde, sin que nada lo
+     * diga—, que es peor que el ruido que esto arregla.
+     */
+    cleanup();
+
+    const almacenesAlTerminar = estadoDeLosAlmacenes();
+
+    /**
+     * LAS DOS MITADES, juntadas por almacen: lo que quedo guardado que antes no
+     * estaba, mas lo que se escribio aunque alguien lo borrara despues.
+     */
+    const guardado: Record<NombreDeAlmacen, Set<string>> = {
+      localStorage: new Set(),
+      sessionStorage: new Set(),
+      galletas: new Set(),
+    };
+
+    for (const almacen of ALMACENES) {
+      const antes = almacenesAlEmpezar[almacen];
+
+      for (const [clave, valor] of Object.entries(almacenesAlTerminar[almacen])) {
+        if (antes[clave] !== valor) guardado[almacen].add(clave);
+      }
+    }
+
+    for (const escritura of escrito) guardado[escritura.almacen].add(escritura.clave);
+
+    /** Todo lo que paso por un almacen, clave Y valor, para buscar centinelas. */
+    const loGuardado = [
+      ...escrito.map((escritura) => `${escritura.clave}=${escritura.valor}`),
+      ...ALMACENES.map((almacen) => JSON.stringify(almacenesAlTerminar[almacen])),
+    ].join(' ');
+
+    // Los canales se devuelven a como estaban ANTES de afirmar nada: si no, el
+    // test que ensucia uno hace caer tambien a los que vengan detras y el
     // informe acusa al inocente.
+    //
+    // EL `<head>` ES LA EXCEPCION Y NO SE TOCA: arrancarle un nodo que React
+    // subio ahi rompe el desmontaje de `cleanup()` con un
+    // «Cannot read properties of null (reading 'removeChild')» —medido—, y el
+    // test siguiente hereda el estropicio. No hace falta: el `cleanup()` de
+    // arriba ya corrio y React quita los suyos, y la foto de `beforeEach` hace
+    // que un nodo que sobreviva no se le impute al inocente.
     document.title = tituloAlEmpezar;
     window.name = '';
     dicho.length = 0;
+    restaurarLosAlmacenes(almacenesAlEmpezar);
+    escrito.length = 0;
 
     expect(nombreDeLaPestana, 'la pantalla escribio en el nombre de la pestaña').toBe('');
 
@@ -197,6 +506,27 @@ export function vigilarLosCanalesDeSalida(): void {
     for (const [nombre, valor] of todoLoVigilado()) {
       expect(titulo.includes(valor), `el titulo de la pagina lleva ${nombre}`).toBe(false);
       expect(loDicho.includes(valor), `la consola dijo ${nombre}`).toBe(false);
+      expect(laCabecera.includes(valor), `la cabecera del documento lleva ${nombre}`).toBe(false);
+      expect(loGuardado.includes(valor), `un almacen del navegador lleva ${nombre}`).toBe(false);
+    }
+
+    /**
+     * LA OTRA MITAD DEL `<head>`, y NO es la misma que la de arriba.
+     *
+     * «No contiene centinelas» caza un dato metido en un nodo que ya estaba.
+     * Esto caza el nodo NUEVO aunque lo que lleve dentro no sea ninguno de los
+     * datos sembrados: un `<meta name="description">` con la lista de las
+     * clases del dia no lleva centinela y publica el gimnasio entero.
+     */
+    expect(
+      aparecidosEnLaCabecera.length,
+      `la pantalla metio nodos en el <head>: ${aparecidosEnLaCabecera.map(etiquetaDe).join(', ')}`,
+    ).toBe(0);
+
+    for (const almacen of ALMACENES) {
+      const claves = [...guardado[almacen]].map(claveSegura);
+
+      expect(claves.length, `la pantalla guardo en ${almacen}: ${claves.join(', ')}`).toBe(0);
     }
   });
 }

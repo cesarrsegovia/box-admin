@@ -13,6 +13,13 @@ import { vigilarLosCanalesDeSalida } from './src/test/espia-de-consola';
  * Sin esto, cada `render` acumula nodos y los tests empiezan a fallar con
  * "Found multiple elements with the role ..." — un sintoma que apunta al test
  * equivocado, porque el que falla es el segundo y el culpable es el primero.
+ *
+ * ESTE `cleanup()` YA NO ES EL QUE DESMONTA EN EL CAMINO NORMAL. Lo hace el
+ * tapon de abajo, que corre ANTES que este —Vitest invierte el orden de
+ * registro— y que necesita desmontar el mismo: si una de sus afirmaciones
+ * lanza, Vitest aborta la cadena y esta linea no llega a correr nunca. Se deja
+ * igualmente porque `cleanup()` es idempotente y cubre el caso de que el tapon
+ * no corra. Ver el comentario largo dentro de `vigilarLosCanalesDeSalida`.
  */
 afterEach(() => {
   cleanup();

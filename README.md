@@ -1860,6 +1860,153 @@ de profesor**, que siguen sin existir.
 **Mover un turno de sala** tampoco se ofrece, y no es una omisión: el DTO no lo acepta porque «mover un
 turno de sala invalidaría los accesos de quienes ya reservaron».
 
+## La configuración operativa — Fase 10
+
+Los datos **de los que se alimenta** el calendario que la Fase 8 publica: qué salas hay y con qué cupo,
+qué profesora da qué franja, qué días no abre el salón y cuándo un alumno no viene. Hasta aquí se
+cargaban por `curl`. Cierra **Operación diaria** y **no toca ni un endpoint**: son 15 que ya existían.
+
+| Ruta                                  | Qué es                                        | Ver               | Escribir          |
+| ------------------------------------- | --------------------------------------------- | ----------------- | ----------------- |
+| `/{slug}/admin/salas`                 | Catálogo y alta (sólo el nombre)              | `ADMIN_OPERATIVO` | `ADMIN_SALON`     |
+| `/{slug}/admin/salas/{id}`            | La ficha: los cuatro ajustes, activa y baja   | `ADMIN_OPERATIVO` | `ADMIN_SALON`     |
+| `/{slug}/admin/horarios`              | Horarios de profesor, con filtros en la URL   | `ADMIN_OPERATIVO` | `ADMIN_OPERATIVO` |
+| `/{slug}/admin/ausencias` («Cierres») | Los días que una sala —o el salón— no abre    | `ADMIN_OPERATIVO` | `ADMIN_SALON`     |
+| `/{slug}/admin/usuarios/{id}`         | Bloque **Vacaciones**, junto a los días fijos | `ADMIN_OPERATIVO` | `ADMIN_OPERATIVO` |
+
+⚠️ **Los dos roles de escritura no los inventó el panel: ya estaban así en la API.** Cerrar el salón un
+día y cambiar el cupo de una sala son decisiones del dueño —`ADMIN_SALON`—; asignarle una franja a una
+profesora o cargarle las vacaciones a un alumno son del día a día —`ADMIN_OPERATIVO`—. Las pantallas lo
+respetan sin disfrazarlo: **a quien no puede escribir no se le dibuja ni un botón**, y en la ficha de la
+sala ve un `<dl>` de sólo lectura, no formularios deshabilitados. Un campo editable que no se puede
+guardar es una promesa falsa.
+
+Y la forma está invertida entre unas y otras: en salas y ausencias **las lecturas no llevan rol**
+(`GET /salas`, `GET /ausencias`) y en horarios y vacaciones **el `@Get()` también pide
+`ADMIN_OPERATIVO`**. Por eso esas dos cortan la lectura entera antes de montar los hooks, y las otras
+dos leen para cualquiera que entre al panel.
+
+### Las vacaciones van en la ficha, no en una pantalla propia
+
+Son de **una persona**, y viven al lado de los días fijos: «qué días viene Ana» y «cuándo no viene» son
+la misma pregunta mirada por los dos lados. Es la misma decisión que las rutinas en la Fase 7 y por el
+mismo motivo — una pantalla propia obligaría a elegir un alumno antes de ver nada, que es justo lo que
+la ficha ya resolvió, y listar las vacaciones de todo el gimnasio no es una tarea que nadie haga.
+
+No son una nota de agenda: `planificarMes` excluye a esa persona de los turnos que caigan en el rango,
+así que **cambian el mes que se publica**. Y el borrado es **real**, no baja lógica como el de salas y
+horarios: el diálogo lo dice, porque desde aquí no hay forma de deshacerlo.
+
+### Los tres choques de horario se distinguen, y la pantalla además los deja ver
+
+`exigirSinSolape` tiene **tres** conflictos y cada uno se arregla cambiando una cosa distinta:
+
+- **Ya hay otra profesora asignada a esa sala en ese día y hora** — «un turno tiene una sola profesora,
+  así que dos horarios que se pisan no se pueden resolver». Se arregla sacando a la otra.
+- **Esa profesora ya está asignada a otra sala a esa hora**, «y no puede estar en dos salas a la vez».
+  Se arregla cambiando la sala o la hora.
+- **Esa profesora ya tiene ese horario en esa sala.** Es un duplicado: no hay nada que arreglar.
+
+Un mensaje genérico para los tres —«hay un conflicto de horario»— es exactamente lo que hace que el
+admin **no sepa qué cambiar**. Se muestran tal cual los manda el servidor.
+
+Y la pantalla **enseña qué hay ya en la franja elegida** mientras se escribe, con la misma
+`horasSeSolapan` del service: el choque se evita mirando, no chocando. Avisa de más a propósito —no
+mira la vigencia, sólo el día y las horas—, que es la dirección correcta del error; y **cuando hay
+filtros puestos lo dice** («Mirando solo lo que dejan ver los filtros de arriba»), porque decir «nada
+cargado» mirando media sala sería prometer un hueco libre.
+
+La pantalla **no comprueba en local** el orden de las horas, ni el de las fechas, ni los solapes: valida
+presencia y forma, y deja que la API hable. Comprobarlo aquí dejaría esos tres caminos del servidor sin
+ejercitar nunca.
+
+### Los cuatro ajustes de una sala, y el que no hereda
+
+Cada ajuste tiene un control de **tres estados** —heredar / un valor propio / cero— con su propio botón
+y su propia mutación, para que el cuerpo que viaja sea literalmente `{ cupoBase: 12 }`. Un único
+«Guardar» mandaría las ocho claves y **pisaría la herencia en silencio**. Un hueco en blanco no sirve:
+se lee como «no cargó la pantalla», y «heredar» y «cero» no caben en el mismo vacío.
+
+⚠️ **Tres heredan de verdad y uno no.** `minMinutosCancelar`, `minMinutosAnotarse` y
+`listaEsperaHabilitada` bajan por la cascada `Sala ?? Tenant ?? sistema` de `resolverConfiguracion`, y
+su tercer estado dice **«Hereda del gimnasio»**. **`cupoBase` no hereda de nada**: `Tenant` no tiene esa
+columna, y el schema explica por escrito por qué no la tiene — el planificador reporta
+`SALA_SIN_CUPO_BASE` como conflicto, y un fallback en el gimnasio **apagaría ese detector en silencio**.
+
+Por eso ahí el tercer estado se llama **«Sin definir»** y la ayuda dice la consecuencia: sin cupo base
+no se generan turnos. Pintar «hereda del gimnasio» habría prometido un valor que no existe, con el
+síntoma a **un mes de distancia**: el mes publicado sale sin esa sala y nadie sabe por qué.
+
+(Detalle del mismo sitio: cero es legal para los dos de minutos (`@Min(0)`) y **no** para `cupoBase`
+(`@Min(1)`).)
+
+### Dar de baja una sala tiene dos puertas, y las dos dan el mismo 409
+
+El bloque **Baja** hace el `DELETE` con confirmación; el interruptor **Activa** hace
+`PATCH { activa: false }`. Conviven a propósito: **el interruptor es la única forma de reactivar** —el
+`DELETE` no sabe hacerlo— y el bloque de baja es el camino explícito.
+
+Las dos pasan por el mismo guardia, y el 409 **cuenta los turnos**: «La sala tiene 7 turno(s) de hoy en
+adelante. Borralos o reasignalos antes de darla de baja.» Una sala de baja con turnos ya publicados
+produce clases que nadie puede usar y que nadie sabe por qué están ahí. La pantalla lo avisa antes
+—`GET /turnos?desde=hoy&salaId=…`, con el mismo corte que `comienzoDeHoyUtc()`— y con turnos futuros
+**ni ofrece el botón**.
+
+Tras la baja **no se navega**: es lógica, la ficha sigue siendo la de esa sala. Al revés que el turno de
+la Fase 9, que es borrado físico.
+
+### Tres campos que existen en la base y la pantalla no dibuja
+
+⚠️ No es un olvido, y los tres tienen el mismo diagnóstico: **ningún consumidor los lee**.
+
+- **`Sala.exclusiva`** está en los dos DTOs, en el alta, en el schema y en el contrato — y **ninguna
+  regla lo consulta**. Un interruptor sería un control que invita a creer que hace algo.
+- **`Ausencia.recuperable`**, igual: inerte.
+- **La franja horaria de una ausencia** (`todoElDia`, `horaInicio`, `horaFin`) es **peor que los otros
+  dos**. Los cuatro consumidores —la generación del mes, el calendario y las dos mitades de la
+  liquidación— mapean sólo `{ salaId, desde, hasta }` y deciden con `fechaEnRango`, sin mirar la hora.
+  O sea que **un cierre cargado de 18:00 a 20:00 excluye el día entero**. Los dos primeros no hacen
+  nada; éste **cancela turnos que deberían existir**, y el síntoma aparece a un mes de distancia, cuando
+  el mes publicado sale mal.
+
+Así que el formulario de cierres ofrece **sólo «todo el día»**, que es lo único que la API honra, y
+escribe siempre `todoElDia: true` sin horas.
+
+**Lo interesante es qué hace la tabla con una fila que ya traiga horas guardadas** — las hay, cargadas
+por `curl` antes de que esto existiera. La columna **Franja** se queda y **nunca pinta las horas**: una
+fila limpia dice `Todo el día`, y una que traiga horas dice **`Todo el día (el tramo horario guardado no
+se aplica)`**.
+
+Borrar la columna habría dejado intacta la creencia de quien cargó esa fila creyendo que cerraba una
+franja, mientras el motor le cancela el día entero. Y pintar «18:00 a 20:00», aunque fuera entre
+paréntesis, es **el único dato que no se puede leer sin entenderlo al revés**. No es el caso de
+`recuperable`: aquél era un _control_ que invita a mentir al escribir; éste es una _celda de lectura_
+sobre un dato que ya existe, y sólo aparece en filas raras — no es la advertencia permanente que se
+vuelve invisible a las dos semanas.
+
+(Y el filtro de sala de los cierres **no ofrece «sólo el salón entero»**, también a propósito: el
+service responde al filtro con `OR: [{ salaId }, { salaId: null }]`, así que filtrar por una sala trae
+**también** los cierres generales. Esa consulta no existe, y una opción que la prometiera mentiría.)
+
+### La tarifa viaja como cadena, y vacía significa heredar
+
+`tarifaPorHora` es dinero: va y vuelve como **texto**, nunca como `number`. `'1500'` se normaliza a
+`'1500.00'` con manipulación de cadena, **nunca con `Number(...).toFixed(2)`** — hoy daría igual, y la
+regla es que no haya un `float` en el camino del dinero.
+
+⚠️ **Dejarla vacía NO es cero: es heredar.** `null` significa «usa `Tenant.tarifaPorHoraProfesor`» y es
+el estado normal de casi todos los horarios; un `'0'` sería «a esta profesora no se le paga». Por eso
+vaciar el campo manda `null` **explícito**, y la lista lo pinta como `Tarifa del gimnasio` en vez de
+`$0`. El campo acepta sólo el punto como separador: `1500,50` se rechaza en pantalla.
+
+### Lo que esta fase NO trae
+
+**La configuración del gimnasio** —los 14 endpoints de `Tenant`, que son justamente los valores que las
+salas heredan—: hoy el tercer estado dice «Hereda del gimnasio» y no hay pantalla donde ver qué dice el
+gimnasio. **Las pantallas de profesor**, que siguen sin existir después de cuatro fases. Y **las reglas
+de `exclusiva` y `recuperable`**: no se dibujan porque no hacen nada, y hacerlas hacer algo es una
+decisión de negocio, no de pantalla.
+
 ## Tests
 
 Unitarios:
