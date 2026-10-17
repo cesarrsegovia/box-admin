@@ -50,6 +50,43 @@ export const ENLACES_DEL_PANEL: readonly EnlaceDelPanel[] = [
    * motivo por el que `usuarios` se llama «Personas» aqui.
    */
   { ruta: 'ausencias', texto: 'Cierres', minimo: 'ADMIN_OPERATIVO' },
+  /**
+   * `ADMIN_OPERATIVO` porque es lo que piden cinco de los seis reportes, y el
+   * que falta —`/stats/caja`, que lleva el margen y lo que cuesta cada
+   * profesora— pide `ADMIN_SALON` Y SE RESUELVE DENTRO DE LA PANTALLA, no
+   * aqui. Es el criterio de la 5A y lo explica el controller: registrar un
+   * cobro es operativo, mirar el margen del salon no.
+   *
+   * Poner `ADMIN_SALON` en esta linea «por si acaso» le escondería al
+   * operativo la ocupacion, la asistencia y las cancelaciones, que son
+   * justamente su trabajo. El enlace lo ve `ADMIN_OPERATIVO`; lo que cambia es
+   * que hay dentro.
+   */
+  { ruta: 'analisis', texto: 'Analisis', minimo: 'ADMIN_OPERATIVO' },
+  /**
+   * ENTRADA PROPIA Y NO UN ENLACE DENTRO DE ANALISIS, aunque la ruta cuelgue
+   * de ella. Es el unico reporte de los seis que NO se pide por mes —toma
+   * `ConsultaRangoDto`: un rango libre y un `perfilId` opcional— y lo explica
+   * el controller: la conversacion con un alumno sobre su asistencia no
+   * empieza ni termina un dia 1.
+   *
+   * El motivo de que suba a la navegacion en vez de quedarse a un clic por
+   * dentro: es el unico sitio del panel donde se dice que el denominador son
+   * las reservas de turnos CON LISTA PASADA. Enterrado dentro de la pantalla
+   * mensual, eso solo lo encuentra quien ya fue a buscarlo, y quien no se
+   * queda con el porcentaje agregado del mes — que es justo el numero que esta
+   * pantalla existe para desmenuzar.
+   *
+   * `ADMIN_OPERATIVO` porque es lo que pide `/stats/asistencia`, como los
+   * otros cuatro reportes que no son la caja. Aqui no hay nada que esconderle
+   * a un operativo: no lleva ni un importe.
+   *
+   * La ruta es anidada y el enlace activo se decide por igualdad exacta
+   * (`rutaActual === href`), asi que estar en `/analisis/asistencia` NO marca
+   * tambien «Analisis». Si algun dia eso pasara a compararse por prefijo,
+   * habria dos entradas marcadas a la vez y el test de `aria-current` lo diria.
+   */
+  { ruta: 'analisis/asistencia', texto: 'Asistencia', minimo: 'ADMIN_OPERATIVO' },
 ];
 
 export function enlacesPara(rol: RolUsuario): EnlaceDelPanel[] {

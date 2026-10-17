@@ -2414,13 +2414,10 @@ De 971 tests en web al empezar la fase.
   (`generacion-mes.service.ts:202`, `calendario.datos.ts:104`, `liquidacion.datos.ts:80` y
   `calcular-liquidacion.ts:32-38,87-93`) mapean sólo `{ salaId, desde, hasta }` y deciden con
   `fechaEnRango`. Hacer que los tres signifiquen algo es **negocio**, no pantalla.
-- ⚠️ **No se puede reactivar un horario dado de baja, y no es culpa de la pantalla.** El DELETE es baja
-  lógica **y además cierra el `hasta` en hoy**; el PATCH acepta `activo: true`, pero `hasta` sólo se
-  puede poner a una fecha, **nunca de vuelta a `null`**
-  (`hasta: dto.hasta ? desdeFechaISO(dto.hasta) : undefined`). Un horario revivido se quedaría con el
-  `hasta` de hoy y **dejaría de etiquetar turnos mañana**. Se decidió **no dibujar el interruptor** en
-  vez de ofrecer media reactivación silenciosa — al revés que la ficha de salas, donde sí lo hay porque
-  allí la reactivación funciona entera. **La puerta entera necesita tocar `apps/api`.**
+- ✅ **Reactivar un horario dado de baja: ARREGLADO el 2026-10-16** (ver el apartado de abajo). El
+  diagnóstico de aquí estaba a medias: `@IsOptional()` **ya dejaba pasar el `null`**; el único bloqueo
+  era la línea del service. Y el problema de fondo no era el null, sino que **la baja destruye la
+  vigencia original** y reactivar no puede adivinarla.
 - ⚠️ **Un profesor SÍ puede tener vacaciones cargadas por la API**: `VacacionesService.crear` sólo
   comprueba que el perfil exista, sin mirar el rol — devuelve 201 y guarda la fila, que no hace nada
   (`planificarMes` cruza vacaciones sólo contra los `perfilId` con **rutinas** en la sala, y la ausencia
@@ -2583,3 +2580,87 @@ confirmó midiendo: la mutación de `faltaLaPuesta` **no** hace caer ese test vi
 | --- | --- |
 | `apps/web` | **1255 tests / 57 suites**, tsc limpio |
 | `apps/api` | 1320 / 66 — sin tocar |
+
+---
+
+# Arreglo posterior — reactivar un horario de profesora (2026-10-16)
+
+El segundo punto de la deuda de la Fase 10. **Es el primer cambio en `apps/api` desde la Fase 9.**
+
+## El hueco no era «el null no pasa»: era que la baja destruye la vigencia
+
+`DELETE /horarios-profesor/:id` **da de baja Y ADEMÁS cierra la vigencia en hoy**, pisando `hasta`
+cuando era `null` o futuro. Después de una baja, `hasta` es «hoy» (pisado) o una fecha pasada
+(conservada), y **ya no hay forma de saber si ese horario era indefinido o terminaba en marzo**.
+
+Por eso «Reactivar» **no podía ser un botón que mandara `{ activo: true, hasta: null }`**: eso *adivina*
+que era indefinido y le borra el final a un horario que legítimamente lo tenía. Es la misma clase de
+problema que la cancelación de la Fase 9 —una decisión cuyo costo lo paga otro— y se resolvió igual.
+
+**El diseño que salió: se propone lo que sobrevivió y se pregunta lo que se destruyó.** `desde` no lo
+toca el DELETE, así que viene puesto y editable —no es adivinar, es el dato que hay, a la vista— con un
+párrafo que dice qué significa dejarlo: la vigencia vuelve a cubrir el hueco de la baja y **la
+liquidación cuenta esas horas como contratadas**. `hasta` sí se destruyó: el desplegable arranca en
+«Elegí si tiene fin», **sin valor**, y no elegir es un error, no un silencio.
+
+Las tres claves **viajan siempre**, al revés que la edición, que manda sólo lo que cambió: el punto
+entero es volver a declarar la vigencia, y omitir `hasta` dejaría puesto el que escribió la baja.
+
+No se copió el interruptor de la ficha de sala: allí la baja no pierde nada.
+
+## Tres cosas que el encargo afirmaba y eran falsas
+
+1. ⚠️ **«El DTO declara `hasta?: string`, así que `null` no pasa la validación.» FALSO.** Verificado
+   contra el `ValidationPipe` real con las opciones de `main.ts`: **`@IsOptional()` ya dejaba pasar
+   `hasta: null`** y el whitelist conservaba la clave — `{"hasta": null}` llegaba entero al service. Es
+   lo mismo que `ajuste-heredable.tsx` ya documentaba para `tarifaPorHora`. **El tipo es de compilación
+   y el pipe no lo mira.** El único bloqueo real era el `dto.hasta ? … : existente.hasta` del service.
+   El `@ValidateIf` se puso igual porque declara la intención, pero **en runtime es equivalente a
+   `@IsOptional`**: no es el arreglo.
+2. **«Actualizá el comentario que explica por qué el interruptor no estaba.» No existía.** Grep de
+   `interruptor`/`activo`/`reactiv` en la pantalla, en el plan de la Fase 10 y en el README: la decisión
+   no estaba escrita en ningún lado. Venía del informe de un agente, no del código. **Ahora sí está.**
+3. **`'hasta' in dto` sí distinguiría hoy**: este repo no emite campos de clase, así que con la clave
+   ausente la propiedad no existe en la instancia. Se compara contra `undefined` igual, porque eso no
+   depende del tsconfig.
+
+La condición final es `@ValidateIf((_o, v) => v !== null && v !== undefined)`: excluye también
+`undefined` porque aquí hay **tres** estados, y con `v !== null` a secas un PATCH sin la clave daría 400.
+
+## La mutación abierta 32: lo que el servicio escribe en la auditoría
+
+`detalle: { ...dto, anterior: existente }` — «para poder deshacer una reactivación, dejemos en la
+auditoría cómo estaba la fila». **Sobrevivió a todo**: 1335 unit, 218 e2e, eslint 0, tsc 0.
+
+**El eje: el `detalle` del historial.** `historialFalso` era un mock que **ningún test de este archivo
+interrogaba**, así que lo que las tres operaciones escriben en la auditoría estaba sin vigilar entero.
+Y no es un canal inocente: `historial.service.ts` ya documenta para SMTP que «el historial es la otra
+puerta por la que se escaparía, **porque lo lee el mismo admin por otra ruta**», y la fila de un
+horario lleva `tenantId` y `tarifaPorHora`.
+
+Cerrada con `toEqual` sobre el objeto entero —y no `not.toContain('tenantId')`, que depende de que
+nadie renombre el campo— más centinelas de tenant y de dinero por si alguien relaja los `toEqual`.
+
+## Dos huecos encontrados y NO arreglados
+
+- ⚠️ **Un horario con `desde` futuro, dado de baja, queda con `hasta` anterior a `desde`.** `eliminar`
+  escribe `hasta = hoy` sin compararlo con `desde`. A partir de ahí **cualquier PATCH que no reenvíe
+  una de las dos fechas devuelve 400 «hasta no puede ser anterior a desde»**, aunque sólo venga a
+  cambiar la tarifa. La pantalla de reactivar lo esquiva porque manda siempre las dos. Queda
+  **documentado con un e2e que afirma el comportamiento actual** —no que sea correcto—, para que si
+  alguien lo arregla en `eliminar` el test se caiga y lo obligue a mirar. No se tocó porque **cambiar
+  el DELETE es cambiar la premisa de toda esta tarea**.
+- **`PATRON_FECHA` acepta `2026-13-01`**, y quien lo rechaza es `desdeFechaISO` en el service con una
+  `FechaInvalidaError` que nadie traduce → **500 opaco en vez de 400**. Es el mismo agujero que
+  `consulta-rango.dto.ts` ya documenta para los otros diez DTOs con fechas. No es nuevo.
+
+## Estado
+
+| | antes | después |
+| --- | --- | --- |
+| `apps/api` unit | 1320 / 66 | **1339 / 67** |
+| `apps/api` e2e | 212 / 13 | **218 / 13** |
+| `apps/web` | 1255 / 57 | **1266 / 57** |
+| `packages/shared` | 103 / 4 | 103 / 4 |
+
+eslint de la API en cero, `tsc` limpio en los dos paquetes.

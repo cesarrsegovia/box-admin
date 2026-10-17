@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import { vigilarLosCanalesDeSalida } from './src/test/espia-de-consola';
+import { montarElRatoLibre } from './src/test/rato-libre';
 
 /**
  * La limpieza del DOM entre tests NO es automatica con Vitest.
@@ -26,9 +27,17 @@ afterEach(() => {
 });
 
 /**
- * EL TAPON DE LOS TRES CANALES QUE NO SON EL DOM, EN TODOS LOS SPECS.
+ * EL TAPON DE LOS DIEZ CANALES QUE NO SON EL `<body>`, EN TODOS LOS SPECS.
  *
- * `console.*`, `document.title` y `window.name`. Va aqui y no en cada spec
+ * `console.*`, `document.title`, `window.name`, el `<head>`, los tres
+ * almacenes del navegador, el buffer de User Timing, el `src` de una imagen y
+ * las salidas laterales —`window.postMessage`, `BroadcastChannel` y
+ * `navigator.sendBeacon`—, el almacen de respuestas del navegador
+ * (`CacheStorage`), que es un cuarto almacen y sobrevive al cierre de sesion, y
+ * el SERVICE WORKER —`navigator.serviceWorker.controller.postMessage`—, que en
+ * este producto esta instalado de verdad y sobrevive a la pestaña.
+ * La lista entera, con que se midio en cada caso, esta en el docblock de
+ * `vigilarLosCanalesDeSalida`. Va aqui y no en cada spec
  * porque es una DIMENSION, no un caso: ninguna pantalla deberia tener que
  * acordarse de pedirlo para que se le audite lo que publica fuera del marcado,
  * y la que no se acuerde es justamente la que lo va a necesitar.
@@ -37,3 +46,20 @@ afterEach(() => {
  * `vigilarEstosDatos`. Ver el comentario de `vigilarLosCanalesDeSalida`.
  */
 vigilarLosCanalesDeSalida();
+
+/**
+ * Y EL UNDECIMO EJE, QUE NO ES UN CANAL SINO UN RELOJ.
+ *
+ * jsdom no implementa `requestIdleCallback`, asi que un
+ * `window.requestIdleCallback?.(() => …)` es un no-op silencioso en los tests
+ * y una ejecucion de verdad en el navegador: todo lo que se esconda detras
+ * ocurre DESPUES de que corran los diez tapones de arriba, o sea nunca. No
+ * abre una puerta nueva — las apaga TODAS, incluidas las que se tapen mañana.
+ * Medido en la pantalla de quien no pago: el mismo `console.info` tira 28
+ * tests de 28 desnudo y pasa los 28 envuelto.
+ *
+ * Se monta la API en vez de prohibirla —aplazar trabajo caro es legitimo— para
+ * que lo aplazado CORRA dentro del test y los diez tapones lo vean solos. El
+ * razonamiento entero y las tres decisiones pequeñas: `src/test/rato-libre.ts`.
+ */
+montarElRatoLibre();

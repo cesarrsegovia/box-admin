@@ -335,7 +335,7 @@ export function FormularioDeHorario({
     if (!PATRON_HORA.test(valores.horaFin)) fallos.horaFin = 'La hora va como HH:MM.';
     if (!PATRON_FECHA.test(valores.desde)) fallos.desde = 'La fecha va como YYYY-MM-DD.';
     if (valores.hasta !== '' && !PATRON_FECHA.test(valores.hasta)) {
-      fallos.hasta = 'La fecha va como YYYY-MM-DD.';
+      fallos.hasta = 'La fecha va como YYYY-MM-DD. Vacio = indefinido.';
     }
     if (valores.tarifaPorHora !== '' && !PATRON_TARIFA.test(valores.tarifaPorHora)) {
       fallos.tarifaPorHora = 'Un numero con hasta dos decimales, como 1500.00.';
@@ -354,7 +354,23 @@ export function FormularioDeHorario({
     if (valores.horaInicio !== horario.horaInicio) cuerpo.horaInicio = valores.horaInicio;
     if (valores.horaFin !== horario.horaFin) cuerpo.horaFin = valores.horaFin;
     if (valores.desde !== horario.desde) cuerpo.desde = valores.desde;
-    if (valores.hasta !== '' && valores.hasta !== horario.hasta) cuerpo.hasta = valores.hasta;
+
+    /**
+     * VACIAR «HASTA» MANDA `null` EXPLICITO, igual que la tarifa de abajo.
+     *
+     * El campo promete «Vacio = indefinido» en los DOS modos, y en edicion eso
+     * era mentira: con `valores.hasta !== '' && ...`, borrar el contenido no
+     * mandaba nada, el PATCH contestaba 200 y la vigencia seguia cerrada. El
+     * admin leia «indefinido» en el placeholder, guardaba, y la pantalla le
+     * devolvia la fecha de antes sin explicar nada.
+     *
+     * Ahora puede viajar porque el DTO acepta el null —`@ValidateIf` y no
+     * `@IsOptional` a secas, el mismo patron que `AsignarProfesorDto` usa para
+     * `profesorId: null`— y el service distingue los TRES estados: clave
+     * ausente, null y fecha.
+     */
+    const hasta = valores.hasta === '' ? null : valores.hasta;
+    if (hasta !== horario.hasta) cuerpo.hasta = hasta;
 
     /**
      * VOLVER A LA TARIFA DEL GIMNASIO MANDA `null` EXPLICITO.

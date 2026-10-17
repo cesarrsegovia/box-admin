@@ -431,8 +431,11 @@ describe('el listado de horarios', () => {
 
     expect(vigente?.[6]).toBe('Vigente');
     expect(deBaja?.[6]).toBe('De baja');
-    // Y a lo que ya esta de baja no se le ofrece darle de baja otra vez.
-    expect(deBaja?.[7]).toBe('Editar');
+    // A lo que ya esta de baja no se le ofrece darle de baja otra vez —seria un
+    // boton que no cambia nada y que vuelve a escribir el `hasta`—, pero SI se
+    // le ofrece reactivar, que es lo que la API recien aprendio a hacer entero.
+    expect(vigente?.[7]).toBe('EditarDar de baja');
+    expect(deBaja?.[7]).toBe('EditarReactivar');
   });
 
   it('sin horarios lo dice, y no deja una tabla vacia', () => {
@@ -921,6 +924,270 @@ describe('editar un horario', () => {
 
     expect(escrituras()).toEqual([]);
     expect(screen.getByText('No cambiaste nada.')).toBeInTheDocument();
+  });
+
+  /**
+   * VACIAR EL «HASTA» AL EDITAR MANDA `null`, Y NO TOCARLO NO MANDA LA CLAVE.
+   *
+   * SON DOS TESTS Y NO UNO, y los dos SIEMBRAN UNA FECHA. Con el horario
+   * sembrado en `hasta: null` —que es el valor por defecto de `unHorario()`—
+   * «lo dejo como estaba» y «lo puso en nulo» escriben lo mismo, el par no
+   * distingue nada y el `valores.hasta !== '' && ...` que se vino a arreglar
+   * volveria a pasar en verde.
+   *
+   * El campo promete «Vacio = indefinido» desde la Fase 10 y en edicion eso era
+   * mentira: borrarlo no mandaba nada y el PATCH contestaba 200 sin tocar la
+   * vigencia.
+   */
+  it('vaciar el hasta al editar manda null explicito', async () => {
+    montar({ horarios: [unHorario({ id: 'h1', hasta: '2026-12-31' })] });
+
+    await abrirLaEdicionDe(CENTINELAS.nombreDeLaProfesora, 'lunes de 18:00 a 19:00');
+    await userEvent.clear(screen.getByLabelText('Hasta'));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar horario' }));
+    await esperar();
+
+    expect(cuerpoEnviado()).toEqual({ hasta: null });
+  });
+
+  it('no tocar el hasta al editar NO manda la clave', async () => {
+    montar({ horarios: [unHorario({ id: 'h1', hasta: '2026-12-31' })] });
+
+    await abrirLaEdicionDe(CENTINELAS.nombreDeLaProfesora, 'lunes de 18:00 a 19:00');
+    await userEvent.clear(screen.getByLabelText('Hora de fin'));
+    await userEvent.type(screen.getByLabelText('Hora de fin'), '20:00');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar horario' }));
+    await esperar();
+
+    expect(cuerpoEnviado()).toEqual({ horaFin: '20:00' });
+    // Y no `hasta: undefined`, que viajaria como clave en el JSON y el service
+    // leeria como «no vino» por casualidad y no por diseño.
+    expect('hasta' in cuerpoEnviado()).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reactivar
+// ---------------------------------------------------------------------------
+
+/**
+ * REACTIVAR PREGUNTA LA VIGENCIA, Y NO LA ADIVINA.
+ *
+ * `DELETE /horarios-profesor/:id` da de baja Y ADEMAS cierra el `hasta` en hoy.
+ * Eso PISA el valor cuando era `null` —indefinido— o futuro, asi que despues de
+ * la baja no hay forma de saber si ese horario era indefinido o si terminaba en
+ * una fecha concreta. Un boton que mandara `{ activo: true, hasta: null }`
+ * estaria adivinando lo primero, y a uno que legitimamente terminaba en marzo
+ * le borraria el final sin preguntar.
+ *
+ * Por eso no es el interruptor de la ficha de sala: alli la baja no pierde
+ * nada y volver a poner «Sí» devuelve la sala que habia.
+ */
+describe('reactivar un horario', () => {
+  const DE_BAJA = {
+    id: 'h1',
+    activo: false,
+    desde: '2026-11-01',
+    // Lo que escribio la baja. NO es el dato original: el original se perdio.
+    hasta: '2026-11-20',
+  } as const;
+
+  async function abrirLaReactivacion(): Promise<void> {
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: `Reactivar el horario de ${CENTINELAS.nombreDeLaProfesora}, lunes de 18:00 a 19:00`,
+      }),
+    );
+  }
+
+  async function reactivar(): Promise<void> {
+    await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
+    await esperar();
+  }
+
+  /**
+   * LA LISTA BLANCA DEL FORMULARIO, en sus dos estados.
+   *
+   * Sin elegir el fin, el campo de fecha NO esta: un campo de fecha dibujado
+   * junto a un desplegable sin elegir invita a rellenarlo y a creer que con eso
+   * alcanza.
+   */
+  it('pide la vigencia, y el campo de fecha solo aparece si hace falta', async () => {
+    montar({ horarios: [unHorario(DE_BAJA)] });
+
+    await abrirLaReactivacion();
+
+    expect(controlesDelFormulario('Reactivar horario')).toEqual([
+      'Rige desde',
+      'Fin de la vigencia',
+    ]);
+
+    await userEvent.selectOptions(screen.getByLabelText('Fin de la vigencia'), 'fecha');
+
+    expect(controlesDelFormulario('Reactivar horario')).toEqual([
+      'Rige desde',
+      'Fin de la vigencia',
+      'Rige hasta',
+    ]);
+  });
+
+  /**
+   * EL FIN DE LA VIGENCIA NO TIENE VALOR POR DEFECTO.
+   *
+   * Es la misma decision que la cancelacion de la Fase 9. Se afirma sobre el
+   * `value` del control y no solo sobre que el envio falla: un desplegable que
+   * arrancara en «Indefinido» decidiria por quien no lo mira, y el envio
+   * saldria igual de contento.
+   */
+  it('el fin de la vigencia arranca SIN elegir, y sin elegirlo no se manda nada', async () => {
+    montar({ horarios: [unHorario(DE_BAJA)] });
+
+    await abrirLaReactivacion();
+
+    expect((screen.getByLabelText('Fin de la vigencia') as HTMLSelectElement).value).toBe('');
+
+    await reactivar();
+
+    expect(escrituras()).toEqual([]);
+    expect(screen.getByText(/La baja borro la que tenia/i)).toBeInTheDocument();
+  });
+
+  /**
+   * «INDEFINIDO» ES UNA OPCION EXPLICITA, y manda `null`.
+   *
+   * El null es lo unico que vacia la columna: el DTO lo acepta con
+   * `@ValidateIf` —no con `@IsOptional` a secas— y el service lo distingue de
+   * «no vino la clave».
+   */
+  it('elegir «indefinido» manda hasta: null, con el activo y el desde', async () => {
+    montar({ horarios: [unHorario(DE_BAJA)] });
+
+    await abrirLaReactivacion();
+    await userEvent.selectOptions(screen.getByLabelText('Fin de la vigencia'), 'indefinido');
+    await reactivar();
+
+    expect(escrituras()[0]?.ruta).toBe('/horarios-profesor/h1');
+    expect(escrituras()[0]?.metodo).toBe('PATCH');
+    expect(cuerpoEnviado()).toEqual({ activo: true, desde: '2026-11-01', hasta: null });
+  });
+
+  /**
+   * NO ADIVINA LA VIGENCIA: lo que viaja es LO QUE EL ADMIN ELIGIO.
+   *
+   * Este es el test que mata un «Reactivar» que mandara `hasta: null` fijo. Se
+   * afirma sobre el CUERPO ENTERO y no con un `toMatchObject`: una clave de mas
+   * —o el `hasta: '2026-11-20'` que escribio la baja, colado por un cuerpo
+   * armado desde el horario cargado— no la ve una asercion parcial.
+   */
+  it('elegir una fecha manda ESA fecha, no un null ni la que escribio la baja', async () => {
+    montar({ horarios: [unHorario(DE_BAJA)] });
+
+    await abrirLaReactivacion();
+    await userEvent.selectOptions(screen.getByLabelText('Fin de la vigencia'), 'fecha');
+    await userEvent.type(screen.getByLabelText('Rige hasta'), '2027-03-31');
+    await reactivar();
+
+    expect(cuerpoEnviado()).toEqual({
+      activo: true,
+      desde: '2026-11-01',
+      hasta: '2027-03-31',
+    });
+    expect(cuerpoEnviado().hasta).not.toBe(DE_BAJA.hasta);
+    expect(cuerpoEnviado().hasta).not.toBeNull();
+  });
+
+  /**
+   * EL «DESDE» SOBREVIVIO A LA BAJA, asi que viene puesto —y editable—, y es la
+   * diferencia con el `hasta`, que se destruyo. Dejar el que habia es volver a
+   * cubrir el tiempo que estuvo de baja, y eso la pantalla lo DICE.
+   */
+  it('el desde viene con el que tenia, se puede cambiar, y se dice que significa dejarlo', async () => {
+    montar({ horarios: [unHorario(DE_BAJA)] });
+
+    await abrirLaReactivacion();
+
+    expect((screen.getByLabelText('Rige desde') as HTMLInputElement).value).toBe('2026-11-01');
+    expect(screen.getByText(/cuenta esas horas como contratadas/i)).toBeInTheDocument();
+    // Y se dice de donde salio el «hasta» que figura, para que no se lea como
+    // el dato original.
+    expect(screen.getByText(/se lo escribio la baja/i)).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText('Rige desde'));
+    await userEvent.type(screen.getByLabelText('Rige desde'), '2027-01-15');
+    await userEvent.selectOptions(screen.getByLabelText('Fin de la vigencia'), 'indefinido');
+    await reactivar();
+
+    expect(cuerpoEnviado()).toEqual({ activo: true, desde: '2027-01-15', hasta: null });
+  });
+
+  it('reactiva el DE ESA FILA, con dos sembrados', async () => {
+    // Con uno solo, «reactiva el suyo» y «reactiva el primero» no se
+    // distinguen.
+    montar({
+      horarios: [
+        unHorario({ ...DE_BAJA, id: 'h1', profesorNombre: 'Beatriz Lopez', diaSemana: 2 }),
+        unHorario({ ...DE_BAJA, id: 'h2', profesorNombre: CENTINELAS.nombreDeLaProfesora }),
+      ],
+    });
+
+    await abrirLaReactivacion();
+    await userEvent.selectOptions(screen.getByLabelText('Fin de la vigencia'), 'indefinido');
+    await reactivar();
+
+    expect(escrituras()[0]?.ruta).toBe('/horarios-profesor/h2');
+    expect(escrituras()).toHaveLength(1);
+  });
+
+  /**
+   * EL CHOQUE AL REACTIVAR, QUE ES EL QUE IMPORTA.
+   *
+   * Mientras estuvo de baja, otra profesora pudo ocupar la franja. El service
+   * vuelve a correr `exigirSinSolape` porque `activo` queda en `true`, asi que
+   * la reactivacion rebota con un 409 —y con el texto que dice QUE cambiar, no
+   * con un «se pisa con otro horario» generico—.
+   */
+  it('un reactivado que ahora choca enseña el mensaje de la API ENTERO', async () => {
+    montar({
+      horarios: [unHorario(DE_BAJA)],
+      errorAlEscribir: new ErrorDeApi(CHOQUE_OTRA_PROFESORA_EN_LA_SALA, 409, {
+        message: CHOQUE_OTRA_PROFESORA_EN_LA_SALA,
+      }),
+    });
+
+    await abrirLaReactivacion();
+    await userEvent.selectOptions(screen.getByLabelText('Fin de la vigencia'), 'indefinido');
+    await reactivar();
+
+    expect(screen.getByText(CHOQUE_OTRA_PROFESORA_EN_LA_SALA)).toBeInTheDocument();
+    // Y el formulario sigue abierto con lo elegido: cerrarlo obligaria a
+    // volver a decidir la vigencia desde cero por culpa del choque de otro.
+    expect((screen.getByLabelText('Fin de la vigencia') as HTMLSelectElement).value).toBe(
+      'indefinido',
+    );
+  });
+
+  it('cancelar no manda nada y cierra el formulario', async () => {
+    montar({ horarios: [unHorario(DE_BAJA)] });
+
+    await abrirLaReactivacion();
+    await userEvent.selectOptions(screen.getByLabelText('Fin de la vigencia'), 'indefinido');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await esperar();
+
+    expect(escrituras()).toEqual([]);
+    expect(document.querySelector('form[aria-label="Reactivar horario"]')).toBeNull();
+  });
+
+  it('una fecha mal escrita no sale de la pantalla', async () => {
+    montar({ horarios: [unHorario(DE_BAJA)] });
+
+    await abrirLaReactivacion();
+    await userEvent.selectOptions(screen.getByLabelText('Fin de la vigencia'), 'fecha');
+    await userEvent.type(screen.getByLabelText('Rige hasta'), '31/03/2027');
+    await reactivar();
+
+    expect(escrituras()).toEqual([]);
+    expect(screen.getByText('La fecha va como YYYY-MM-DD.')).toBeInTheDocument();
   });
 });
 

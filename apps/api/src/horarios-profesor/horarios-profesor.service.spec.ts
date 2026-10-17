@@ -347,7 +347,203 @@ describe('HorariosProfesorService.crear', () => {
   });
 });
 
+/**
+ * LA REACTIVACION, Y POR QUE NO ES «DEJAR PASAR EL NULL».
+ *
+ * `eliminar` da de baja Y ADEMAS cierra el `hasta` en hoy. Mientras el PATCH no
+ * supo poner `hasta` en nulo, un horario reactivado se quedaba con ese `hasta`
+ * de hoy: aparecia como vigente y dejaba de etiquetar turnos a partir de
+ * manana, en silencio, porque la API contesta 200.
+ *
+ * Los tres estados se prueban SEMBRANDO UNA FECHA, nunca `null`. Con el
+ * existente ya en `null`, «lo dejo como estaba» y «lo puso en nulo» escriben lo
+ * mismo y el par de tests no distingue nada.
+ */
+describe('HorariosProfesorService.actualizar: los tres estados de `hasta`', () => {
+  const VIGENTE_HASTA_SEPTIEMBRE = {
+    id: 'h1',
+    profesorId: 'fati',
+    salaId: 'sala-a',
+    diaSemana: 1,
+    horaInicio: '18:00',
+    horaFin: '19:00',
+    desde: dia('2026-09-01'),
+    // Una FECHA, no null: es lo que hace que los dos tests de abajo se
+    // distingan. Sembrado en null, los dos verian `hasta` sin tocar y el par
+    // pasaria igual con el `dto.hasta ? … : existente.hasta` de vuelta.
+    hasta: dia('2026-09-30'),
+    activo: false,
+    tarifaPorHora: null,
+  };
+
+  function servicioCon(existente: Record<string, unknown>): {
+    servicio: HorariosProfesorService;
+    db: ReturnType<typeof prismaFalso>;
+  } {
+    const db = prismaFalso({ perfil: PROFESORA, salas: ['sala-a'] });
+    db.horarioProfesorAsignado.findFirst = jest.fn().mockResolvedValue(existente);
+    return {
+      servicio: new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never),
+      db,
+    };
+  }
+
+  it('`hasta: null` explicito VACIA la vigencia', async () => {
+    const { servicio, db } = servicioCon(VIGENTE_HASTA_SEPTIEMBRE);
+
+    await servicio.actualizar(ACTOR, 'h1', { activo: true, hasta: null } as never);
+
+    const datos = db.horarioProfesorAsignado.update.mock.calls[0]![0].data;
+    expect(datos.hasta).toBeNull();
+    // Y no `undefined`, que para Prisma es «no toques la columna» y dejaria la
+    // fila con el 30 de septiembre que se venia a borrar.
+    expect(datos.hasta).not.toBeUndefined();
+  });
+
+  it('la clave AUSENTE conserva la vigencia que ya habia', async () => {
+    const { servicio, db } = servicioCon(VIGENTE_HASTA_SEPTIEMBRE);
+
+    await servicio.actualizar(ACTOR, 'h1', { activo: true } as never);
+
+    const datos = db.horarioProfesorAsignado.update.mock.calls[0]![0].data;
+    expect(datos.hasta).toBeUndefined();
+    expect(datos.hasta).not.toBeNull();
+  });
+
+  it('una fecha fija la vigencia en esa fecha', async () => {
+    const { servicio, db } = servicioCon(VIGENTE_HASTA_SEPTIEMBRE);
+
+    await servicio.actualizar(ACTOR, 'h1', { activo: true, hasta: '2026-12-31' } as never);
+
+    const datos = db.horarioProfesorAsignado.update.mock.calls[0]![0].data;
+    expect(datos.hasta).toEqual(dia('2026-12-31'));
+  });
+
+  /**
+   * LA VIGENCIA AUSENTE ES LA QUE VIAJA A LA COMPROBACION DE SOLAPE, no un
+   * null. `exigirSinSolape` decide con `rangosSeSolapan(desde, hasta, …)`: si
+   * la rama de «no vino la clave» le pasara `null`, un horario cuya vigencia
+   * termino en septiembre chocaria con uno de octubre y el PATCH daria un 409
+   * que no corresponde.
+   */
+  it('lo que ve el solape cuando la clave no vino es la vigencia vieja', async () => {
+    // El rival ocupa la franja DESDE OCTUBRE. El existente termina el 30 de
+    // septiembre, asi que no se tocan... mientras la rama de «clave ausente»
+    // le pase al solape ESA vigencia. Si le pasara `null`, el existente
+    // pasaria a ser indefinido, los dos rangos se solaparian y esto seria un
+    // 409. El mismo escenario con `hasta: null` explicito es el test de abajo,
+    // y da 409: ese par es lo que prueba que la rama se eligio bien.
+    const db = prismaFalso({
+      perfil: PROFESORA,
+      salas: ['sala-a'],
+      horarios: [
+        {
+          id: 'h-ana',
+          profesorId: 'ana',
+          salaId: 'sala-a',
+          diaSemana: 1,
+          horaInicio: '18:00',
+          horaFin: '19:00',
+          desde: dia('2026-10-01'),
+          hasta: null,
+          activo: true,
+        },
+      ],
+    });
+    db.horarioProfesorAsignado.findFirst = jest.fn().mockResolvedValue(VIGENTE_HASTA_SEPTIEMBRE);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
+
+    await servicio.actualizar(ACTOR, 'h1', { activo: true } as never);
+
+    expect(db.horarioProfesorAsignado.update).toHaveBeenCalled();
+  });
+
+  /**
+   * EL CASO QUE IMPORTA: mientras estuvo de baja, OTRA profesora ocupo la
+   * franja. Reactivar vuelve a pasar por `exigirSinSolape` porque `activo`
+   * queda en `true`, y tiene que rebotar con el texto del choque que toca —el
+   * de «otra profesora en esa sala», que es el que dice QUE cambiar—.
+   */
+  it('un horario reactivado que ahora choca con otro se rechaza', async () => {
+    const db = prismaFalso({
+      perfil: PROFESORA,
+      salas: ['sala-a'],
+      horarios: [
+        {
+          id: 'h-ana',
+          profesorId: 'ana',
+          salaId: 'sala-a',
+          diaSemana: 1,
+          horaInicio: '18:00',
+          horaFin: '19:00',
+          desde: dia('2026-10-01'),
+          hasta: null,
+          activo: true,
+        },
+      ],
+    });
+    // MISMA SEMILLA que el test de arriba, a proposito: lo unico que cambia
+    // entre los dos es el `hasta: null` del cuerpo. Uno pasa y el otro da 409.
+    db.horarioProfesorAsignado.findFirst = jest.fn().mockResolvedValue(VIGENTE_HASTA_SEPTIEMBRE);
+    const servicio = new HorariosProfesorService(
+      { db } as never,
+      historialFalso,
+      cacheFalso as never,
+    );
+
+    await expect(
+      servicio.actualizar(ACTOR, 'h1', { activo: true, hasta: null } as never),
+    ).rejects.toThrow(
+      'Ya hay otra profesora asignada a esa sala en ese dia y hora. ' +
+        'Un turno tiene una sola profesora, asi que dos horarios que se pisan ' +
+        'no se pueden resolver.',
+    );
+
+    // Y no escribio nada: el 409 sale de dentro de la transaccion.
+    expect(db.horarioProfesorAsignado.update).not.toHaveBeenCalled();
+  });
+
+  /**
+   * EL NULL ES «INDEFINIDO» Y NO TIENE QUE CHOCAR CON `exigirFechasCoherentes`.
+   *
+   * Esa funcion compara `hasta` contra `desde`; con la vigencia vacia no hay
+   * nada que comparar, y un `null.getTime()` seria un 500. Se ejercita con un
+   * `desde` NUEVO para que la comparacion tenga de verdad los dos lados en
+   * juego.
+   */
+  it('vaciar la vigencia y mover el desde a la vez no revienta la coherencia', async () => {
+    const { servicio, db } = servicioCon(VIGENTE_HASTA_SEPTIEMBRE);
+
+    await servicio.actualizar(ACTOR, 'h1', {
+      activo: true,
+      desde: '2026-11-01',
+      hasta: null,
+    } as never);
+
+    const datos = db.horarioProfesorAsignado.update.mock.calls[0]![0].data;
+    expect(datos.desde).toEqual(dia('2026-11-01'));
+    expect(datos.hasta).toBeNull();
+  });
+
+  it('un hasta anterior al desde sigue siendo 400 al actualizar', async () => {
+    const { servicio } = servicioCon(VIGENTE_HASTA_SEPTIEMBRE);
+
+    await expect(
+      servicio.actualizar(ACTOR, 'h1', { desde: '2026-11-01', hasta: '2026-10-01' } as never),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
+
 describe('HorariosProfesorService.eliminar', () => {
+  /**
+   * ESTA ES LA PREMISA DE LA PANTALLA DE REACTIVAR. Si alguien le quita el
+   * cierre del `hasta` al DELETE, reactivar deja de hacer falta y la pantalla
+   * que pide la vigencia de nuevo pasa a mentir sobre lo que se perdio.
+   */
   it('da de baja y ademas cierra el hasta abierto, sin borrar la fila', async () => {
     // La liquidacion mira desde/hasta y NO activo: cerrar el hasta es lo que
     // hace que borrar un horario no reescriba los meses ya liquidados.
@@ -366,11 +562,24 @@ describe('HorariosProfesorService.eliminar', () => {
       cacheFalso as never,
     );
 
-    await servicio.eliminar(ACTOR, 'h1');
+    /**
+     * EL RELOJ, CLAVADO. `toBeInstanceOf(Date)` dejaba pasar cualquier fecha:
+     * un cierre en el 2099 es tan `Date` como el de hoy y no cerraria nada. La
+     * fecha esperada se escribe A MANO y no con `desdeFechaISO(aFechaISO(...))`,
+     * que seria comparar la salida contra la misma funcion que la produce.
+     */
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-10-16T09:00:00.000Z'));
+
+    try {
+      await servicio.eliminar(ACTOR, 'h1');
+    } finally {
+      jest.useRealTimers();
+    }
 
     const datos = db.horarioProfesorAsignado.update.mock.calls[0]![0].data;
     expect(datos.activo).toBe(false);
-    expect(datos.hasta).toBeInstanceOf(Date);
+    expect(datos.hasta).toEqual(new Date('2026-10-16T00:00:00.000Z'));
   });
 
   it('no toca un hasta que ya estaba en el pasado', async () => {
@@ -394,6 +603,128 @@ describe('HorariosProfesorService.eliminar', () => {
     const datos = db.horarioProfesorAsignado.update.mock.calls[0]![0].data;
     expect(datos.activo).toBe(false);
     expect(datos.hasta).toBeUndefined();
+  });
+});
+
+/**
+ * LO QUE ESTE SERVICIO ESCRIBE EN LA AUDITORIA, Y NADA MAS.
+ *
+ * NINGUN TEST DE ESTE ARCHIVO MIRABA EL HISTORIAL: `historialFalso` era un
+ * mock que nadie interrogaba, asi que el `detalle` de las tres operaciones
+ * estaba sin vigilar entero. Un `detalle: { ...dto, anterior: existente }`
+ * —«para poder deshacer una reactivacion, dejemos como estaba la fila»—
+ * sobrevivia a los 1335 tests de la API, a los 218 e2e, a eslint y a tsc.
+ *
+ * Y NO ES UN CANAL INOCENTE. `historial.service.ts` ya lo dice por escrito para
+ * ConfiguracionSMTP: «el historial es la otra puerta por la que se escaparia,
+ * porque lo lee el mismo admin por otra ruta». Lo que entra por ahi sale. La
+ * fila de un horario lleva `tenantId` y lleva `tarifaPorHora`, que es lo que el
+ * gimnasio le paga por hora a esa profesora.
+ *
+ * SE AFIRMA CON `toEqual` SOBRE EL OBJETO ENTERO, no con un `not.toContain`
+ * sobre la palabra «tenantId»: esa defensa depende de que nadie renombre el
+ * campo, y el dia que la fila traiga un dato nuevo —el email de la profesora,
+ * la tarifa resuelta— no se entera nadie. La igualdad exacta rompe con una
+ * clave de mas se llame como se llame.
+ */
+describe('HorariosProfesorService: lo que llega al historial', () => {
+  /** Centinelas: si alguno aparece en el detalle, se escapo por la fila. */
+  const TENANT_CENTINELA = 'tnt-no-deberia-estar';
+  const TARIFA_CENTINELA = { toFixed: () => '1777.77' };
+
+  const EXISTENTE = {
+    id: 'h1',
+    tenantId: TENANT_CENTINELA,
+    profesorId: 'fati',
+    salaId: 'sala-a',
+    diaSemana: 1,
+    horaInicio: '18:00',
+    horaFin: '19:00',
+    desde: dia('2026-09-01'),
+    hasta: dia('2026-09-30'),
+    activo: false,
+    tarifaPorHora: TARIFA_CENTINELA,
+  };
+
+  function servicioDe(db: ReturnType<typeof prismaFalso>): HorariosProfesorService {
+    return new HorariosProfesorService({ db } as never, historialFalso, cacheFalso as never);
+  }
+
+  const registrar = (historialFalso as unknown as { registrar: jest.Mock }).registrar;
+
+  beforeEach(() => {
+    registrar.mockClear();
+  });
+
+  function entradaRegistrada(indice = 0): Record<string, unknown> {
+    const entrada = registrar.mock.calls[indice]?.[0] as Record<string, unknown> | undefined;
+    if (entrada === undefined) throw new Error(`No hubo entrada de historial numero ${indice}`);
+
+    return entrada;
+  }
+
+  it('reactivar audita SOLO lo que el admin mando, y una sola entrada', async () => {
+    const db = prismaFalso({ perfil: PROFESORA, salas: ['sala-a'] });
+    db.horarioProfesorAsignado.findFirst = jest.fn().mockResolvedValue(EXISTENTE);
+
+    await servicioDe(db).actualizar(ACTOR, 'h1', {
+      activo: true,
+      desde: '2026-11-01',
+      hasta: null,
+    } as never);
+
+    const entrada = entradaRegistrada();
+    expect(entrada.entidad).toBe('HorarioProfesorAsignado');
+    expect(entrada.entidadId).toBe('h1');
+    expect(entrada.accion).toBe('ACTUALIZADA');
+    expect(entrada.detalle).toEqual({ activo: true, desde: '2026-11-01', hasta: null });
+
+    expect(registrar).toHaveBeenCalledTimes(1);
+  });
+
+  it('el alta audita los cuatro campos elegidos, ni uno mas', async () => {
+    // El detalle del alta es un SUBCONJUNTO a proposito: no lleva la tarifa.
+    // Fijarlo entero es lo que impide que se le sume «de paso».
+    const db = prismaFalso({ perfil: PROFESORA, salas: ['sala-a'] });
+
+    await servicioDe(db).crear(ACTOR, baseDelAlta({ tarifaPorHora: '1500.00' }));
+
+    expect(entradaRegistrada().detalle).toEqual({
+      profesorId: 'fati',
+      salaId: 'sala-a',
+      diaSemana: 1,
+      horaInicio: '18:00',
+    });
+  });
+
+  it('la baja audita SIN detalle: no hay nada que el admin haya elegido', async () => {
+    const db = prismaFalso({ perfil: PROFESORA, salas: ['sala-a'] });
+    db.horarioProfesorAsignado.findFirst = jest.fn().mockResolvedValue(EXISTENTE);
+
+    await servicioDe(db).eliminar(ACTOR, 'h1');
+
+    const entrada = entradaRegistrada();
+    expect(entrada.accion).toBe('DADA_DE_BAJA');
+    expect(entrada.detalle).toBeUndefined();
+    // La clave tampoco esta: un `detalle: undefined` serializado seria una
+    // puerta abierta esperando a que alguien la rellene.
+    expect('detalle' in entrada).toBe(false);
+  });
+
+  /**
+   * Y LOS CENTINELAS, dichos aparte de la igualdad exacta: explican QUE se
+   * estaba protegiendo. Si alguien relaja los `toEqual` de arriba a un
+   * `toMatchObject`, esto todavia caza la fuga del dinero y del gimnasio.
+   */
+  it('ni el tenantId ni la tarifa de la fila se escapan por el detalle', async () => {
+    const db = prismaFalso({ perfil: PROFESORA, salas: ['sala-a'] });
+    db.horarioProfesorAsignado.findFirst = jest.fn().mockResolvedValue(EXISTENTE);
+
+    await servicioDe(db).actualizar(ACTOR, 'h1', { activo: true, hasta: null } as never);
+
+    const serializado = JSON.stringify(entradaRegistrada().detalle);
+    expect(serializado).not.toContain(TENANT_CENTINELA);
+    expect(serializado).not.toContain('1777.77');
   });
 });
 

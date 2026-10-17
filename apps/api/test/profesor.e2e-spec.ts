@@ -195,6 +195,218 @@ describe('Fase 4 — el profesor como entidad real (e2e)', () => {
     expect(horarios.body.find((h: any) => h.id === horarioId).profesorId).toBe(e.fati.perfilId);
   });
 
+  // --- La reactivacion de un horario dado de baja ---------------------------
+
+  /**
+   * EL VIAJE ENTERO DE LA REACTIVACION, contra el ValidationPipe y Postgres de
+   * verdad.
+   *
+   * Los tests del service corren sobre un doble de Prisma, asi que no prueban
+   * las dos cosas que aqui se caen de verdad si estan mal: que el
+   * `@ValidateIf` del DTO deje pasar `hasta: null` sin que el whitelist se lo
+   * coma —`@IsOptional` a secas tambien lo dejaba, pero el que declara la
+   * intencion es este— y que la columna acepte el NULL.
+   *
+   * `desdeDeHoy` y no las fechas de 2099 del resto del archivo: el DELETE
+   * cierra el `hasta` en HOY, y con un `desde` en 2099 la fila queda con
+   * `hasta` ANTERIOR a `desde`. Ver el test de mas abajo, que documenta eso.
+   */
+  const HOY = new Date().toISOString().slice(0, 10);
+
+  async function darHorarioQueYaRige(e: Escenario, perfilId: string): Promise<string> {
+    const { body } = await request(servidor)
+      .post('/horarios-profesor')
+      .set(auth(e.gym.adminToken))
+      .send({
+        profesorId: perfilId,
+        salaId: e.salaId,
+        diaSemana: DIA_SEMANA,
+        horaInicio: '18:00',
+        horaFin: '19:00',
+        // Un dia que ya paso, para que el cierre del DELETE caiga DESPUES del
+        // desde y la fila quede coherente.
+        desde: '2020-01-06',
+      })
+      .expect(201);
+
+    return body.id;
+  }
+
+  it('la baja cierra el hasta en hoy: es la premisa de toda la reactivacion', async () => {
+    const e = await montar('p4-baja-cierra');
+    const id = await darHorarioQueYaRige(e, e.fati.perfilId);
+
+    // Nace indefinido.
+    const antes = await request(servidor)
+      .get('/horarios-profesor')
+      .set(auth(e.gym.adminToken))
+      .expect(200);
+    expect(antes.body.find((h: any) => h.id === id).hasta).toBeNull();
+
+    await request(servidor)
+      .delete(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .expect(204);
+
+    const despues = await request(servidor)
+      .get('/horarios-profesor')
+      .set(auth(e.gym.adminToken))
+      .expect(200);
+    const fila = despues.body.find((h: any) => h.id === id);
+
+    expect(fila.activo).toBe(false);
+    // EL DATO PERDIDO: era indefinido y ahora dice «hasta hoy». Nadie puede
+    // saber, mirando esta fila, si era indefinido o si terminaba en una fecha.
+    expect(fila.hasta).toBe(HOY);
+  });
+
+  it('reactivar con hasta: null vuelve a dejar la vigencia indefinida', async () => {
+    const e = await montar('p4-reactivar-null');
+    const id = await darHorarioQueYaRige(e, e.fati.perfilId);
+
+    await request(servidor)
+      .delete(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .expect(204);
+
+    const { body } = await request(servidor)
+      .patch(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .send({ activo: true, desde: '2020-01-06', hasta: null })
+      .expect(200);
+
+    expect(body.activo).toBe(true);
+    expect(body.hasta).toBeNull();
+  });
+
+  it('reactivar sin mandar hasta CONSERVA el que escribio la baja', async () => {
+    // La otra mitad del par. Con un solo test, «llego el null» y «no llego
+    // nada» no se distinguen.
+    const e = await montar('p4-reactivar-ausente');
+    const id = await darHorarioQueYaRige(e, e.fati.perfilId);
+
+    await request(servidor)
+      .delete(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .expect(204);
+
+    const { body } = await request(servidor)
+      .patch(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .send({ activo: true })
+      .expect(200);
+
+    expect(body.activo).toBe(true);
+    expect(body.hasta).toBe(HOY);
+  });
+
+  it('reactivar con una fecha pone ESA fecha', async () => {
+    const e = await montar('p4-reactivar-fecha');
+    const id = await darHorarioQueYaRige(e, e.fati.perfilId);
+
+    await request(servidor)
+      .delete(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .expect(204);
+
+    const { body } = await request(servidor)
+      .patch(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .send({ activo: true, hasta: '2099-12-31' })
+      .expect(200);
+
+    expect(body.hasta).toBe('2099-12-31');
+  });
+
+  /**
+   * EL CASO QUE IMPORTA: mientras estuvo de baja, OTRA profesora ocupo la
+   * franja. `exigirSinSolape` vuelve a correr porque `activo` queda en `true`.
+   */
+  it('409 si el horario reactivado ahora choca con otra profesora', async () => {
+    const e = await montar('p4-reactivar-choca');
+    const id = await darHorarioQueYaRige(e, e.fati.perfilId);
+
+    await request(servidor)
+      .delete(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .expect(204);
+
+    // Con el hueco libre, Ana entra: esto tiene que pasar, porque un horario de
+    // baja no choca con nada.
+    await request(servidor)
+      .post('/horarios-profesor')
+      .set(auth(e.gym.adminToken))
+      .send({
+        profesorId: e.ana.perfilId,
+        salaId: e.salaId,
+        diaSemana: DIA_SEMANA,
+        horaInicio: '18:00',
+        horaFin: '19:00',
+        desde: '2020-01-06',
+      })
+      .expect(201);
+
+    const { body } = await request(servidor)
+      .patch(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .send({ activo: true, desde: '2020-01-06', hasta: null })
+      .expect(409);
+
+    expect(body.message).toBe(
+      'Ya hay otra profesora asignada a esa sala en ese dia y hora. ' +
+        'Un turno tiene una sola profesora, asi que dos horarios que se pisan ' +
+        'no se pueden resolver.',
+    );
+  });
+
+  /**
+   * LO QUE EL DELETE DEJA ROTO EN UN HORARIO QUE TODAVIA NO EMPEZO, y que ESTE
+   * CAMBIO NO ARREGLA: documentado, no afirmado como correcto.
+   *
+   * `eliminar` escribe `hasta = hoy` sin compararlo con `desde`. En un horario
+   * cargado para el futuro —`desde: 2099-09-01`, que es lo que usa el resto de
+   * este archivo— la fila queda con `hasta` ANTERIOR a `desde`, y a partir de
+   * ahi cualquier PATCH que no vuelva a mandar una de las dos fechas se come un
+   * 400 de `exigirFechasCoherentes` aunque solo venga a cambiar la tarifa.
+   *
+   * La pantalla de reactivar lo esquiva porque manda SIEMPRE `desde` y `hasta`.
+   * Se deja aqui escrito para que, si alguien decide arreglarlo en `eliminar`,
+   * este test se caiga y lo obligue a mirar.
+   */
+  it('un horario FUTURO dado de baja queda con hasta anterior a desde, y eso rompe el PATCH', async () => {
+    const e = await montar('p4-baja-futuro');
+    // `darHorario` usa `desde: 2099-09-01`.
+    const id = await darHorario(e, e.fati.perfilId);
+
+    await request(servidor)
+      .delete(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .expect(204);
+
+    const lista = await request(servidor)
+      .get('/horarios-profesor')
+      .set(auth(e.gym.adminToken))
+      .expect(200);
+    const fila = lista.body.find((h: any) => h.id === id);
+    expect(fila.hasta).toBe(HOY);
+    expect(fila.hasta < fila.desde).toBe(true);
+
+    // Y un PATCH que no toca ninguna fecha se cae por culpa de eso.
+    const { body } = await request(servidor)
+      .patch(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .send({ tarifaPorHora: '2000.00' })
+      .expect(400);
+    expect(body.message).toBe('hasta no puede ser anterior a desde');
+
+    // Mandando las dos fechas, que es lo que hace la pantalla de reactivar, sale.
+    await request(servidor)
+      .patch(`/horarios-profesor/${id}`)
+      .set(auth(e.gym.adminToken))
+      .send({ activo: true, desde: '2099-09-01', hasta: null })
+      .expect(200);
+  });
+
   // --- Punto 3: aislamiento de la vista ------------------------------------
 
   it('cada profesora ve unicamente sus clases', async () => {

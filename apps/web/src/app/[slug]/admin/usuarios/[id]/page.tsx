@@ -12,6 +12,7 @@ import { BloqueDeDatos } from './bloque-datos';
 import { BloqueDeDiasFijos } from './bloque-dias-fijos';
 import { BloqueDeEstadoDePago } from './bloque-estado-pago';
 import { BloqueDeSalas } from './bloque-salas';
+import { BloqueDeTurnosLibres } from './bloque-turnos-libres';
 import { BloqueDeVacaciones } from './bloque-vacaciones';
 
 /**
@@ -85,6 +86,14 @@ export default function PaginaDeFicha() {
           separadas por el bloque de acciones seria tener que acordarse de una
           mientras se lee la otra. */}
       <BloqueDeVacaciones usuario={usuario} />
+      {/* DETRAS DE LOS DOS ANTERIORES Y NO DELANTE: «que dias viene» y «cuando
+          no viene» son lo que esta persona YA tiene, y esto es lo que se le
+          puede ofrecer. Leerlo antes seria ofrecer horarios sin saber cuales ya
+          ocupa. Y delante del bloque de acciones, que es el final destructivo
+          de la ficha.
+          No pide nada al montar: el reporte se pide al abrirlo. Ver el
+          docblock de `bloque-turnos-libres.tsx`. */}
+      <BloqueDeTurnosLibres usuario={usuario} />
       <BloqueDeAcciones usuario={usuario} rolDeQuienMira={rolDeQuienMira} />
     </section>
   );

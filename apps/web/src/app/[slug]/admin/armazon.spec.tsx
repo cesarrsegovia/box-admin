@@ -29,6 +29,12 @@ const ENLACES_DE_HOY: [string, string][] = [
   ['Salas', '/mi-gym/admin/salas'],
   ['Horarios', '/mi-gym/admin/horarios'],
   ['Cierres', '/mi-gym/admin/ausencias'],
+  ['Analisis', '/mi-gym/admin/analisis'],
+  // La asistencia por alumno es la unica entrada con una ruta ANIDADA, y esta
+  // escrita entera a mano como el resto: si el armazon dejara de componer el
+  // `href` con la ruta tal cual —recortandola al primer segmento, por
+  // ejemplo— este par dejaria de cuadrar.
+  ['Asistencia', '/mi-gym/admin/analisis/asistencia'],
 ];
 
 /** Los tres roles que entran al panel, y lo que le toca a cada uno. */

@@ -2,8 +2,9 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { rolAlcanza, type HorarioProfesorPublico } from '@boxadmin/shared';
+import { PATRON_FECHA, rolAlcanza, type HorarioProfesorPublico } from '@boxadmin/shared';
 import { Confirmar } from '@/componentes/confirmar';
+import { Campo } from '@/componentes/formulario';
 import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
@@ -18,6 +19,7 @@ import {
 } from '@/hooks/use-horarios';
 import { filtrosDeLaBusqueda } from './filtros';
 import { mensajeDeFallo, repartirPorCampo } from '../usuarios/[id]/errores';
+import { Seleccion } from '../usuarios/[id]/controles';
 import { useRolDeQuienMira } from '../rol-del-panel';
 import {
   CAMPOS_DE_HORARIO,
@@ -158,9 +160,11 @@ function FiltrosDelListado({
 function columnasDeHorarios({
   alEditar,
   alDarDeBaja,
+  alReactivar,
 }: {
   alEditar: (horario: HorarioProfesorPublico) => void;
   alDarDeBaja: (horario: HorarioProfesorPublico) => void;
+  alReactivar: (horario: HorarioProfesorPublico) => void;
 }): readonly ColumnaDeTabla<HorarioProfesorPublico>[] {
   return [
     { encabezado: 'Profesora', celda: (horario) => horario.profesorNombre },
@@ -203,8 +207,9 @@ function columnasDeHorarios({
           </Boton>
           {/* A lo que ya esta de baja no se le ofrece darle de baja otra vez:
               seria un boton que no cambia nada y que vuelve a escribir el
-              `hasta`. Editar si se ofrece, que es como se corrige una fila. */}
-          {horario.activo && (
+              `hasta`. Lo que si se le ofrece es REACTIVAR, que es la otra
+              mitad y la que no existia. */}
+          {horario.activo ? (
             <Boton
               type="button"
               tono="peligro"
@@ -212,6 +217,15 @@ function columnasDeHorarios({
               onClick={() => alDarDeBaja(horario)}
             >
               Dar de baja
+            </Boton>
+          ) : (
+            <Boton
+              type="button"
+              tono="secundario"
+              aria-label={`Reactivar el horario de ${horario.profesorNombre}, ${descripcionDeFranja(horario)}`}
+              onClick={() => alReactivar(horario)}
+            >
+              Reactivar
             </Boton>
           )}
         </span>
@@ -426,6 +440,191 @@ function BajaDeHorario({
 }
 
 // ---------------------------------------------------------------------------
+// La reactivacion
+// ---------------------------------------------------------------------------
+
+/**
+ * REACTIVAR NO ES UN INTERRUPTOR, Y NO SE PARECE AL DE LA FICHA DE SALA.
+ *
+ * En `admin/salas/[id]` el interruptor de `activa` alcanza porque darla de baja
+ * no PIERDE nada: el DELETE pone `activa: false` y punto, asi que volver a
+ * ponerla en «Sí» devuelve exactamente la sala que habia. Aqui no.
+ *
+ * `DELETE /horarios-profesor/:id` da de baja Y ADEMAS cierra la vigencia:
+ * «pone `activo = false` y ademas cierra `hasta` a hoy», porque la liquidacion
+ * mira `desde`/`hasta` y no `activo`. Eso PISA el `hasta` cuando era `null`
+ * —indefinido— o futuro. Despues de la baja, `hasta` vale «hoy» (pisado) o una
+ * fecha pasada (conservada), y YA NO HAY FORMA DE SABER cual de las dos cosas
+ * era: si el horario era indefinido o si terminaba en una fecha concreta.
+ *
+ * Por eso un boton que mandara `{ activo: true, hasta: null }` estaria
+ * ADIVINANDO que era indefinido, y a un horario que legitimamente terminaba en
+ * marzo le borraria el final sin preguntar. Es la misma clase de error que la
+ * cancelacion de la Fase 9 resolvio haciendo la decision explicita y SIN valor
+ * por defecto.
+ *
+ * LA REGLA QUE SIGUE ESTE FORMULARIO: se propone lo que SOBREVIVIO y se
+ * pregunta lo que se DESTRUYO.
+ *
+ * - `desde` sobrevivio a la baja —el DELETE no lo toca—, asi que viene puesto y
+ *   editable. No es adivinar: es el dato que hay, a la vista y modificable. Lo
+ *   que si se dice es lo que significa dejarlo como esta, porque la vigencia
+ *   volveria a cubrir el hueco en que estuvo de baja y la liquidacion contaria
+ *   esas horas como contratadas.
+ * - `hasta` se destruyo, asi que NO tiene valor por defecto: hay que elegir
+ *   entre «indefinido» y una fecha, y no elegir no es una opcion silenciosa.
+ *
+ * Y las tres claves VIAJAN SIEMPRE, al reves que en la edicion, que manda solo
+ * lo que cambio. Aqui el punto entero es volver a declarar la vigencia: omitir
+ * `hasta` porque «coincide con lo que hay» dejaria puesto justamente el `hasta`
+ * que escribio la baja, que es lo que se vino a corregir.
+ */
+const SIN_ELEGIR = '';
+const INDEFINIDO = 'indefinido';
+const CON_FECHA = 'fecha';
+
+function ReactivacionDeHorario({
+  horario,
+  alTerminar,
+}: {
+  horario: HorarioProfesorPublico;
+  alTerminar: () => void;
+}) {
+  const guardar = useActualizarHorario(horario.id);
+
+  const [desde, setDesde] = useState(horario.desde);
+  const [fin, setFin] = useState<string>(SIN_ELEGIR);
+  const [hasta, setHasta] = useState('');
+
+  const [locales, setLocales] = useState<Partial<Record<CampoDeHorario | 'fin', string>>>({});
+  const [porCampo, setPorCampo] = useState<Partial<Record<CampoDeHorario, string>>>({});
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  function cuerpoDeLaReactivacion(): Record<string, unknown> | null {
+    const fallos: Partial<Record<CampoDeHorario | 'fin', string>> = {};
+
+    if (!PATRON_FECHA.test(desde)) fallos.desde = 'La fecha va como YYYY-MM-DD.';
+
+    /**
+     * NO ELEGIR NO ES «INDEFINIDO». Es el unico fallo de este formulario que no
+     * es de formato, y el que justifica que la reactivacion sea una pantalla y
+     * no un interruptor.
+     */
+    if (fin === SIN_ELEGIR) {
+      fallos.fin =
+        'Decidi si la vigencia es indefinida o si termina en una fecha. La baja borro la que tenia, ' +
+        'asi que no hay forma de recuperarla.';
+    }
+    if (fin === CON_FECHA && !PATRON_FECHA.test(hasta)) {
+      fallos.hasta = 'La fecha va como YYYY-MM-DD.';
+    }
+
+    if (Object.keys(fallos).length > 0) {
+      setLocales(fallos);
+      return null;
+    }
+
+    return { activo: true, desde, hasta: fin === INDEFINIDO ? null : hasta };
+  }
+
+  async function enviar(): Promise<void> {
+    setLocales({});
+    setPorCampo({});
+    setAviso(null);
+
+    const cuerpo = cuerpoDeLaReactivacion();
+    if (cuerpo === null) return;
+
+    try {
+      await guardar.mutateAsync(cuerpo);
+      alTerminar();
+    } catch (error) {
+      const repartido = repartirElFallo(error);
+      setPorCampo(repartido.porCampo);
+      setAviso(repartido.aviso);
+    }
+  }
+
+  return (
+    <Tarjeta>
+      <form
+        aria-label="Reactivar horario"
+        onSubmit={(evento) => {
+          evento.preventDefault();
+          void enviar();
+        }}
+        className="flex flex-col gap-3"
+        noValidate
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Reactivar el horario de {horario.profesorNombre} en {horario.salaNombre},{' '}
+          {descripcionDeFranja(horario)}
+        </h2>
+
+        {/* LO QUE FIGURA HOY Y DE DONDE SALIO. Sin esto, el admin lee una fecha
+            de fin que el no puso y la toma por el dato original. */}
+        <p className="text-xs text-slate-500">
+          Ahora figura «{textoDeVigencia(horario)}». Ese fin de vigencia se lo escribio la baja: la
+          que tenia antes se perdio y hay que volver a decirla.
+        </p>
+
+        {aviso !== null && <Aviso tono="error">{aviso}</Aviso>}
+
+        <Campo
+          etiqueta="Rige desde"
+          id="reactivar-desde"
+          placeholder="YYYY-MM-DD"
+          value={desde}
+          error={locales.desde ?? porCampo.desde}
+          onChange={(evento) => setDesde(evento.target.value)}
+        />
+        <p className="text-xs text-slate-500">
+          Viene puesta la fecha que ya tenia, que la baja no toco. Dejandola, la vigencia vuelve a
+          cubrir el tiempo que estuvo de baja y la liquidacion cuenta esas horas como contratadas.
+          Si vuelve ahora, pone la fecha en que vuelve.
+        </p>
+
+        <Seleccion
+          etiqueta="Fin de la vigencia"
+          id="reactivar-fin"
+          value={fin}
+          error={locales.fin}
+          onChange={(evento) => setFin(evento.target.value)}
+          opciones={[
+            // La primera opcion NO es un valor: es la ausencia de eleccion, y
+            // por eso no dice «Indefinido». Un desplegable que arranca en
+            // «Indefinido» decide por quien no lo mira.
+            { valor: SIN_ELEGIR, texto: 'Elegi si tiene fin' },
+            { valor: INDEFINIDO, texto: 'Indefinido: rige hasta que se la de de baja' },
+            { valor: CON_FECHA, texto: 'Termina en una fecha' },
+          ]}
+        />
+
+        {fin === CON_FECHA && (
+          <Campo
+            etiqueta="Rige hasta"
+            id="reactivar-hasta"
+            placeholder="YYYY-MM-DD"
+            value={hasta}
+            error={locales.hasta ?? porCampo.hasta}
+            onChange={(evento) => setHasta(evento.target.value)}
+          />
+        )}
+
+        <div className="flex gap-2">
+          <Boton type="submit" cargando={guardar.isPending}>
+            Reactivar
+          </Boton>
+          <Boton type="button" tono="secundario" onClick={alTerminar}>
+            Cancelar
+          </Boton>
+        </div>
+      </form>
+    </Tarjeta>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // La pantalla
 // ---------------------------------------------------------------------------
 
@@ -444,6 +643,7 @@ function PanelDeHorarios() {
 
   const [enEdicion, setEnEdicion] = useState<HorarioProfesorPublico | null>(null);
   const [enBaja, setEnBaja] = useState<HorarioProfesorPublico | null>(null);
+  const [enReactivacion, setEnReactivacion] = useState<HorarioProfesorPublico | null>(null);
 
   /**
    * LAS TRES CONSULTAS PUEDEN TRAER EL 401, no solo la de la lista.
@@ -505,6 +705,18 @@ function PanelDeHorarios() {
         <BajaDeHorario key={enBaja.id} horario={enBaja} alTerminar={() => setEnBaja(null)} />
       )}
 
+      {/* `key` por id, igual que la baja y la edicion: asi los campos no se
+          arrastran de una fila a la otra. Reactivar el horario equivocado con
+          la vigencia del anterior ya escrita es exactamente el accidente que
+          esta pantalla existe para evitar. */}
+      {enReactivacion !== null && (
+        <ReactivacionDeHorario
+          key={enReactivacion.id}
+          horario={enReactivacion}
+          alTerminar={() => setEnReactivacion(null)}
+        />
+      )}
+
       {horarios.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
 
       {/* Sin sesion no se enseña el «Unauthorized» crudo de la API, que no le
@@ -526,9 +738,17 @@ function PanelDeHorarios() {
           columnas={columnasDeHorarios({
             alEditar: (horario) => {
               setEnBaja(null);
+              setEnReactivacion(null);
               setEnEdicion(horario);
             },
-            alDarDeBaja: (horario) => setEnBaja(horario),
+            alDarDeBaja: (horario) => {
+              setEnReactivacion(null);
+              setEnBaja(horario);
+            },
+            alReactivar: (horario) => {
+              setEnBaja(null);
+              setEnReactivacion(horario);
+            },
           })}
           filas={horarios.data}
           claveDeFila={(horario) => horario.id}

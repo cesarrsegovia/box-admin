@@ -206,7 +206,35 @@ export class HorariosProfesorService {
       this.exigirHorasCoherentes(horaInicio, horaFin);
 
       const desde = dto.desde ? desdeFechaISO(dto.desde) : existente.desde;
-      const hasta = dto.hasta ? desdeFechaISO(dto.hasta) : existente.hasta;
+
+      /**
+       * LOS TRES ESTADOS DE `hasta`, Y UN `?:` NO LOS DISTINGUE.
+       *
+       * `dto.hasta ? … : existente.hasta` hacia que «poné la vigencia en nulo»
+       * y «no vino la clave» fueran LA MISMA COSA, porque `null` es falsy. Y
+       * eso dejaba un horario reactivado con el `hasta` de hoy que le escribio
+       * el DELETE: seguia apareciendo como vigente y dejaba de etiquetar turnos
+       * a partir de manana, sin decirlo.
+       *
+       * - `undefined` -> no se toca, vale lo que ya habia.
+       * - `null` -> indefinido, se vacia.
+       * - una fecha -> esa.
+       *
+       * Se mira el VALOR y no si la clave esta (`'hasta' in dto`). Hoy las dos
+       * cosas coinciden —verificado contra el ValidationPipe real en
+       * `dto/actualizar-horario-profesor.dto.spec.ts`: con la clave ausente la
+       * propiedad NO existe en la instancia—, pero eso depende de que el
+       * compilador no emita campos de clase (`useDefineForClassFields`), que es
+       * una opcion del tsconfig y no una promesa del contrato. Comparar contra
+       * `undefined` da lo mismo en los dos mundos.
+       */
+      const hasta =
+        dto.hasta === undefined
+          ? existente.hasta
+          : dto.hasta === null
+            ? null
+            : desdeFechaISO(dto.hasta);
+
       this.exigirFechasCoherentes(desde, hasta);
 
       // Se vuelve a comprobar el solape sobre el RESULTADO, no sobre lo que
@@ -233,7 +261,10 @@ export class HorariosProfesorService {
           horaInicio: dto.horaInicio,
           horaFin: dto.horaFin,
           desde: dto.desde ? desdeFechaISO(dto.desde) : undefined,
-          hasta: dto.hasta ? desdeFechaISO(dto.hasta) : undefined,
+          // `undefined` es «no toques la columna» para Prisma y `null` es
+          // «ponela en NULL». Son las mismas tres ramas de arriba, y por eso se
+          // reusa el valor ya calculado en vez de volver a decidir.
+          hasta: dto.hasta === undefined ? undefined : hasta,
           activo: dto.activo,
           tarifaPorHora: dto.tarifaPorHora,
         },
@@ -245,6 +276,11 @@ export class HorariosProfesorService {
           entidad: 'HorarioProfesorAsignado',
           entidadId: id,
           accion: 'ACTUALIZADA',
+          // SOLO LO QUE EL ADMIN MANDO. Nada de la fila que se reemplaza: el
+          // historial «lo lee el mismo admin por otra ruta» —lo dice
+          // `historial.service.ts` para la clave de SMTP— y la fila de un
+          // horario lleva `tenantId` y lleva `tarifaPorHora`, que es dinero.
+          // Lo fija `HorariosProfesorService: lo que llega al historial`.
           detalle: { ...dto },
         },
         cliente,

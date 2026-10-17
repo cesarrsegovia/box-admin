@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, Matches, Max, Min, ValidateIf } from 'class-validator';
 import { PATRON_FECHA, PATRON_HORA } from '@boxadmin/shared';
 
 /** Hasta 8 enteros y como mucho 2 decimales: encaja en DECIMAL(10, 2). */
@@ -29,9 +29,31 @@ export class ActualizarHorarioProfesorDto {
   @Matches(PATRON_FECHA, { message: 'desde debe tener formato YYYY-MM-DD' })
   desde?: string;
 
-  @IsOptional()
+  /**
+   * TRES ESTADOS, NO DOS: ausente, `null`, y una fecha.
+   *
+   * - **ausente** = «no toques la vigencia».
+   * - **`null`** = «indefinido», que es un valor LEGITIMO y el estado normal de
+   *   casi todos los horarios: la columna es nullable y `aHorarioPublico` lo
+   *   devuelve como `null`.
+   * - **una fecha** = la vigencia termina ahi.
+   *
+   * `@ValidateIf` y no `@IsOptional` a secas, por la misma razon que
+   * `AsignarProfesorDto` lo usa para `profesorId: null`: el null es un valor que
+   * el cliente manda a proposito y hay que distinguirlo de «no vino la clave».
+   * La condicion deja fuera tambien `undefined` porque esta propiedad SI es
+   * opcional —ausente significa otra cosa que null—, y sin eso `@Matches` se
+   * ejecutaria sobre `undefined` y un PATCH que no toca la vigencia se caeria
+   * con un 400.
+   *
+   * SIN ESTO NO HAY REACTIVACION. `DELETE /horarios-profesor/:id` da de baja y
+   * ADEMAS cierra el `hasta` en hoy, asi que un horario reactivado sin poder
+   * volver a abrir la vigencia deja de etiquetar turnos a partir de manana —en
+   * silencio, porque la API contesta 200—.
+   */
+  @ValidateIf((_objeto, valor) => valor !== null && valor !== undefined)
   @Matches(PATRON_FECHA, { message: 'hasta debe tener formato YYYY-MM-DD' })
-  hasta?: string;
+  hasta?: string | null;
 
   @IsOptional()
   @IsBoolean()
