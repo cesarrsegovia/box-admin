@@ -10,9 +10,14 @@ import { afterEach, beforeEach, expect, vi } from 'vitest';
  * —`new Image()`, que es una peticion de red que no pasa por `fetch` ni por el
  * `<body>`—, las SALIDAS LATERALES —`window.postMessage`,
  * `BroadcastChannel` y `navigator.sendBeacon`—, el almacen de respuestas del
- * navegador (`CacheStorage`) y el SERVICE WORKER
+ * navegador (`CacheStorage`), el SERVICE WORKER
  * (`navigator.serviceWorker.controller.postMessage`), que en este producto
- * esta instalado de verdad. Ninguno lo mira un test de
+ * esta instalado de verdad, INDEXEDDB, que es el QUINTO almacen en disco y
+ * el unico sin tope de tamaño, LOS ATRIBUTOS DEL `<html>` Y DEL `<body>`,
+ * que son los dos elementos que envuelven al cuerpo y que no desmonta nadie, y
+ * LA URL DEL DOCUMENTO —`location` y las cinco puertas de la History API—, que
+ * es el hueco ENTRE las dos defensas de este repo y el unico canal que se
+ * copia solo. Ninguno lo mira un test de
  * pantalla: los tests
  * miran el marcado DEL CUERPO, los cuerpos de las peticiones, las rutas y las
  * dos caches. Se vigilan todos juntos, GLOBAL —desde `vitest.setup.ts`— y
@@ -705,6 +710,465 @@ const SERVICE_WORKER_ORIGINAL = Object.getOwnPropertyDescriptor(navigator, 'serv
  * que lo vacie, y una excepcion que lo vacie es peor que no tenerlo.
  */
 
+// ---------------------------------------------------------------------------
+// El undecimo canal: IndexedDB, EL QUINTO ALMACEN
+// ---------------------------------------------------------------------------
+
+/**
+ * `indexedDB` NO EXISTE EN JSDOM, y por eso hay que PONERLO.
+ *
+ * Medido con una sonda en jsdom 26: `typeof globalThis.indexedDB` es
+ * `'undefined'`, `'indexedDB' in window` es `false`, no hay descriptor ni en
+ * `window` ni en `globalThis`, y NINGUNA de las doce clases de la familia
+ * —`IDBFactory`, `IDBDatabase`, `IDBObjectStore`, `IDBTransaction`,
+ * `IDBRequest`, `IDBOpenDBRequest`, `IDBCursor`, `IDBCursorWithValue`,
+ * `IDBIndex`, `IDBKeyRange`, `IDBVersionChangeEvent`— existe tampoco. Es la
+ * misma situacion que `sendBeacon`, que `caches` y que `serviceWorker`, y la
+ * misma leccion que ya dejo cuatro fugas: UNA API QUE JSDOM NO IMPLEMENTA ES
+ * UN SITIO DONDE NADIE MIRA POR CONSTRUCCION. Un `indexedDB.open(...)` a pelo
+ * revienta con un `ReferenceError` y el test cae solo; pero la forma que
+ * escribe cualquiera que programe con cuidado —`globalThis.indexedDB?.open(…)`,
+ * o detras de un `if ('indexedDB' in window)`— NO HACE NADA y pasa en verde,
+ * mientras en el navegador del mostrador escribe en disco.
+ *
+ * (Y se define sobre `globalThis`, como `caches`: MEDIDO, en este entorno
+ * `window === globalThis`, asi que el `window.indexedDB` de una pantalla y el
+ * `globalThis.indexedDB` de un modulo son la misma propiedad.)
+ *
+ * POR QUE ES UN ALMACEN DISTINTO Y NO UNA FORMA MAS DE LOS QUE YA SE VIGILAN.
+ * El tapon de «los tres almacenes» es una LISTA CERRADA —`localStorage`,
+ * `sessionStorage` y las galletas— y `CacheStorage` se agrego en su dia por ser
+ * un CUARTO almacen. IndexedDB es el QUINTO, y es PEOR que los tres primeros en
+ * las tres cosas que importan:
+ *
+ *  - SOBREVIVE IGUAL. Al logout, al cierre de la pestaña y al reinicio, como
+ *    `localStorage`, y se lee desde las herramientas del navegador sin ninguna
+ *    contraseña, en una maquina que usan cuatro personas por turno.
+ *  - NO TIENE TOPE DE 5 MB. Donde `localStorage` obliga a elegir que guardar,
+ *    aqui cabe el listado entero.
+ *  - GUARDA OBJETOS ESTRUCTURADOS. `setItem` obliga a serializar —o sea, a
+ *    PENSAR que se esta guardando—; `put(variables)` mete el objeto entero sin
+ *    que nadie tenga que acordarse de nada.
+ *
+ * LA MUTACION QUE LO DESCUBRIO, medida: tres lineas en `useGuardarSmtp` que
+ * parecen una cortesia —«un borrador del formulario, por si alguien recarga a
+ * medio configurar»— guardaban `variables` enteras en `boxadmin-config` /
+ * `borradores` bajo la clave `smtp`: host, usuario y LA CLAVE DEL SERVIDOR DE
+ * CORREO EN CLARO. Sobrevivio los 1481 tests del paquete con los diez canales
+ * enchufados. Y es el unico sitio del panel por el que pasa una credencial de
+ * servidor: `ConfiguracionSmtpPublica` no la devuelve ni enmascarada, asi que
+ * ese disco es el unico lugar del mundo, fuera del cifrado de la API, donde
+ * esa cadena queda escrita.
+ *
+ * SE AFIRMA POR LA FORMA FUERTE —«no se abrio NINGUNA base»— Y NO POR
+ * CENTINELAS, que es la decision de este canal y esta MEDIDA, no leida:
+ *
+ *  1. No hay un solo `indexedDB`, `IDB*` ni `idb` en `apps/web/src`. Medido con
+ *     `grep -rniE "indexeddb|IDBDatabase|IDBObjectStore|IDBCursor|idb"`: cero
+ *     coincidencias. El producto no tiene NINGUN uso legitimo de esta puerta.
+ *  2. La duda real era el arbol de dependencias, porque las librerias de
+ *     service worker suelen usar IndexedDB para su propio estado — y aqui
+ *     `serwist` lo hace: `node_modules/serwist/dist/index.mjs` importa
+ *     `openDB` de `idb` y lo usa en la expiracion de caches. Pero eso NO corre
+ *     en estos tests, y tambien esta medido: el unico spec que toca el worker
+ *     —`src/app/sw.spec.ts`— sustituye `serwist` y `@serwist/next/worker`
+ *     ENTEROS con `vi.mock`, asi que el modulo de verdad no se carga nunca. La
+ *     comprobacion que decide no es esa lectura sino la del paquete completo:
+ *     con este tapon puesto y la afirmacion fuerte, los 65 specs siguen en
+ *     verde, o sea que NADIE del arbol abre una base durante un test.
+ *
+ * Es el mismo criterio que separa `window.name` —forma fuerte, porque el
+ * producto no tiene ningun uso legitimo de esa puerta— del `src` de una
+ * imagen, de las salidas laterales, de `CacheStorage` y del service worker
+ * —centinelas, porque pintar un logo, sincronizar pestañas, medir latencia o
+ * hablarle al worker SI son legitimos y un canal que los prohiba es de los que
+ * alguien desactiva el dia que los necesita—. Aqui no hay nada que desactivar:
+ * ninguna pantalla del panel tiene nada que hacer abriendo una base. Y la
+ * forma fuerte caza ademas EL DATO QUE NADIE REGISTRO, que es justamente el
+ * caso de un `put(variables)` que se lleva el objeto entero.
+ *
+ * Se afirman IGUALMENTE los centinelas, y antes que la forma fuerte, para que
+ * el informe diga QUE dato se fue cuando se fue uno conocido: un
+ * «una escritura en IndexedDB lleva claveDelReset» dice mas que un
+ * «la pantalla escribio en IndexedDB».
+ *
+ * EL PRECIO, DICHO ENTERO: a partir de aqui la deteccion de capacidades ve una
+ * base de datos que jsdom no tiene, y una pantalla que pregunte
+ * `'indexedDB' in window` tomara ese camino en los tests. Hoy no lo pregunta
+ * nadie —punto 1 de arriba—, y el cambio acerca el entorno al navegador de
+ * verdad en lugar de alejarlo, que es la direccion correcta para una
+ * infraestructura de tests.
+ *
+ * LO QUE ESTE TAPON NO MONTA, para que nadie lo descubra creyendo que lo
+ * cubria: las doce CLASES de la familia siguen sin existir. Un
+ * `IDBKeyRange.only(dato)` revienta con un `ReferenceError` y el test cae
+ * —que es el comportamiento bueno—, y la forma prudente `globalThis.IDBKeyRange?.only(…)`
+ * devuelve `undefined`, que es un rango vacio aceptable para los cursores de
+ * mentira de abajo. Montarlas seria simular una base de datos; esto no esta
+ * para eso, esta para que una escritura hacia ella no sea invisible.
+ */
+const INDEXED_DB_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+
+/** Una escritura que paso por IndexedDB, con la PUERTA por la que entro. */
+interface EscrituraEnLaBase {
+  /** `put`, `add` o `cursor.update`: por cual de las tres entro. */
+  puerta: string;
+  base: string;
+  almacen: string;
+  /** La clave, en texto. Un `put(1, claveSecreta)` esconde el dato AQUI. */
+  clave: string;
+  /** El valor TAL CUAL, que puede ser un objeto anidado. Se serializa al mirar. */
+  valor: unknown;
+}
+
+/** Un registro guardado en el almacen de mentira, para que los cursores tengan que recorrer. */
+interface RegistroDeLaBase {
+  clave: unknown;
+  valor: unknown;
+}
+
+/**
+ * Los oyentes de `addEventListener` de cada objeto de mentira, por fuera.
+ *
+ * En un `WeakMap` y no como propiedad del objeto para que la lista no aparezca
+ * al serializar nada ni al recorrer las claves de un cursor.
+ */
+const OYENTES_DE_LA_BASE = new WeakMap<object, Map<string, ((evento: unknown) => void)[]>>();
+
+function oyentesDe(objetivo: object): Map<string, ((evento: unknown) => void)[]> {
+  let mapa = OYENTES_DE_LA_BASE.get(objetivo);
+
+  if (mapa === undefined) {
+    mapa = new Map();
+    OYENTES_DE_LA_BASE.set(objetivo, mapa);
+  }
+
+  return mapa;
+}
+
+/** Le pone `addEventListener`/`removeEventListener` a un objeto de mentira. */
+function conOyentes(cuerpo: Record<string, unknown>): Record<string, unknown> {
+  cuerpo.addEventListener = (tipo: unknown, oyente: unknown) => {
+    if (typeof oyente !== 'function') return;
+    const mapa = oyentesDe(cuerpo);
+    mapa.set(String(tipo), [
+      ...(mapa.get(String(tipo)) ?? []),
+      oyente as (evento: unknown) => void,
+    ]);
+  };
+
+  cuerpo.removeEventListener = (tipo: unknown, oyente: unknown) => {
+    const mapa = oyentesDe(cuerpo);
+    mapa.set(
+      String(tipo),
+      (mapa.get(String(tipo)) ?? []).filter((otro) => otro !== oyente),
+    );
+  };
+
+  cuerpo.dispatchEvent = () => true;
+
+  return cuerpo;
+}
+
+/**
+ * LAS DOS FORMAS DE ESCUCHAR UN EVENTO DE INDEXEDDB, y hacen falta las dos.
+ *
+ * `peticion.onsuccess = …` —la que escribe todo el mundo— y
+ * `peticion.addEventListener('success', …)` —la que escribe quien ya se quemo
+ * pisando un `onsuccess` ajeno—. Cubrir solo una dejaria la puerta de al lado
+ * abierta cambiando una palabra, que es exactamente lo que pasaba con `mark` y
+ * `measure`.
+ *
+ * El evento lleva `target` porque la forma mas comun de leer el resultado no es
+ * `peticion.result` sino `evento.target.result`.
+ */
+function dispararEnLaBase(objetivo: Record<string, unknown>, tipo: string): void {
+  const evento = { type: tipo, target: objetivo, currentTarget: objetivo };
+  const propio = objetivo[`on${tipo}`];
+
+  if (typeof propio === 'function') {
+    (propio as (evento: unknown) => void).call(objetivo, evento);
+  }
+
+  for (const oyente of oyentesDe(objetivo).get(tipo) ?? []) {
+    oyente.call(objetivo, evento);
+  }
+}
+
+/**
+ * APLAZAR SIN RELOJ: una microtarea de PROMESA NATIVA, no `queueMicrotask`.
+ *
+ * Hay que aplazar, y no es un detalle de fidelidad sino LO QUE DECIDE SI EL
+ * TAPON VE ALGO. La forma de la fuga es siempre esta:
+ *
+ *     const apertura = indexedDB.open('boxadmin-config', 1);
+ *     apertura.onsuccess = () => { …put… };
+ *
+ * El manejador se asigna DESPUES de que `open()` devuelva. Si `open()` llamara
+ * a `onsuccess` antes de volver, no habria ningun manejador puesto todavia: el
+ * tapon no veria la escritura y pasaria en verde —ciego— con la fuga delante.
+ *
+ * Y se aplaza con `Promise.resolve().then(…)` y no con `queueMicrotask` por la
+ * leccion de `EL_CRONOMETRO`: `queueMicrotask` esta en el conjunto de relojes
+ * que sinon falsea, asi que un spec con `vi.useFakeTimers()` lo dejaria
+ * encolado hasta que alguien avanzara el reloj —o sea, nunca— y el canal se
+ * quedaria ciego justo en los specs que usan relojes falsos. Las promesas
+ * nativas no las falsea nadie. MEDIDO: una microtarea nativa encolada dentro de
+ * un test ya corrio cuando corre el `afterEach`.
+ *
+ * Cada manejador va en su propio `try`: si el de `upgradeneeded` explota —cosa
+ * de quien lo escribio, no nuestra—, el de `success` tiene que correr igual o
+ * se perderia el `put` que viene detras.
+ */
+function masTardeEnLaBase(hacer: () => void): void {
+  void Promise.resolve().then(() => {
+    try {
+      hacer();
+    } catch {
+      // Un manejador que explota es un fallo del codigo bajo prueba, no de este
+      // tapon: en el navegador va a `window.onerror` y no rompe a quien disparo
+      // el evento. Aqui se traga por lo mismo, y porque lo que este tapon tiene
+      // que registrar —la escritura— ya quedo anotado antes de llamar a nadie.
+    }
+  });
+}
+
+/** Una `IDBRequest` de mentira, con su resultado ya puesto y su `success` aplazado. */
+function peticionDeLaBase(resultado: unknown): Record<string, unknown> {
+  const peticion = conOyentes({
+    result: resultado,
+    error: null,
+    readyState: 'done',
+    onsuccess: null,
+    onerror: null,
+    source: null,
+    transaction: null,
+  });
+
+  masTardeEnLaBase(() => dispararEnLaBase(peticion, 'success'));
+
+  return peticion;
+}
+
+/**
+ * Una clave de IndexedDB en texto, para poder buscar centinelas dentro.
+ *
+ * Las claves no son solo cadenas: la plataforma admite numeros, fechas y
+ * ARRAYS (`put(valor, [tenantId, email])`), y por cualquiera de esas formas se
+ * va un dato igual de bien. Se pasan por `comoTexto`, como el `detail` de
+ * `performance.mark` y como el cuerpo de un `postMessage`.
+ */
+function textoDeUnaClave(clave: unknown): string {
+  if (clave === undefined || clave === null) return '';
+  if (typeof clave === 'string') return clave;
+
+  return comoTexto([clave]);
+}
+
+/**
+ * UNA BASE DE DATOS DE MENTIRA QUE SI GUARDA LO QUE LE PONEN.
+ *
+ * Guarda de verdad —en memoria, y solo mientras dure el test— por una razon
+ * concreta: SIN REGISTROS NO HAY CURSOR. `openCursor()` sobre un almacen vacio
+ * entrega `null` y un `cursor.update(dato)` no llega a ejecutarse nunca; el
+ * tapon pasaria en verde mientras en el navegador —donde el almacen tiene los
+ * registros de la sesion anterior— la misma linea reescribe cada fila con el
+ * dato dentro. Guardando lo que se pone, un `put` seguido de un recorrido cae
+ * por las dos puertas.
+ *
+ * LO QUE ESTO NO ARREGLA, dicho sin adornar: un cursor sobre un almacen al que
+ * ESTE test no escribio sigue sin entregar nada, porque la base nace vacia en
+ * cada `beforeEach`. Tapar eso pedia inventar registros falsos, y entonces el
+ * canal dejaria de medir lo que la pantalla hace para medir lo que hace con lo
+ * que nos inventamos. El caso queda cubierto por el otro lado: con la forma
+ * fuerte, ABRIR la base ya es el fallo, y para llegar a un cursor hay que
+ * abrirla.
+ *
+ * Y LOS ALMACENES SE CREAN SOLOS al pedirlos. Un `transaction('borradores')`
+ * sobre un almacen que no existe lanza `NotFoundError` en la plataforma de
+ * verdad; aqui no, a proposito: ese error ocurriria DENTRO de un manejador de
+ * eventos, donde nadie lo ve, y el resultado seria una escritura invisible en
+ * vez de un fallo. Un tapon no puede permitirse ser mas estricto que la
+ * plataforma en un sitio donde serlo lo deja ciego.
+ */
+function baseDeDatosDeMentira(
+  base: string,
+  version: number,
+  anotar: (escritura: EscrituraEnLaBase) => void,
+): Record<string, unknown> {
+  const almacenes = new Map<string, RegistroDeLaBase[]>();
+
+  const registrosDe = (nombre: string): RegistroDeLaBase[] => {
+    let registros = almacenes.get(nombre);
+
+    if (registros === undefined) {
+      registros = [];
+      almacenes.set(nombre, registros);
+    }
+
+    return registros;
+  };
+
+  const almacenDeMentira = (nombre: string): Record<string, unknown> => {
+    const registros = registrosDe(nombre);
+
+    /** Las dos puertas de escritura directa: `put` y `add`, que son la misma. */
+    const guardar = (puerta: string) => (valor: unknown, clave?: unknown) => {
+      // Se ANOTA ANTES de nada: si algo de aqui abajo explotara, la escritura
+      // ya esta registrada. Es la regla del resto del tapon.
+      anotar({ puerta, base, almacen: nombre, clave: textoDeUnaClave(clave), valor });
+      registros.push({ clave, valor });
+
+      return peticionDeLaBase(clave ?? registros.length);
+    };
+
+    /**
+     * EL CURSOR, que es la TERCERA puerta de escritura y no se parece a las otras.
+     *
+     * `cursor.update(valor)` reescribe el registro sobre el que esta parado sin
+     * pasar por `put` ni por `add`: doblar solo esas dos dejaria la puerta
+     * abierta cambiando dos palabras, igual que vigilar `mark` sin `measure`.
+     * `continue()` vuelve a disparar el `success` de la MISMA peticion con el
+     * registro siguiente, que es como recorre la plataforma de verdad.
+     */
+    const abrirCursor = (): Record<string, unknown> => {
+      const peticion = conOyentes({
+        result: null,
+        error: null,
+        readyState: 'done',
+        onsuccess: null,
+        onerror: null,
+      });
+
+      const copia = [...registros];
+      let indice = 0;
+
+      const entregar = (): void => {
+        const registro = copia[indice];
+
+        peticion.result =
+          registro === undefined
+            ? null
+            : {
+                key: registro.clave,
+                primaryKey: registro.clave,
+                value: registro.valor,
+                direction: 'next',
+                update: (valor: unknown) => {
+                  anotar({
+                    puerta: 'cursor.update',
+                    base,
+                    almacen: nombre,
+                    clave: textoDeUnaClave(registro.clave),
+                    valor,
+                  });
+                  registro.valor = valor;
+
+                  return peticionDeLaBase(registro.clave);
+                },
+                delete: () => peticionDeLaBase(undefined),
+                continue: () => {
+                  indice += 1;
+                  entregar();
+                },
+                advance: (cuantos: unknown) => {
+                  indice += Math.max(1, Number(cuantos) || 1);
+                  entregar();
+                },
+              };
+
+        masTardeEnLaBase(() => dispararEnLaBase(peticion, 'success'));
+      };
+
+      entregar();
+
+      return peticion;
+    };
+
+    return {
+      name: nombre,
+      keyPath: null,
+      autoIncrement: false,
+      indexNames: [],
+      put: guardar('put'),
+      add: guardar('add'),
+      delete: () => peticionDeLaBase(undefined),
+      clear: () => peticionDeLaBase(undefined),
+      get: (clave: unknown) =>
+        peticionDeLaBase(registros.find((uno) => uno.clave === clave)?.valor),
+      getAll: () => peticionDeLaBase(registros.map((uno) => uno.valor)),
+      getAllKeys: () => peticionDeLaBase(registros.map((uno) => uno.clave)),
+      count: () => peticionDeLaBase(registros.length),
+      openCursor: abrirCursor,
+      openKeyCursor: abrirCursor,
+      createIndex: () => almacenDeMentira(nombre),
+      deleteIndex: () => {},
+      // Un indice es otra forma de llegar al MISMO registro, cursor incluido:
+      // `store.index('por-email').openCursor()` entrega cursores con `update`.
+      index: () => almacenDeMentira(nombre),
+    };
+  };
+
+  const laBase: Record<string, unknown> = conOyentes({
+    name: base,
+    version,
+    objectStoreNames: [] as string[],
+    createObjectStore: (nombre: unknown) => {
+      registrosDe(String(nombre));
+      laBase.objectStoreNames = [...almacenes.keys()];
+
+      return almacenDeMentira(String(nombre));
+    },
+    deleteObjectStore: (nombre: unknown) => {
+      almacenes.delete(String(nombre));
+      laBase.objectStoreNames = [...almacenes.keys()];
+    },
+    transaction: (nombres: unknown, modo?: unknown) => {
+      const transaccion = conOyentes({
+        db: laBase,
+        mode: typeof modo === 'string' ? modo : 'readonly',
+        objectStoreNames: Array.isArray(nombres) ? nombres.map(String) : [String(nombres)],
+        error: null,
+        oncomplete: null,
+        onerror: null,
+        onabort: null,
+        objectStore: (nombre: unknown) => almacenDeMentira(String(nombre)),
+        abort: () => {},
+        commit: () => {},
+      });
+
+      masTardeEnLaBase(() => dispararEnLaBase(transaccion, 'complete'));
+
+      return transaccion;
+    },
+    close: () => {},
+    onversionchange: null,
+  });
+
+  return laBase;
+}
+
+/**
+ * Como nombrar una escritura en un informe SIN publicar lo que lleva.
+ *
+ * La puerta, la base, el almacen y la clave; NUNCA el valor —que es justamente
+ * el objeto que esta fuga se lleva entero—. Y los tres nombres pasan por
+ * `claveSegura`, porque una base bautizada con el dato
+ * (`indexedDB.open(claveTemporal)`) lo publica igual de bien que un valor.
+ */
+function descripcionDeUnaEscritura(escritura: EscrituraEnLaBase): string {
+  const clave = escritura.clave === '' ? 'sin clave' : claveSegura(escritura.clave);
+
+  return `${escritura.puerta} en ${claveSegura(escritura.base)}/${claveSegura(escritura.almacen)} (${clave})`;
+}
+
+/** Todo lo que paso por la base, serializado, para buscar centinelas dentro. */
+function comoTextoLasEscrituras(escrituras: EscrituraEnLaBase[]): string {
+  return escrituras
+    .map((una) => `${una.base} ${una.almacen} ${una.puerta} ${una.clave} ${comoTexto([una.valor])}`)
+    .join(' ');
+}
+
 /**
  * Como nombrar una clave guardada SIN publicar un secreto que venga de clave.
  *
@@ -720,8 +1184,342 @@ function claveSegura(clave: string): string {
   return clave;
 }
 
+// ---------------------------------------------------------------------------
+// El duodecimo canal: los atributos del `<html>` y del `<body>`
+// ---------------------------------------------------------------------------
+
 /**
- * EL TAPON DE LOS DIEZ CANALES, en todos los specs.
+ * LOS DOS ELEMENTOS QUE ENVUELVEN AL CUERPO, Y QUE NO MIRA NADIE.
+ *
+ * Los once tapones de arriba miran la consola, el titulo, `window.name`, el
+ * CONTENIDO del `<head>`, los cinco almacenes, el buffer de User Timing, el
+ * `src` de una imagen, las tres salidas laterales, el service worker e
+ * IndexedDB. Los tests de pantalla miran lo que hay DENTRO del `<body>`:
+ * nodos, texto y roles. Entre las dos cosas quedan DOS ELEMENTOS ENTEROS sin
+ * mirar: los ATRIBUTOS del `<html>` y los del `<body>`. Medido antes de
+ * escribir esto: cero coincidencias de `documentElement` en todo
+ * `apps/web/src`, y ni un `setAttribute`, `classList` ni `dataset` sobre
+ * ninguno de los dos.
+ *
+ * Es el sitio natural de una «marca de diagnostico» —la linea que cualquiera
+ * escribe sin pensarla— porque es COMO SE PONEN LOS TEMAS, LOS IDIOMAS Y LAS
+ * BANDERAS DE FUNCIONALIDAD: un `data-*` con un id, un rol o un nombre pasa
+ * cualquier revision porque parece instrumentacion.
+ *
+ * MEDIDO: un `document.documentElement.dataset.ultimoHealthCheck = jobId` en
+ * un `useEffect` de la pantalla de Configuracion paso los 1494 tests del
+ * paquete con los ONCE tapones enchufados.
+ *
+ * ESTE EJE ES DISTINTO DE LOS CINCO ANTERIORES —`sendBeacon`, `caches`, el
+ * service worker, IndexedDB y el rato libre—, y la diferencia es la que lo
+ * hace peor. Aquellos pasaban por APIs que jsdom NO implementa, asi que la
+ * fuga vivia detras de un `?.` que la delataba en cuanto alguien lo miraba.
+ * JSDOM IMPLEMENTA ESTO ENTERO: no hay ningun `?.`, la linea es identica en el
+ * test y en el navegador, y corre de verdad en los dos. El sitio no estaba
+ * ciego por el entorno — estaba ciego porque nadie lo nombro nunca.
+ *
+ * Y tiene tres propiedades que lo hacen peor que un `console.log`:
+ *
+ *  1. NO ESTA EN EL ARBOL QUE `render` MONTA, asi que `cleanup()` NO lo borra:
+ *     lo que una pantalla escriba ahi sobrevive a su propio test y contamina
+ *     los siguientes del mismo archivo. Esta medido: con la mutacion puesta,
+ *     un test fallo por el atributo que habia dejado el anterior. Por eso el
+ *     tapon los QUITA antes de afirmar, igual que restaura los almacenes y
+ *     vacia el buffer de marcas: si no, el informe acusa al inocente.
+ *  2. En el navegador son EXACTAMENTE IGUAL DE PUBLICOS que el `<body>`:
+ *     primera linea de «inspeccionar elemento», y salen enteros en «ver codigo
+ *     fuente» y en cualquier volcado del DOM.
+ *  3. Sobreviven a la navegacion de la SPA, porque no los desmonta nadie.
+ *
+ * SE AFIRMA POR IGUALDAD CONTRA EL CONJUNTO VACIO, no contra «lo que habia al
+ * empezar», y es una decision con fuga conocida del otro lado: con una foto
+ * inicial, un atributo que hubiera dejado un test ANTERIOR del archivo estaria
+ * en las dos fotos y pasaria en verde —que es justamente la propiedad 1 usada
+ * al reves—. La forma fuerte solo vale si los dos elementos nacen limpios, y
+ * eso NO se leyo, se midio: en jsdom 26 `document.documentElement.attributes`
+ * y `document.body.attributes` estan los dos VACIOS al empezar un spec y
+ * siguen vacios tras un `render` con `QueryClientProvider`; y con el tapon
+ * puesto con esta forma, los 66 specs del paquete siguen en verde, o sea que
+ * NADIE —ni Next, ni React 19, ni Testing Library, ni ningun proveedor—
+ * escribe ahi durante un test.
+ *
+ * CUBRE LOS DOS ELEMENTOS porque el hueco es el mismo en los dos, y se
+ * informan POR SEPARADO para que el mensaje diga en cual de los dos fue.
+ *
+ * NO HACE FALTA ESPIA NINGUNO, y por eso este canal es el unico que no se
+ * engancha en el `beforeEach`. Los otros once doblan una funcion o un accesor
+ * y tienen que volver a hacerlo en cada test, porque los specs llaman a
+ * `vi.restoreAllMocks()` en su propio `afterEach`, que con el orden de hooks
+ * de Vitest corre ANTES que este tapon. Aqui no hay nada que doblar: el estado
+ * que delata la fuga son los atributos que QUEDAN en el documento, y eso se
+ * lee directamente al terminar. Sin espia no hay nada que restaurar y, por
+ * tanto, nada que `vi.restoreAllMocks()` pueda apagar.
+ */
+type ElementoDeAlrededor = '<html>' | '<body>';
+
+const ALREDEDOR_DEL_CUERPO: readonly ElementoDeAlrededor[] = ['<html>', '<body>'];
+
+/** El elemento de verdad detras del nombre con el que lo llama el informe. */
+function elementoDeAlrededor(cual: ElementoDeAlrededor): Element {
+  return cual === '<html>' ? document.documentElement : document.body;
+}
+
+/** Los atributos de un elemento, nombre y valor, tal cual estan. */
+function atributosDe(elemento: Element): [string, string][] {
+  return [...elemento.attributes].map((atributo) => [atributo.name, atributo.value]);
+}
+
+/**
+ * Los atributos serializados, para buscar centinelas dentro.
+ *
+ * Se mira el NOMBRE ademas del valor: un
+ * `document.documentElement.setAttribute(claveTemporal, '1')` mete el dato en
+ * el nombre, igual que un `localStorage.setItem(claveTemporal, '1')`.
+ */
+function textoDeLosAtributos(atributos: [string, string][]): string {
+  return atributos.map(([nombre, valor]) => `${nombre}=${valor}`).join(' ');
+}
+
+// ---------------------------------------------------------------------------
+// El decimotercer canal: la URL del documento
+// ---------------------------------------------------------------------------
+
+/**
+ * LA BARRA DE DIRECCIONES: EL HUECO ENTRE LAS DOS DEFENSAS DE ESTE REPO.
+ *
+ * Los doce tapones de arriba miran la consola, el titulo, `window.name`, el
+ * `<head>`, los cinco almacenes, el buffer de User Timing, el `src` de una
+ * imagen, las tres salidas laterales, CacheStorage, el service worker,
+ * IndexedDB y los atributos del `<html>` y del `<body>`. Los tests de pantalla
+ * miran DENTRO del `<body>` y la lista de peticiones. `location` NO CAE EN
+ * NINGUNO DE LOS DOS LADOS: ni es un canal de los doce ni es marcado.
+ *
+ * MEDIDO: un `window.history.replaceState(null, '', '#dijo=' + config.error.message)`
+ * en la pantalla de Configuracion —tres lineas que parecen una cortesia para
+ * poder compartir el enlace con el fallo— dejo la URL en
+ * `http://localhost:3000/#dijo=La%20base%20de%20datos%20del%20gimnasio%20no%20contesta`
+ * y paso los 1507 tests del paquete con los doce canales enchufados.
+ *
+ * Y como canal de fuga es de los peores que tiene un navegador, porque es el
+ * unico que se COPIA SOLO:
+ *
+ *  - Va en la barra de direcciones de la maquina del mostrador, que usan
+ *    cuatro personas por turno y que se ve desde dos metros.
+ *  - Entra en el historial EN DISCO y en el archivo de restauracion de sesion,
+ *    igual que `document.title`, y sobrevive al logout.
+ *  - Se copia y se pega ENTERA: el enlace que alguien manda por chat para
+ *    enseñar la pantalla se lleva el dato dentro.
+ *  - Queda en el REGISTRO DE ACCESO de cualquier servidor al que se navegue
+ *    despues, y VIAJA COMO `Referer` A TERCEROS —a la CDN del logo, al tipo de
+ *    letra, a la etiqueta de analitica que se enchufe mañana— sin que nadie lo
+ *    decida.
+ *
+ * Nada de eso deja rastro en la pestaña de red ni en el marcado.
+ *
+ * Y, como los atributos del `<html>`, SOBREVIVE A SU PROPIO TEST: `cleanup()`
+ * desmonta el `<body>` y no toca `location`. Esta medido en este mismo repo
+ * antes de que esto existiera: la query que sembraba un test aparecia intacta
+ * en el siguiente.
+ *
+ * ---------------------------------------------------------------------------
+ * LA FORMA ES LA FUERTE —«LA URL NO CAMBIO»— Y ESO SE MIDIO, NO SE SUPUSO.
+ *
+ * La duda era real y cara: MEDIA DOCENA DE PANTALLAS ESCRIBEN EN LA URL A
+ * PROPOSITO —los filtros de turnos, horarios, ausencias y analisis ponen su
+ * estado ahi, razonado por escrito («sobrevive al boton de atras», «la pantalla
+ * y la barra de direcciones no pueden decir cosas distintas»)—. Si eso llegara
+ * a `location` en un test, la forma fuerte seria ROJA con el codigo correcto en
+ * seis specs.
+ *
+ * No llega, y el motivo es estructural: LO HACEN POR EL ROUTER DE NEXT, Y EL
+ * ROUTER ESTA DOBLADO EN LOS 26 SPECS QUE LO USAN. Medido uno por uno: los 26
+ * montan `vi.mock('next/navigation', …)` con un `useRouter` que devuelve
+ * `push`/`replace` como `vi.fn()`, y `useSearchParams` devuelve un
+ * `URLSearchParams` que el spec fabrica a mano. NINGUNO toca `location`, y no
+ * hay un solo spec que importe `next/navigation` sin doblarlo. O sea que lo
+ * unico que puede mover `location` dentro de un test es alguien SALTANDOSE el
+ * router — que es exactamente la fuga. La forma fuerte sale gratis.
+ *
+ * (Y la medida que decide no es esa lectura sino la del paquete entero: con
+ * este tapon puesto con la forma fuerte, los 67 specs siguen en verde.)
+ *
+ * SE COMPARAN LAS PARTES POR SEPARADO —origen, ruta, query, hash y el ESTADO
+ * del historial— y no solo el `href` entero, por dos cosas. La primera es el
+ * informe: decir «cambio el hash» ubica la fuga sin publicar ni un caracter de
+ * lo que lleva dentro, y un `href` entero en el mensaje seria publicar el dato
+ * en el registro de CI, que es el modo de fallo que todo este archivo evita. La
+ * segunda es el ESTADO, que no es parte del `href` y que sin nombrarlo
+ * desaparece: ver abajo.
+ *
+ * Y SE COMPARA CONTRA LA FOTO DE AL CARGAR —la URL con la que el entorno
+ * arranca, cogida UNA VEZ en el cuerpo del modulo— y no contra una foto del
+ * `beforeEach`. Es la misma decision que el duodecimo canal y por el mismo
+ * motivo: con una foto por test, una query que hubiera dejado un test ANTERIOR
+ * del archivo estaria en las dos fotos y pasaria en verde, que es la propiedad
+ * de arriba —`cleanup()` no toca `location`— usada al reves. La restauracion
+ * del `afterEach` hace verdadera la premisa en cada test.
+ *
+ * ---------------------------------------------------------------------------
+ * HAY VARIAS PUERTAS, Y SE MIDIO COMO ESTA MONTADA CADA UNA. NO ES UNIFORME.
+ *
+ * 1. `history.pushState` y `history.replaceState` VIVEN EN `History.prototype`
+ *    y son escribibles y configurables —medido; `window.history` no tiene NI
+ *    UNA propiedad propia—, asi que se doblan con `vi.spyOn` como `mark` y
+ *    `measure`. Las dos cambian `location` de verdad en jsdom, hash Y query:
+ *    `pushState(null, '', '?q=x')` deja `location.search` en `?q=x`.
+ *
+ * 2. ESCRIBIR `location.hash` FUNCIONA Y NO SE PUEDE DOBLAR. Medido: `href`,
+ *    `hash`, `search` y `pathname` son accesores PROPIOS del objeto `location`
+ *    con `configurable: false`, y `Location.prototype` no tiene ninguno de los
+ *    cuatro. Un `Object.defineProperty(location, 'hash', …)` revienta con
+ *    «Cannot redefine property». No hace falta: `location.hash = '#x'` SI
+ *    cambia la URL en jsdom, y la otra mitad del canal —la comparacion— lo ve.
+ *
+ * 3. `location.assign` Y `location.replace` NO SE PUEDEN DOBLAR DE NINGUNA
+ *    MANERA, y esto se midio hasta el final en lugar de darlo por hecho: son
+ *    propiedades de DATOS propias de `location`, `writable: false` y
+ *    `configurable: false`. `window.location` si es redefinible, asi que se
+ *    probo el ultimo recurso —sustituirlo por un `Proxy` que delegue en el de
+ *    verdad— y TAMBIEN FALLA, por invariante del lenguaje: un `Proxy` no puede
+ *    devolver en `get` algo distinto del valor real de una propiedad de datos
+ *    no configurable y no escribible, y lanza un `TypeError` al intentarlo.
+ *    Quedan cubiertas por la comparacion: `assign('#x')` y `replace('#x')`
+ *    cambian la URL en jsdom y caen.
+ *
+ * LO QUE ESTE TAPON NO VE, dicho sin adornar para que nadie lo descubra
+ * creyendo que estaba tapado: LAS NAVEGACIONES QUE NO SON AL MISMO DOCUMENTO.
+ * Medido: `location.href = 'http://…/otra'`, `location.search = '?q=x'` y un
+ * `assign`/`replace` a una ruta distinta son NO-OPS en jsdom —implementa solo
+ * el cambio de hash y la History API— asi que no cambian nada que comparar, y
+ * por el punto 3 no hay donde engancharse. Es el agujero de forma
+ * `sendBeacon`: silencioso en el test y real en el navegador. Se queda abierto
+ * a proposito y no por pereza —no hay forma de cerrarlo sin fabricar un
+ * `Location` entero de mentira, y entonces el canal mediria nuestro doble en
+ * vez de la pantalla—, y es el menos grave de los cuatro: una navegacion a
+ * otro documento SE LLEVA LA PAGINA, o sea que no es la fuga callada que este
+ * canal persigue sino un fallo que se ve a simple vista. La fuga callada —la
+ * que mantiene a la persona donde estaba y le mete el dato en la barra— es
+ * siempre al MISMO documento, y esa cae entera.
+ *
+ * ---------------------------------------------------------------------------
+ * DOS MITADES, Y HACEN FALTA LAS DOS. Es el patron de los almacenes y del
+ * buffer de marcas, y aqui cada una caza algo que la otra no puede:
+ *
+ *  - LA COMPARACION sola no basta porque `pushState(estado, '', LA MISMA URL)`
+ *    GUARDA EL OBJETO EN `history.state` SIN TOCAR NI UN CARACTER DE LA URL.
+ *    Medido: tras esa llamada `location.href` es identico y
+ *    `history.state` devuelve `{"secreto":"…"}` entero. Y ese estado se
+ *    serializa al archivo de restauracion de sesion EN DISCO, que es
+ *    `localStorage` por otro nombre. Por eso el estado es una de las partes
+ *    que se comparan. Tampoco veria un `replaceState` con el dato seguido de
+ *    otro que lo limpia tres lineas despues —el mismo caso que un `setItem`
+ *    seguido de un `removeItem`—.
+ *  - EL ESPIA solo no basta porque `location.hash = …`, `assign` y `replace`
+ *    no pasan por el, y porque no ve lo que ya estuviera en la URL antes del
+ *    `beforeEach`.
+ *
+ * SE VIGILAN LAS CINCO PUERTAS DEL HISTORIAL y no solo las dos que escriben.
+ * `go`, `back` y `forward` no llevan un dato a ninguna parte, pero mueven la
+ * barra de direcciones por detras del router igual que `replaceState`, y este
+ * repo YA TENIA ESA REGLA ESCRITA: `turnos/page.spec.tsx` la custodiaba en un
+ * spec desde la Fase 9 («la URL la escribe el router, no la History API a
+ * mano»). Cubrir solo `pushState` y `replaceState` reabriria ese agujero
+ * cambiando una palabra, que es lo mismo que pasaba con `mark` sin `measure`.
+ * Al estar aqui, esa regla vale para los 67 specs en vez de para uno.
+ *
+ * SE AFIRMA TAMBIEN POR CENTINELAS, Y ANTES QUE LA FORMA FUERTE, como
+ * IndexedDB y como los atributos del `<html>`: un «la URL del documento lleva
+ * claveDelReset» dice QUE se fue, y la forma fuerte sola obligaria a ir a
+ * buscarlo. Y LA URL SE MIRA ADEMAS DECODIFICADA, que no es un adorno: la URL
+ * codifica los espacios, asi que el centinela
+ * `La base de datos del gimnasio no contesta` NO aparece literal en
+ * `#dijo=La%20base%20de%20datos%20del%20gimnasio%20no%20contesta` y la mitad de
+ * las fugas con un mensaje dentro pasarian en verde. Medido.
+ */
+type PuertaDelHistorial = 'pushState' | 'replaceState' | 'go' | 'back' | 'forward';
+
+const PUERTAS_DEL_HISTORIAL: readonly PuertaDelHistorial[] = [
+  'pushState',
+  'replaceState',
+  'go',
+  'back',
+  'forward',
+];
+
+/**
+ * LAS CINCO FUNCIONES DE VERDAD, cogidas UNA VEZ al cargar.
+ *
+ * Por la leccion de las galletas y del `src` de una imagen: leerlas desde
+ * dentro del `beforeEach`, despues del primer enganche, envolveria el
+ * envoltorio de ayer y contaria cada llamada tantas veces como tests lleve el
+ * archivo. Y hacen falta ademas para dos cosas que el espia no puede hacer por
+ * si mismo: REENVIAR —el tapon registra y deja pasar, como el resto— y
+ * RESTAURAR la URL al terminar sin que esa restauracion se cuente como una
+ * llamada de la pantalla.
+ */
+const HISTORIAL_ORIGINAL = new Map<PuertaDelHistorial, (...partes: unknown[]) => unknown>(
+  PUERTAS_DEL_HISTORIAL.filter((puerta) => typeof History.prototype[puerta] === 'function').map(
+    (puerta) => [puerta, History.prototype[puerta] as (...partes: unknown[]) => unknown],
+  ),
+);
+
+/** Las partes de la URL que se comparan por separado, el estado incluido. */
+type ParteDeLaUrl = 'origen' | 'ruta' | 'query' | 'hash' | 'estado';
+
+const PARTES_DE_LA_URL: readonly ParteDeLaUrl[] = ['origen', 'ruta', 'query', 'hash', 'estado'];
+
+/**
+ * La URL del documento partida en pedazos, mas el estado del historial.
+ *
+ * El `estado` va aqui y no aparte porque es la parte de este canal que NO se
+ * ve en la barra de direcciones y que sin nombrar se perderia: un
+ * `pushState(datos, '', la misma URL)` no cambia ni un caracter del `href`.
+ */
+function fotoDeLaUrl(): Record<ParteDeLaUrl, string> {
+  const url = new URL(window.location.href);
+
+  return {
+    origen: url.origin,
+    ruta: url.pathname,
+    query: url.search,
+    hash: url.hash,
+    // `?? null` porque jsdom deja el estado en `undefined` tras una navegacion
+    // de hash y en `null` al cargar —medido—, y las dos cosas significan «no
+    // hay estado»: sin igualarlas, un `location.hash = …` acusaria ademas a
+    // una parte que nadie escribio.
+    estado: comoTexto([window.history.state ?? null]),
+  };
+}
+
+/** La URL con la que arranca el entorno: contra esta se compara y a esta se vuelve. */
+const URL_AL_CARGAR = window.location.href;
+const FOTO_AL_CARGAR = fotoDeLaUrl();
+const ESTADO_AL_CARGAR = window.history.state as unknown;
+
+/**
+ * La URL en texto Y DECODIFICADA, para buscar centinelas dentro.
+ *
+ * Las dos formas, porque la plataforma codifica al escribir: un centinela con
+ * espacios se guarda como `%20` y no aparece literal en el `href`. Si la
+ * cadena no es decodificable —un `%` suelto— se mira igual por su forma cruda,
+ * como hace `comoTexto` con lo que no se puede serializar.
+ */
+function urlComoTexto(href: string): string {
+  try {
+    return `${href} ${decodeURIComponent(href)}`;
+  } catch {
+    return href;
+  }
+}
+
+/** Una llamada a la History API, vista por el espia: la puerta y lo que le pasaron. */
+interface LlamadaAlHistorial {
+  puerta: PuertaDelHistorial;
+  argumentos: string;
+}
+
+/**
+ * EL TAPON DE LOS TRECE CANALES, en todos los specs.
  *
  * **La consola.** Antes de que esto existiera, ni un solo spec de `apps/web`
  * mencionaba `console`, y un `console.info('[alta]', respuesta)` —la traza de
@@ -830,6 +1628,74 @@ function claveSegura(clave: string): string {
  * como el `detail` de `performance.mark`, porque la mutacion que abrio el
  * canal llevaba el dato anidado en la segunda clave.
  *
+ * **IndexedDB.** El QUINTO almacen, y el que quedo fuera porque el tapon de
+ * «los tres almacenes» es una lista cerrada y `CacheStorage` se agrego como
+ * cuarto. Medido en esta fase: un borrador del formulario de SMTP
+ * —`indexedDB.open('boxadmin-config', 1)` y un `put(variables, 'smtp')` en
+ * `onsuccess`, tres lineas que parecen una cortesia «por si alguien recarga a
+ * medio configurar»— guardaba host, usuario y LA CLAVE DEL SERVIDOR DE CORREO
+ * EN CLARO, y paso los 1481 tests del paquete con los diez canales enchufados.
+ * Pasa porque `typeof indexedDB` es `'undefined'` en jsdom y el `?.` que
+ * escribe quien programa con cuidado convierte la ausencia del entorno en un
+ * silencio. Y es peor que los tres almacenes que si se vigilaban: sobrevive al
+ * logout, al cierre de la pestaña y al reinicio igual que `localStorage`, pero
+ * ademas NO TIENE TOPE DE 5 MB y GUARDA OBJETOS ESTRUCTURADOS —`put(variables)`
+ * mete el objeto entero sin que nadie tenga que acordarse de serializar—. Se
+ * vigilan LAS TRES PUERTAS de escritura —`put`, `add` y `cursor.update`, que no
+ * pasa por ninguna de las otras dos—, la CLAVE ademas del valor —un
+ * `put(1, claveSecreta)` esconde el dato en el nombre— y el NOMBRE DE LA BASE.
+ * Se afirma por LA FORMA FUERTE —«no se abrio ninguna base»— y no por
+ * centinelas, que es la unica vez que se elige eso desde `window.name`: el
+ * motivo medido, y por que `serwist` —que si usa IndexedDB— no lo invalida,
+ * estan en el docblock de `INDEXED_DB_ORIGINAL`.
+ *
+ * **Los atributos del `<html>` y del `<body>`.** Los dos elementos que
+ * envuelven al cuerpo, y que no mira NADIE: los once canales de arriba miran
+ * la consola, el titulo, el nombre de la pestaña, el CONTENIDO del `<head>`,
+ * los cinco almacenes, User Timing, el `src` de una imagen, las tres salidas
+ * laterales, el service worker e IndexedDB, y los tests de pantalla miran lo
+ * que hay DENTRO del `<body>`. Entre las dos cosas quedaban dos elementos
+ * enteros. Medido en esta fase: un
+ * `document.documentElement.dataset.ultimoHealthCheck = jobId` en un
+ * `useEffect` —una «marca de diagnostico», que es como se ponen los temas, los
+ * idiomas y las banderas de funcionalidad— paso los 1494 tests del paquete con
+ * los once canales enchufados. Y ES DISTINTO DE LOS CINCO ANTERIORES: aquellos
+ * pasaban por APIs que jsdom no implementa, asi que la fuga vivia detras de un
+ * `?.` que la delataba; jsdom implementa ESTO entero, la linea es identica en
+ * el test y en el navegador y corre de verdad en los dos. El sitio no estaba
+ * ciego por el entorno, estaba ciego porque nadie lo nombro. Se afirma por LA
+ * FORMA FUERTE —ni un atributo, contra el conjunto VACIO y no contra una foto
+ * inicial, porque con la foto un atributo dejado por un test ANTERIOR pasaria
+ * en verde— y el motivo por el que esa forma es legitima esta medido, no
+ * leido: el docblock de `ALREDEDOR_DEL_CUERPO`.
+ *
+ * **La URL del documento.** EL HUECO ENTRE LAS DOS DEFENSAS: los doce canales
+ * de arriba miran todo lo que no es el `<body>`, los tests de pantalla miran
+ * el `<body>` y la lista de peticiones, y `location` no cae en ninguno de los
+ * dos lados. Medido en esta fase: un
+ * `history.replaceState(null, '', '#dijo=' + config.error.message)` en la
+ * pantalla de Configuracion dejo el mensaje de la API entero en la barra de
+ * direcciones y paso los 1507 tests del paquete con los doce canales
+ * enchufados. Es el unico canal que SE COPIA SOLO: entra en el historial en
+ * disco, se pega entero cuando alguien comparte el enlace, queda en el
+ * registro de acceso del siguiente servidor y VIAJA COMO `Referer` A TERCEROS,
+ * sin dejar rastro en la pestaña de red ni en el marcado. Y `cleanup()` no lo
+ * toca, asi que sobrevive a su propio test. Se vigilan LAS DOS MITADES —la URL
+ * que QUEDA, partida en origen, ruta, query, hash y ESTADO del historial, y
+ * las CINCO puertas de la History API, dobladas con `vi.spyOn` sobre
+ * `History.prototype`— porque cada una caza algo que la otra no puede: un
+ * `pushState(datos, '', la misma URL)` guarda el objeto en `history.state` sin
+ * mover ni un caracter del `href`, y un `location.hash = …` no pasa por
+ * ninguna funcion que se pueda doblar. Se afirma por LA FORMA FUERTE —«la URL
+ * no cambio»— y eso no se supuso: las seis pantallas que escriben en la URL a
+ * proposito lo hacen por el router de Next, y los 26 specs que lo usan lo
+ * doblan con `vi.fn()` sin tocar `location`. La URL se mira ademas
+ * DECODIFICADA, porque un centinela con espacios se guarda como `%20` y no
+ * aparece literal. Lo que este canal NO ve —las navegaciones que no son al
+ * mismo documento, que jsdom no implementa y cuyas puertas no son doblables ni
+ * con un `Proxy`— esta medido y escrito entero en el docblock de
+ * `PUERTAS_DEL_HISTORIAL`.
+ *
  * EL CUARTO VECINO DE ESA FAMILIA —`navigator.clipboard`— NO SE VIGILA, a
  * proposito y con el motivo medido escrito al lado de los otros tres: el panel
  * copia secretos registrados a proposito en DOS pantallas, y los tres specs
@@ -877,6 +1743,9 @@ export function vigilarLosCanalesDeSalida(): void {
   const balizasMandadas: string[] = [];
   const respuestasGuardadas: RespuestaGuardada[] = [];
   const mensajesAlTrabajador: string[] = [];
+  const basesAbiertas: string[] = [];
+  const escritoEnLaBase: EscrituraEnLaBase[] = [];
+  const navegado: LlamadaAlHistorial[] = [];
 
   beforeEach(() => {
     tituloAlEmpezar = document.title;
@@ -891,6 +1760,9 @@ export function vigilarLosCanalesDeSalida(): void {
     balizasMandadas.length = 0;
     respuestasGuardadas.length = 0;
     mensajesAlTrabajador.length = 0;
+    basesAbiertas.length = 0;
+    escritoEnLaBase.length = 0;
+    navegado.length = 0;
 
     const consola = console as unknown as Record<string, (...partes: unknown[]) => void>;
 
@@ -1203,6 +2075,137 @@ export function vigilarLosCanalesDeSalida(): void {
         removeEventListener: () => {},
       },
     });
+
+    /**
+     * EL UNDECIMO CANAL: IndexedDB, que jsdom no trae.
+     *
+     * Se DEFINE, como la baliza, como `caches` y como el service worker,
+     * porque lo que hay que cazar es la forma prudente
+     * —`globalThis.indexedDB?.open(…)`—, que sin esto no hace nada y pasa en
+     * verde mientras en el navegador del mostrador escribe en disco.
+     *
+     * SE ENGANCHA EN CADA TEST, como todo lo de arriba: los specs llaman a
+     * `vi.restoreAllMocks()` en su propio `afterEach`, que con el orden de
+     * hooks de Vitest corre ANTES que este tapon; y ademas el `afterEach` de
+     * abajo devuelve `indexedDB` a no existir, asi que sin volver a ponerlo
+     * aqui el canal estaria apagado a partir del segundo test de cada archivo:
+     * verde y ciego.
+     *
+     * No reenvia a nada —no hay base debajo— y la de mentira nace VACIA en
+     * cada test: lo que un test guarde no lo hereda el siguiente, igual que
+     * los almacenes se restauran y las listas se vacian.
+     */
+    const anotarEscritura = (escritura: EscrituraEnLaBase): void => {
+      escritoEnLaBase.push(escritura);
+    };
+
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: {
+        open: (nombre: unknown, version?: unknown) => {
+          const base = String(nombre);
+          basesAbiertas.push(base);
+
+          const laBase = baseDeDatosDeMentira(base, Number(version) || 1, anotarEscritura);
+
+          const apertura = conOyentes({
+            result: laBase,
+            error: null,
+            readyState: 'done',
+            onsuccess: null,
+            onerror: null,
+            onblocked: null,
+            onupgradeneeded: null,
+            transaction: null,
+          });
+
+          /**
+           * `upgradeneeded` SIEMPRE, y en su propia microtarea antes de
+           * `success`.
+           *
+           * Siempre, porque en un test no hay ninguna base de la sesion
+           * anterior: la version que hay en disco es cero y la plataforma de
+           * verdad dispara la actualizacion. Es ademas lo que hace falta para
+           * que el `createObjectStore` del codigo bajo prueba corra y el `put`
+           * de `onsuccess` tenga donde caer.
+           *
+           * En dos microtareas encadenadas y no en una, como la plataforma, por
+           * si alguien asigna `onsuccess` DENTRO de `onupgradeneeded` —que es
+           * una forma que se escribe— en lugar de justo despues de `open()`.
+           */
+          masTardeEnLaBase(() => {
+            // `apertura.transaction` es, durante la actualizacion, la
+            // transaccion de `versionchange`: por ahi llega
+            // `evento.target.transaction.objectStore('x')`, que es la forma de
+            // tocar un almacen recien creado sin abrir otra transaccion.
+            const abrirTransaccion = laBase.transaction as (
+              nombres: unknown,
+              modo?: unknown,
+            ) => unknown;
+            apertura.transaction = abrirTransaccion.call(laBase, [], 'versionchange');
+            dispararEnLaBase(apertura, 'upgradeneeded');
+          });
+          masTardeEnLaBase(() => dispararEnLaBase(apertura, 'success'));
+
+          return apertura;
+        },
+        /**
+         * Borrar una base tambien es usarla, y el NOMBRE puede llevar el dato:
+         * un `deleteDatabase(claveTemporal)` lo publica igual que una clave.
+         */
+        deleteDatabase: (nombre: unknown) => {
+          basesAbiertas.push(String(nombre));
+          return peticionDeLaBase(undefined);
+        },
+        databases: () => Promise.resolve([]),
+        cmp: (uno: unknown, otro: unknown) => (String(uno) < String(otro) ? -1 : 1),
+      },
+    });
+
+    /**
+     * EL DECIMOTERCER CANAL: las cinco puertas de la History API.
+     *
+     * SE ENGANCHA EN CADA TEST, como la consola y como `mark`/`measure`, y por
+     * el mismo motivo medido: los specs llaman a `vi.restoreAllMocks()` en su
+     * propio `afterEach`, que con el orden de hooks de Vitest corre ANTES que
+     * este tapon y devuelve las cinco funciones a su sitio. Sin volver a
+     * engancharlas, a partir del segundo test de cada archivo el espia estaria
+     * mirando un historial que ya nadie dobla: verde y ciego.
+     *
+     * (La OTRA mitad del canal —la comparacion de la URL— no necesita espia
+     * ninguno, como el duodecimo: lo que delata la fuga es la URL que QUEDA, y
+     * eso se lee al terminar. Esta mitad si lo necesita, porque un
+     * `pushState(datos, '', la misma URL)` no deja nada que comparar.)
+     *
+     * Se dobla con `vi.spyOn` y no redefiniendo el descriptor —como si hay que
+     * hacer con las galletas, el `src` de una imagen y `window.postMessage`—
+     * porque aqui si hay un metodo de prototipo que doblar: MEDIDO,
+     * `History.prototype.pushState` es una propiedad de DATOS escribible y
+     * configurable, y `window.history` no tiene ni una propiedad propia que la
+     * tape.
+     *
+     * REGISTRA Y DEJA PASAR, como el resto del tapon, reenviando a la funcion
+     * ORIGINAL cogida al cargar: tragarse la llamada cambiaria lo que hace la
+     * pantalla bajo prueba Y dejaria ciega a la otra mitad, porque la URL no
+     * llegaria a moverse.
+     */
+    for (const puerta of PUERTAS_DEL_HISTORIAL) {
+      const original = HISTORIAL_ORIGINAL.get(puerta);
+      if (original === undefined) continue;
+
+      vi.spyOn(History.prototype, puerta).mockImplementation(function (
+        this: History,
+        ...partes: unknown[]
+      ) {
+        // Se anota ANTES de reenviar: si la llamada de verdad explotara, la
+        // fuga ya quedo registrada. Es la regla del resto del tapon.
+        navegado.push({ puerta, argumentos: comoTexto(partes) });
+
+        return original.apply(this, partes);
+      } as never);
+    }
   });
 
   afterEach(() => {
@@ -1275,6 +2278,42 @@ export function vigilarLosCanalesDeSalida(): void {
      * ademas la que ponga la limpieza de un `useEffect`. Antes no cazaria nada
      * mas y perderia esa.
      */
+    /**
+     * EL DUODECIMO CANAL SE LEE AQUI, DESPUES DE `cleanup()`, Y AL REVES QUE
+     * EL `<head>`.
+     *
+     * El `<head>` tiene que leerse ANTES de desmontar porque React 19 sube sus
+     * `<meta>` ahi y SE LOS LLEVA al desmontar: con el `cleanup()` delante, ese
+     * canal se quedaria ciego en verde. Aqui es al reves, y es la propiedad 1
+     * del docblock de `ALREDEDOR_DEL_CUERPO`: estos atributos NO estan en el
+     * arbol que `render` monta, asi que el desmontaje no borra ni uno. Leer
+     * despues no pierde NADA y gana una cosa —la misma que gana el buffer de
+     * marcas, que se lee aqui abajo por lo mismo—: caza ademas el atributo que
+     * ponga la LIMPIEZA de un `useEffect`, que es codigo de la pantalla que
+     * solo corre al desmontar y que leyendo antes no se veria nunca.
+     */
+    const atributosDeAlrededor: Record<ElementoDeAlrededor, [string, string][]> = {
+      '<html>': atributosDe(document.documentElement),
+      '<body>': atributosDe(document.body),
+    };
+
+    /**
+     * EL DECIMOTERCER CANAL SE LEE AQUI, DESPUES DE `cleanup()`, COMO EL DOCE.
+     *
+     * Y por el mismo motivo exacto: `location` NO esta en el arbol que `render`
+     * monta, asi que el desmontaje no toca ni un caracter de la URL. Leer
+     * despues no pierde NADA y gana lo mismo que ganan los atributos del
+     * `<html>` y el buffer de marcas: caza ademas la URL que escriba la
+     * LIMPIEZA de un `useEffect`, que es codigo de la pantalla que solo corre
+     * al desmontar y que leyendo antes no se veria nunca.
+     *
+     * Es el reves del `<head>`, que tiene que leerse ANTES porque React 19 se
+     * lleva sus `<meta>` al desmontar y leer despues dejaria ese canal ciego en
+     * verde.
+     */
+    const fotoAlTerminar = fotoDeLaUrl();
+    const urlAlTerminar = window.location.href;
+
     const cronometradoEntero = [...entradasDelBuffer('mark'), ...entradasDelBuffer('measure')];
     cronometradoEntero.push(...cronometrado);
 
@@ -1395,6 +2434,120 @@ export function vigilarLosCanalesDeSalida(): void {
       Object.defineProperty(navigator, 'serviceWorker', SERVICE_WORKER_ORIGINAL);
     }
 
+    /**
+     * El undecimo canal: lo que paso por IndexedDB.
+     *
+     * Se lee, se vacian las listas y se devuelve `indexedDB` a como estaba
+     * —en jsdom, a no estar— ANTES de afirmar, exactamente como `caches` y
+     * como el service worker: si una afirmacion lanza, el test siguiente no
+     * hereda lo del que fallo y el informe no acusa al inocente. Y dejarlo
+     * puesto entre archivos cambiaria la deteccion de capacidades de un spec
+     * que no pidio nada.
+     */
+    const lasBasesAbiertas = basesAbiertas.join(' ');
+    const loEscritoEnLaBase = comoTextoLasEscrituras(escritoEnLaBase);
+    const puertasDeLaBase = escritoEnLaBase.map(descripcionDeUnaEscritura);
+    // Por `claveSegura` y sin repetidos: una base bautizada con un dato
+    // vigilado se nombra por el NOMBRE del dato, no por la cadena.
+    const nombresDeLasBases = [...new Set(basesAbiertas.map(claveSegura))];
+    basesAbiertas.length = 0;
+    escritoEnLaBase.length = 0;
+
+    if (INDEXED_DB_ORIGINAL === undefined) {
+      delete (globalThis as unknown as Record<string, unknown>).indexedDB;
+    } else {
+      Object.defineProperty(globalThis, 'indexedDB', INDEXED_DB_ORIGINAL);
+    }
+
+    /**
+     * EL DUODECIMO CANAL SE LIMPIA AQUI, Y ES LO QUE EVITA ACUSAR AL INOCENTE.
+     *
+     * Es la unica parte de este canal que no es una lectura, y hace falta
+     * exactamente por la propiedad que lo hace peligroso: `cleanup()` no borra
+     * estos atributos, asi que sin esta vuelta el que escriba uno hace caer
+     * TAMBIEN a todos los tests que vengan detras en el mismo archivo. Esta
+     * medido: con la mutacion puesta, un test fallo por el atributo que habia
+     * dejado el anterior. Es lo mismo que hacen `restaurarLosAlmacenes`,
+     * `clearMarks` y el `window.name = ''` de aqui arriba, y por el mismo
+     * motivo: se deja el canal como estaba ANTES de afirmar nada, para que el
+     * informe tenga un solo fallo y señale al test que si lo causo.
+     *
+     * Se borran TODOS y no se restaura ninguno, que es la misma decision que
+     * la forma fuerte de abajo y se apoya en la misma medida: los dos
+     * elementos nacen sin ni un atributo y nadie del arbol les pone ninguno.
+     */
+    for (const cual of ALREDEDOR_DEL_CUERPO) {
+      const elemento = elementoDeAlrededor(cual);
+
+      for (const [nombre] of atributosDeAlrededor[cual]) elemento.removeAttribute(nombre);
+    }
+
+    const loPuestoAlrededor: Record<ElementoDeAlrededor, string> = {
+      '<html>': textoDeLosAtributos(atributosDeAlrededor['<html>']),
+      '<body>': textoDeLosAtributos(atributosDeAlrededor['<body>']),
+    };
+
+    /**
+     * EL DECIMOTERCER CANAL SE DEVUELVE A SU SITIO AQUI, ANTES DE AFIRMAR.
+     *
+     * Es lo mismo que hacen `restaurarLosAlmacenes`, el `window.name = ''`,
+     * el `clearMarks()` y el borrado de atributos de aqui arriba, y hace falta
+     * por la propiedad que hace peligroso a este canal: `cleanup()` no toca
+     * `location`, asi que sin esta vuelta la pantalla que ensucie la URL hace
+     * caer TAMBIEN a todos los tests que vengan detras en el mismo archivo y
+     * el informe acusa al inocente. Esta observado en este repo antes de que
+     * el canal existiera: la query que sembraba un test aparecia intacta en el
+     * siguiente.
+     *
+     * Se vuelve con la `replaceState` ORIGINAL y no con la doblada, por dos
+     * cosas: el espia anotaria esta restauracion como una llamada de la
+     * pantalla, y despues del `vi.restoreAllMocks()` de un spec puede que la
+     * doblada ya no este. Y se vuelve a la foto DE AL CARGAR —no a una del
+     * `beforeEach`—, que es la que hace verdadera la premisa de la forma
+     * fuerte en cada test.
+     *
+     * `replaceState` y no `pushState`: volver no debe dejar una entrada mas en
+     * el historial.
+     */
+    const volverALaUrl = HISTORIAL_ORIGINAL.get('replaceState');
+    volverALaUrl?.call(window.history, ESTADO_AL_CARGAR, '', URL_AL_CARGAR);
+
+    /**
+     * Las dos mitades del decimotercer canal, leidas ya y vaciadas antes de
+     * afirmar: la URL que QUEDO —cruda y decodificada, mas el estado del
+     * historial— y las llamadas a las cinco puertas, con sus argumentos.
+     */
+    const laUrl = `${urlComoTexto(urlAlTerminar)} ${fotoAlTerminar.estado}`;
+    const llamadasAlHistorial = [...navegado];
+    const loNavegado = llamadasAlHistorial
+      .map((una) => `${una.puerta} ${una.argumentos}`)
+      .join(' ');
+    const puertasDelHistorial = [...new Set(llamadasAlHistorial.map((una) => una.puerta))];
+    const partesCambiadas = PARTES_DE_LA_URL.filter(
+      (parte) => fotoAlTerminar[parte] !== FOTO_AL_CARGAR[parte],
+    );
+    navegado.length = 0;
+
+    /**
+     * POR QUE PUERTA SE FUE UN DATO CONCRETO, para el mensaje del fallo.
+     *
+     * El nombre de la puerta y el de la parte de la URL son vocabulario fijo
+     * —`replaceState`, `hash`, `estado`—: ubican la fuga sin publicar ni un
+     * caracter de lo que lleva dentro, que es la regla de todo este archivo.
+     */
+    const puertasQueLlevan = (valor: string): string => {
+      const puertas = [
+        ...new Set(
+          llamadasAlHistorial.filter((una) => una.argumentos.includes(valor)).map((u) => u.puerta),
+        ),
+      ];
+
+      // Sin ninguna puerta del historial, el dato entro escribiendo `location`
+      // a pelo —`hash`, `assign` o `replace`—, que son accesores que no se
+      // pueden doblar: ver el docblock de `PUERTAS_DEL_HISTORIAL`.
+      return puertas.length === 0 ? 'una escritura directa en location' : puertas.join(', ');
+    };
+
     expect(nombreDeLaPestana, 'la pantalla escribio en el nombre de la pestaña').toBe('');
 
     /**
@@ -1469,21 +2622,113 @@ export function vigilarLosCanalesDeSalida(): void {
       ).toBe(false);
 
       /**
+       * EL UNDECIMO CANAL, por centinelas PRIMERO y por «ninguna base» abajo.
+       *
+       * Las dos mitades no sobran la una a la otra y el orden importa. Con la
+       * forma fuerte sola, el informe de una credencial filtrada diria «la
+       * pantalla escribio en IndexedDB» y habria que ir a buscar QUE se fue;
+       * con los centinelas delante lo dice solo. Y los centinelas solos no
+       * bastan: no cubren el dato que nadie registro, que es justamente el
+       * caso de un `put(variables)` que se lleva el objeto entero.
+       *
+       * Se separan el NOMBRE DE LA BASE y LAS ESCRITURAS porque son dos sitios
+       * distintos —un `indexedDB.open(claveTemporal)` publica el dato sin
+       * escribir ni un registro— y el informe gana diciendo cual.
+       *
+       * El valor NUNCA entra en el mensaje, como en el resto del tapon: lo
+       * unico que se publica es el NOMBRE del dato y un `true`.
+       */
+      expect(
+        lasBasesAbiertas.includes(valor),
+        `el nombre de una base de IndexedDB lleva ${nombre}`,
+      ).toBe(false);
+      expect(loEscritoEnLaBase.includes(valor), `una escritura en IndexedDB lleva ${nombre}`).toBe(
+        false,
+      );
+
+      /**
+       * EL DUODECIMO CANAL, por centinelas PRIMERO y por «ni un atributo»
+       * abajo.
+       *
+       * Las dos mitades no sobran la una a la otra, y el orden es el mismo que
+       * el de IndexedDB y por el mismo motivo: con la forma fuerte sola, el
+       * informe de un dato filtrado diria «la pantalla escribio atributos en
+       * el <html>: data-ultimo-trabajo» y habria que ir a buscar QUE se fue en
+       * el valor; con los centinelas delante lo dice solo. Y los centinelas
+       * solos no bastan, porque no cubren el dato que nadie registro —una
+       * bandera con el nombre del gimnasio, la lista de roles de quien entro—,
+       * que es justamente lo que una «marca de diagnostico» se lleva.
+       *
+       * Un `expect` por elemento para que el informe diga en cual de los dos
+       * fue. El valor NUNCA entra en el mensaje: lo unico que se publica es el
+       * NOMBRE del dato y un `true`.
+       */
+      for (const cual of ALREDEDOR_DEL_CUERPO) {
+        expect(
+          loPuestoAlrededor[cual].includes(valor),
+          `un atributo del ${cual} lleva ${nombre}`,
+        ).toBe(false);
+      }
+
+      /**
+       * EL DECIMOTERCER CANAL, por centinelas PRIMERO y por «la URL no
+       * cambio» abajo.
+       *
+       * Mismo orden y mismo motivo que IndexedDB y que los atributos del
+       * `<html>`: con la forma fuerte sola, el informe diria «la pantalla
+       * cambio la URL del documento: hash» y habria que ir a buscar QUE se
+       * fue; con los centinelas delante lo dice solo. Y los centinelas solos
+       * no bastan, porque no cubren el dato que nadie registro —el nombre del
+       * gimnasio, la lista de quien entro hoy— que es justamente lo que un
+       * «enlace para compartir la pantalla» se lleva.
+       *
+       * DOS AFIRMACIONES, una por mitad, porque son dos sitios distintos: la
+       * URL que QUEDO —donde cae tambien un `location.hash = …`, que no pasa
+       * por ninguna funcion doblable— y lo que se le PASO a una de las cinco
+       * puertas, donde cae ademas un `pushState(datos, '', la misma URL)`, que
+       * no deja nada en la barra de direcciones.
+       *
+       * El valor NUNCA entra en el mensaje, como en el resto del tapon: lo
+       * unico que se publica es el NOMBRE del dato y un `true`. Un
+       * `not.toContain(url)` aqui seria exactamente la fuga otra vez, hacia el
+       * registro de CI.
+       */
+      expect(
+        laUrl.includes(valor),
+        `la URL del documento lleva ${nombre} (cambio: ${partesCambiadas.join(', ')}; por: ${puertasQueLlevan(valor)})`,
+      ).toBe(false);
+
+      expect(
+        loNavegado.includes(valor),
+        `una llamada a ${puertasQueLlevan(valor)} lleva ${nombre}`,
+      ).toBe(false);
+
+      /**
        * EL SEXTO CANAL SE AFIRMA COMO LOS ALMACENES Y NO COMO `window.name`.
        *
        * De `window.name` se puede afirmar que esta VACIO porque nadie mas
        * escribe ahi. Del buffer de User Timing, NO, y conviene ser exacto con
-       * el motivo: MEDIDO, hoy el buffer esta vacio en los 58 archivos —ni
-       * React 19.1 ni Vitest 3.2 ponen una sola entrada—, asi que un
-       * `toBe(0)` sobre las entradas nuevas pasaria en verde ahora mismo. No
-       * se pone igualmente por dos cosas. La primera es que ese verde no
+       * el motivo, que SE REMIDIO al montar el duodecimo canal y ya no dice lo
+       * que decia. Cuando se escribio esto el buffer estaba vacio en los 58
+       * archivos que habia —ni React 19.1 ni Vitest 3.2 ponen una sola
+       * entrada— y un `toBe(0)` sobre las entradas nuevas habria pasado en
+       * verde. HOY, con 66 archivos, YA NO: sigue sin haber una sola entrada
+       * de React ni del runner, pero `relojes-falsos.spec.ts` SIEMBRA UNA A
+       * PROPOSITO —`performance.mark('relojes-falsos:sonda')`— para probar que
+       * con los relojes falsos puestos la marca llega al buffer de verdad. O
+       * sea que la forma fuerte seria ROJA hoy mismo, y contra el unico spec
+       * que existe para custodiar este canal. No se pone, entonces, por TRES
+       * cosas y ya no por dos. La primera es que ese verde no
        * depende de nosotros: React instrumenta con `performance.measure` en
        * sus pistas de rendimiento y basta una version para que el tapon
        * empiece a acusar al runner. La segunda es que medir latencia ES
        * legitimo —al reves que meter un `<meta>` en el `<head>`, que aqui no
        * lo es nunca—, y un canal que prohibe medir se desactiva el dia que
        * alguien necesite medir. Lo que no es legitimo es meter un dato del
-       * mostrador en el nombre —o en el `detail`— de la medicion.
+       * mostrador en el nombre —o en el `detail`— de la medicion. Y la
+       * tercera, la que ya no es hipotetica: el propio paquete mide a
+       * proposito, asi que la forma fuerte no es que fuera a costar algo
+       * mañana, es que cuesta hoy.
        *
        * Se separan `mark` y `measure` en dos afirmaciones para que el informe
        * diga por cual de las dos puertas se fue, sin decir por donde: lo unico
@@ -1532,6 +2777,102 @@ export function vigilarLosCanalesDeSalida(): void {
     expect(
       loCacheado.length,
       `la pantalla guardo respuestas en CacheStorage: ${loCacheado.map(claveSegura).join(', ')}`,
+    ).toBe(0);
+
+    /**
+     * EL QUINTO ALMACEN, afirmado por LA FORMA FUERTE: ni una base abierta.
+     *
+     * Es la forma de `window.name` y no la de las imagenes, y el motivo esta
+     * medido en el docblock de `INDEXED_DB_ORIGINAL`: el producto no tiene
+     * NINGUN uso legitimo de esta puerta —cero coincidencias de `indexedDB`,
+     * `IDB*` o `idb` en `apps/web/src`— y nada del arbol de dependencias abre
+     * una base durante un test. Donde no hay uso legitimo que proteger, la
+     * forma fuerte es gratis y caza ademas el dato que nadie registro.
+     *
+     * DOS AFIRMACIONES Y NO UNA, y la mas especifica primero: si hubo una
+     * escritura, el informe nombra LA PUERTA —`put`, `add` o `cursor.update`—,
+     * la base, el almacen y la clave. Si solo se abrio la base sin escribir
+     * nada, lo dice la segunda. Ni una de las dos imprime un valor.
+     */
+    expect(
+      puertasDeLaBase.length,
+      `la pantalla escribio en IndexedDB: ${puertasDeLaBase.join(', ')}`,
+    ).toBe(0);
+
+    expect(
+      nombresDeLasBases.length,
+      `la pantalla abrio una base de IndexedDB: ${nombresDeLasBases.join(', ')}`,
+    ).toBe(0);
+
+    /**
+     * LOS DOS ELEMENTOS QUE ENVUELVEN AL CUERPO: NI UN ATRIBUTO.
+     *
+     * La forma de `window.name` y de IndexedDB, no la de las imagenes, y el
+     * motivo esta medido en el docblock de `ALREDEDOR_DEL_CUERPO`: el producto
+     * no tiene NINGUN uso legitimo de esta puerta —cero `documentElement` y
+     * ningun `setAttribute`, `classList` ni `dataset` sobre `<html>` o
+     * `<body>` en `apps/web/src`— y nadie del arbol escribe ahi durante un
+     * test. Poner el idioma, el tema o una bandera de funcionalidad desde un
+     * efecto de PANTALLA no es cosa de una pantalla: eso lo decide el layout,
+     * del lado del servidor, donde no corre este tapon. Donde no hay uso
+     * legitimo que proteger, la forma fuerte es gratis y caza ademas el dato
+     * que nadie registro.
+     *
+     * CONTRA EL CONJUNTO VACIO Y NO CONTRA UNA FOTO DEL `beforeEach`. Con una
+     * foto inicial, un atributo que hubiera dejado un test ANTERIOR del
+     * archivo estaria en las dos fotos y pasaria en verde — que es la propiedad
+     * 1 del canal (`cleanup()` no los borra) usada al reves, y justo el caso
+     * que este tapon existe para cazar. La limpieza de aqui arriba hace
+     * verdadera la premisa de la forma fuerte en cada test.
+     *
+     * Los nombres van por `claveSegura`, como las claves de los almacenes y
+     * como los nombres de las bases: un `setAttribute(claveTemporal, '1')`
+     * mete el dato en el NOMBRE, y el informe dice entonces como se llama el
+     * dato vigilado en vez de publicar la cadena. Y NUNCA se imprime el VALOR,
+     * que es lo que la «marca de diagnostico» se lleva.
+     */
+    for (const cual of ALREDEDOR_DEL_CUERPO) {
+      const nombresDeLosAtributos = atributosDeAlrededor[cual].map(([nombre]) =>
+        claveSegura(nombre),
+      );
+
+      expect(
+        nombresDeLosAtributos.length,
+        `la pantalla escribio atributos en el ${cual}: ${nombresDeLosAtributos.join(', ')}`,
+      ).toBe(0);
+    }
+
+    /**
+     * LA URL DEL DOCUMENTO: NI UN CARACTER DISTINTO, Y NI UNA LLAMADA A MANO.
+     *
+     * La forma de `window.name`, de IndexedDB y de los atributos del `<html>`,
+     * no la de las imagenes, y el motivo esta MEDIDO en el docblock de
+     * `PUERTAS_DEL_HISTORIAL`: media docena de pantallas escriben en la URL a
+     * proposito —los filtros de turnos, horarios, ausencias y analisis— pero
+     * lo hacen POR EL ROUTER DE NEXT, y los 26 specs que usan `next/navigation`
+     * lo doblan con `vi.fn()` sin tocar `location`. Lo unico que puede mover
+     * `location` dentro de un test es alguien saltandose el router, que es la
+     * fuga. Donde no hay uso legitimo que proteger, la forma fuerte es gratis
+     * y caza ademas el dato que nadie registro.
+     *
+     * DOS AFIRMACIONES Y NO UNA, y la mas concreta primero. Si la URL se
+     * movio, el informe nombra LAS PARTES —origen, ruta, query, hash o el
+     * estado del historial— y eso ubica la fuga sin publicar ni un caracter de
+     * lo que lleva dentro. Si no se movio pero alguien llamo a una de las
+     * cinco puertas —el caso del `pushState(datos, '', la misma URL)`, y el
+     * del `replaceState` que limpia tres lineas despues lo que acaba de
+     * escribir—, lo dice la segunda, nombrando LA PUERTA.
+     *
+     * Ni una de las dos imprime una URL, un estado ni un argumento.
+     */
+    expect(
+      partesCambiadas.length,
+      `la pantalla cambio la URL del documento: ${partesCambiadas.join(', ')}`,
+    ).toBe(0);
+
+    expect(
+      puertasDelHistorial.length,
+      `la pantalla movio el historial a mano: ${puertasDelHistorial.join(', ')}`,
     ).toBe(0);
   });
 }

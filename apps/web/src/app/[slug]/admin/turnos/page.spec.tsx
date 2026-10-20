@@ -43,55 +43,27 @@ vi.mock('@/lib/cliente', async (original) => ({
 }));
 
 /**
- * LA BARRA DE DIRECCIONES, POR DETRAS DEL ROUTER.
+ * LA BARRA DE DIRECCIONES, POR DETRAS DEL ROUTER: YA NO SE VIGILA AQUI.
  *
- * Todos los tests de navegacion de este repo —los de esta pantalla, los de
- * personas, los del calendario, los del layout— afirman sobre el `push` del
- * router DOBLADO de `next/navigation`. Ninguno mira la History API de verdad,
- * y una pantalla que llame a `window.history.replaceState` directamente se
- * salta ese doble entero: reescribe la URL sin pasar por el router, sin que el
- * recuento de `push` se mueva y sin que ningun test del repo se entere.
+ * Desde la Fase 9 este archivo doblaba a mano los cinco metodos de la History
+ * API —`pushState`, `replaceState`, `go`, `back` y `forward`— y afirmaba que
+ * la pantalla no llamaba a ninguno. Esa regla no se perdio: SE SUBIO A
+ * INFRAESTRUCTURA. El decimotercer canal de `src/test/espia-de-consola.ts`
+ * vigila las mismas cinco puertas —y ademas la URL que QUEDA, donde caen un
+ * `location.hash = …`, un `assign` y un `replace`, que no pasan por ninguna
+ * funcion doblable— en los 67 specs del paquete en vez de en este.
  *
- * No es inocuo. `replaceState` PISA la entrada del historial en la que la
- * persona esta: el boton de atras deja de llevar a donde estaba, y el enlace
- * que acababa de copiar de la barra ya no es el que mando por chat. Y ademas
- * Next no se entera de la URL nueva, asi que a partir de ahi `useSearchParams`
- * y la barra de direcciones dicen cosas distintas, que es exactamente lo que
- * tener los filtros en la URL venia a evitar.
- *
- * Se vigilan los CINCO metodos que mueven el historial, no solo el de la
- * mutacion que lo destapo: con `replaceState` a secas, el mismo agujero vuelve
- * a abrirse el dia que alguien escriba `history.pushState` o `history.back()`.
+ * Y HUBO QUE QUITARLO, no solo se pudo. El doble de aqui instalaba los cinco
+ * metodos como propiedades PROPIAS de `window.history`, que TAPAN el espia
+ * global de `History.prototype`, y ademas se tragaba la llamada en vez de
+ * reenviarla, asi que `location` tampoco llegaba a moverse. Medido: con un
+ * `history.replaceState(null, '', '#dijo=' + unSecreto)` sembrado en
+ * `page.tsx`, de los 25 tests de este archivo fallaba UNO —el de aqui— y los
+ * otros 24 pasaban en verde con la fuga delante. El guardian local dejaba
+ * ciego al global en su propio archivo.
  */
-const HISTORIAL_A_MANO = ['pushState', 'replaceState', 'go', 'back', 'forward'] as const;
-
-const historialDeMas: string[] = [];
-
-function vigilarLaHistoryApi(): () => void {
-  const objetivo = window.history as unknown as Record<string, unknown>;
-  const originales = new Map<string, unknown>();
-
-  for (const nombre of HISTORIAL_A_MANO) {
-    originales.set(nombre, objetivo[nombre]);
-    objetivo[nombre] = (...partes: unknown[]) => {
-      historialDeMas.push(`${nombre}(${partes.map((parte) => String(parte)).join(', ')})`);
-    };
-  }
-
-  return () => {
-    for (const [nombre, original] of originales) objetivo[nombre] = original;
-  };
-}
-
-let soltarLaHistoryApi: () => void = () => {};
-
-beforeEach(() => {
-  historialDeMas.length = 0;
-  soltarLaHistoryApi = vigilarLaHistoryApi();
-});
 
 afterEach(() => {
-  soltarLaHistoryApi();
   vi.clearAllMocks();
   // Los almacenes del navegador los deja como estaban —y ademas los AUDITA— el
   // tapon global de `vitest.setup.ts`. Limpiarlos aqui, en un `afterEach` del
@@ -484,21 +456,22 @@ describe('los filtros', () => {
    *
    * Se monta con filtros imposibles a proposito: "limpiar la barra para que
    * diga lo mismo que se le pidio a la API" es exactamente la linea que uno
-   * escribe aqui, y es la que se salta al router. Ver el comentario de
-   * `vigilarLaHistoryApi`.
+   * escribe aqui, y es la que se salta al router.
    *
-   * Se mira ANTES y DESPUES de tocar un filtro: al montar y al cambiar son dos
-   * momentos distintos, y una pantalla puede estar limpia en uno y no en otro.
+   * Lo que este test afirmaba ADEMAS —que la pantalla no toca la History API a
+   * mano— ya no se mira aqui: lo mira el decimotercer canal del tapon global
+   * en los 67 specs. Ver el comentario de arriba. Lo que queda es lo que ese
+   * canal NO cubre: que con unos filtros que la API rechazaria, la pantalla
+   * siga mandando UNA sola navegacion por el router y ni una de mas.
    */
-  it('la URL la escribe el router, no la History API a mano', async () => {
+  it('con filtros imposibles sigue navegando una sola vez, por el router', async () => {
     montar({ turnos: [unTurno()], busqueda: '?soloLibres=quiza&salaId=s1' });
 
     await esperar();
-    expect(historialDeMas).toEqual([]);
+    expect(empujar).not.toHaveBeenCalled();
 
     await elegirFiltro('Lugar', 'Solo los que tienen lugar');
 
-    expect(historialDeMas).toEqual([]);
     expect(empujar).toHaveBeenCalledTimes(1);
   });
 

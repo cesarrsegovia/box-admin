@@ -87,6 +87,28 @@ export const ENLACES_DEL_PANEL: readonly EnlaceDelPanel[] = [
    * habria dos entradas marcadas a la vez y el test de `aria-current` lo diria.
    */
   { ruta: 'analisis/asistencia', texto: 'Asistencia', minimo: 'ADMIN_OPERATIVO' },
+  /**
+   * LA PRIMERA ENTRADA DEL PANEL CON `minimo: 'ADMIN_SALON'`, y por eso la
+   * primera que ejercita la jerarquia en la direccion que importa.
+   *
+   * Las otras diez piden `ADMIN_OPERATIVO`, que es el rol minimo con el que se
+   * entra: hasta hoy `enlacesPara` solo se habia medido devolviendo la lista
+   * ENTERA (los tres roles del panel) o la lista VACIA (`ALUMNO`, `PROFESOR`).
+   * Que un rol que SI entra vea MENOS que otro no habia pasado nunca, y el
+   * `it.each` de `armazon.spec.tsx` comparaba los tres roles contra la misma
+   * constante. Ahora no.
+   *
+   * `ADMIN_SALON` porque lo piden LOS CATORCE endpoints de configuracion,
+   * comprobado decorador por decorador en la Tarea 1. No hay ni uno de
+   * `ADMIN_OPERATIVO`, asi que aqui no hay nada que repartir como en salas o
+   * en analisis —donde el enlace es operativo y lo que cambia es que hay
+   * dentro—: el area ENTERA es de `ADMIN_SALON` y la puerta esta en
+   * `configuracion/page.tsx`, antes de los hooks.
+   *
+   * Esto NO es la seguridad —esa son los `@Roles` de la API—: es no ofrecerle
+   * a un operativo una pantalla que la API le va a negar.
+   */
+  { ruta: 'configuracion', texto: 'Configuracion', minimo: 'ADMIN_SALON' },
 ];
 
 export function enlacesPara(rol: RolUsuario): EnlaceDelPanel[] {

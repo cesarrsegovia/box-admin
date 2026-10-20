@@ -27,15 +27,31 @@ afterEach(() => {
 });
 
 /**
- * EL TAPON DE LOS DIEZ CANALES QUE NO SON EL `<body>`, EN TODOS LOS SPECS.
+ * EL TAPON DE LOS TRECE CANALES QUE NO SON EL `<body>`, EN TODOS LOS SPECS.
  *
  * `console.*`, `document.title`, `window.name`, el `<head>`, los tres
  * almacenes del navegador, el buffer de User Timing, el `src` de una imagen y
  * las salidas laterales —`window.postMessage`, `BroadcastChannel` y
  * `navigator.sendBeacon`—, el almacen de respuestas del navegador
- * (`CacheStorage`), que es un cuarto almacen y sobrevive al cierre de sesion, y
+ * (`CacheStorage`), que es un cuarto almacen y sobrevive al cierre de sesion,
  * el SERVICE WORKER —`navigator.serviceWorker.controller.postMessage`—, que en
- * este producto esta instalado de verdad y sobrevive a la pestaña.
+ * este producto esta instalado de verdad y sobrevive a la pestaña, e
+ * INDEXEDDB, que es el QUINTO almacen: sobrevive al logout y al reinicio como
+ * `localStorage`, no tiene tope de 5 MB y guarda el objeto entero sin que
+ * nadie tenga que serializarlo. Y LOS ATRIBUTOS DEL `<html>` Y DEL `<body>`:
+ * los dos elementos que envuelven al cuerpo, que los tests de pantalla no
+ * miran —miran lo que hay DENTRO del `<body>`— y que `cleanup()` no desmonta,
+ * asi que lo que una pantalla escriba ahi sobrevive a su propio test. A
+ * diferencia de los cinco canales anteriores, jsdom los implementa ENTEROS:
+ * no hay ningun `?.` que delate la fuga, la linea corre igual en el test y en
+ * el navegador. Y LA URL DEL DOCUMENTO: `location` y las cinco puertas de la
+ * History API, que son el HUECO ENTRE LAS DOS DEFENSAS de este repo —los otros
+ * doce canales miran todo lo que no es el `<body>`, los tests de pantalla
+ * miran el `<body>` y la lista de peticiones, y `location` no cae en ninguno
+ * de los dos lados—. Es el unico canal que SE COPIA SOLO: entra en el
+ * historial en disco, se pega entero cuando alguien comparte el enlace y viaja
+ * como `Referer` a terceros, sin dejar rastro en la pestaña de red ni en el
+ * marcado. `cleanup()` tampoco lo toca.
  * La lista entera, con que se midio en cada caso, esta en el docblock de
  * `vigilarLosCanalesDeSalida`. Va aqui y no en cada spec
  * porque es una DIMENSION, no un caso: ninguna pantalla deberia tener que
@@ -48,18 +64,18 @@ afterEach(() => {
 vigilarLosCanalesDeSalida();
 
 /**
- * Y EL UNDECIMO EJE, QUE NO ES UN CANAL SINO UN RELOJ.
+ * Y EL EJE DECIMOCUARTO, QUE NO ES UN CANAL SINO UN RELOJ.
  *
  * jsdom no implementa `requestIdleCallback`, asi que un
  * `window.requestIdleCallback?.(() => …)` es un no-op silencioso en los tests
  * y una ejecucion de verdad en el navegador: todo lo que se esconda detras
- * ocurre DESPUES de que corran los diez tapones de arriba, o sea nunca. No
+ * ocurre DESPUES de que corran los trece tapones de arriba, o sea nunca. No
  * abre una puerta nueva — las apaga TODAS, incluidas las que se tapen mañana.
  * Medido en la pantalla de quien no pago: el mismo `console.info` tira 28
  * tests de 28 desnudo y pasa los 28 envuelto.
  *
  * Se monta la API en vez de prohibirla —aplazar trabajo caro es legitimo— para
- * que lo aplazado CORRA dentro del test y los diez tapones lo vean solos. El
+ * que lo aplazado CORRA dentro del test y los trece tapones lo vean solos. El
  * razonamiento entero y las tres decisiones pequeñas: `src/test/rato-libre.ts`.
  */
 montarElRatoLibre();

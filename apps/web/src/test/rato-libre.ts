@@ -1,11 +1,13 @@
 /**
- * EL DECIMO EJE: `requestIdleCallback`, QUE NO ES UN CANAL SINO UN RELOJ — Y
- * QUE APAGA LOS OTROS DIEZ DE UNA SOLA LINEA.
+ * EL EJE DECIMOCUARTO: `requestIdleCallback`, QUE NO ES UN CANAL SINO UN
+ * RELOJ — Y QUE APAGA LOS OTROS TRECE DE UNA SOLA LINEA.
  *
- * `espia-de-consola.ts` tapa diez puertas por las que una pantalla puede
+ * `espia-de-consola.ts` tapa trece puertas por las que una pantalla puede
  * decir algo fuera del `<body>`: la consola, el titulo, `window.name`, el
  * `<head>`, los tres almacenes, el buffer de User Timing, el `src` de una
- * imagen, las tres salidas laterales y el almacen de respuestas. Las nueve se
+ * imagen, las tres salidas laterales, el almacen de respuestas, el service
+ * worker, IndexedDB, los atributos del `<html>` y del `<body>` y la URL del
+ * documento. Todas se
  * comprueban en un `afterEach`, o sea DESPUES de que el test haya corrido.
  *
  * Esto no abre una puerta nueva: mueve la salida A DESPUES DEL TEST. jsdom no
@@ -35,7 +37,7 @@
  * para decidir que NO vigilar el portapapeles.
  *
  * Montandolo, en cambio, lo que se aplace CORRE —con los relojes de verdad
- * dentro del test— y entonces los diez tapones lo ven, sin que ninguno tenga
+ * dentro del test— y entonces los trece tapones lo ven, sin que ninguno tenga
  * que saber que esto existe. El que lo use legitimamente no nota nada; el que
  * esconda una fuga detras, la paga.
  *
@@ -86,7 +88,7 @@ const MILISEGUNDOS_DE_SOBRA = 50;
 /**
  * Monta `requestIdleCallback` y `cancelIdleCallback` para todo el paquete.
  *
- * Se llama desde `vitest.setup.ts`, al lado del tapon de los diez canales y
+ * Se llama desde `vitest.setup.ts`, al lado del tapon de los trece canales y
  * por el mismo motivo: un agujero de canal no es de una pantalla, y la que no
  * se acuerde de pedirlo es justamente la que lo va a necesitar.
  */

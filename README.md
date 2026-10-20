@@ -2007,6 +2007,116 @@ gimnasio. **Las pantallas de profesor**, que siguen sin existir después de cuat
 de `exclusiva` y `recuperable`**: no se dibujan porque no hacen nada, y hacerlas hacer algo es una
 decisión de negocio, no de pantalla.
 
+## Análisis — Fase 11
+
+Los **seis reportes de `/stats`** que la Fase 6A calcula desde hace cuatro fases y que hasta hoy sólo se
+leían con un `curl`. Cierra el área **Análisis** y **no toca ni un endpoint**: son seis que ya existían
+y no tenían pantalla. Todo el trabajo está en **no aplanar las distinciones** que esos seis contratos se
+tomaron el trabajo de hacer.
+
+| Ruta                                | Qué es                                                                            | Rol                                           |
+| ----------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------- |
+| `/{slug}/admin/analisis`            | Las cinco métricas del mes, el trimestre, **la caja** y la composición de alumnos | `ADMIN_OPERATIVO`; **la caja, `ADMIN_SALON`** |
+| `/{slug}/admin/analisis/asistencia` | Presentes y ausentes en un rango de fechas, y por persona                         | `ADMIN_OPERATIVO`                             |
+| `/{slug}/admin` (la portada)        | **«A quién hay que llamar»**: los pagos pendientes de hoy                         | `ADMIN_OPERATIVO`                             |
+| `/{slug}/admin/usuarios/{id}`       | Bloque **«Dónde hay lugar»**: los turnos con cupo para esa persona                | `ADMIN_OPERATIVO`                             |
+
+**Hay una sola puerta de rol y es la de la caja.** `operativo`, `composicion-alumnos`, `asistencia`,
+`pagos-pendientes` y `turnos-libres` piden `ADMIN_OPERATIVO`, que es el rol **mínimo** con el que se
+entra al panel: comprobarlo en la pantalla sería una comprobación que nunca puede fallar, o sea ruido
+que el próximo lector confundiría con una defensa. `/stats/caja` es el único que pide `ADMIN_SALON`,
+porque lleva el margen y lo que cuesta cada profesora — el criterio que fijó la Fase 5A. A quien no le
+alcanza el rol **no se le dibuja nada en lugar de la caja**, ni un «tu rol no alcanza»: sería ruido
+permanente en la pantalla diaria del operativo y además le anunciaría que hay un número que no ve.
+
+### Dos de los seis no están en Análisis, y es a propósito
+
+`pagos-pendientes` y `turnos-libres` **no son reportes para leer: son listas de trabajo.** Una lista de
+a quién llamar enterrada en una sección de reportes no la mira nadie, porque recepción no entra ahí. Es
+la misma decisión que las vacaciones en la Fase 10: van **donde se usan**.
+
+**Los pagos pendientes van en la portada**, que es donde aterriza todo el mundo y **la única pantalla
+del panel que habla de hoy** —Análisis elige un mes, la asistencia un rango, la ficha una persona—. No
+van en el listado de personas por dos motivos que salen del código: el reporte **no acepta ningún
+filtro** y el listado de personas _es_ una barra de filtros, así que debajo de tres `<select>` enseñaría
+lo mismo con «Profesores» puesto que sin él —exactamente la mentira del `/stats/caja?salaId=` que la 6A
+arregló—; y chocaría con la columna **«Pago al día»** que ya está ahí, que sale de
+`UsuarioResumen.pagoAlDia` y cubre a todo el mundo, mientras el reporte sale de `perfilesConPack()`, que
+filtra `rol: 'ALUMNO'`, `activo: true` y `packId: { not: null }`. **Hay gente que el listado marca
+«Debe» y que en esta lista no está.** Las dos respuestas son correctas, y pegadas se leen como un bug.
+
+**Los turnos libres van en la ficha de la persona.** La ficha ya dice qué días viene, cuándo no viene y
+a qué salas tiene acceso, **y no decía dónde cabe**; y `UsuarioDetalle.salas` es exactamente el filtro
+`salaId` que el reporte acepta. Una pantalla propia habría sido una copia peor del listado de turnos,
+que desde la Fase 8 ya dibuja «Solo los que tienen lugar» —`GET /turnos` acepta `soloLibres` y
+`TurnoPublico` trae `lugaresLibres`— y que además muestra el nombre de la clase, que `TurnoLibre` no
+trae. El bloque **pide el reporte al abrirlo**, no al montar la ficha: un hook que no está montado no
+pide nada.
+
+### Las distinciones que los contratos hacen y la pantalla respeta
+
+- ⚠️ **`denominador: 0` no es `0%`.** Un mes sin un solo turno no tuvo una ocupación del cero por
+  ciento: **no tuvo ocupación**. Los cinco porcentajes del operativo vuelven con `porcentaje: null`
+  cuando el denominador es cero, y ahí la pantalla escribe `Sin datos` con la fracción al lado. Un `0%`
+  pintado en ese hueco inventa un mes malo donde no hubo mes — y un gimnasio nuevo recibe **tres meses
+  de trimestre con denominador cero**, no un trimestre corto.
+- ⚠️ **El denominador de la asistencia son las clases con lista pasada.** `asistio === true` suma
+  presentes, `=== false` suma ausentes, y lo que nunca se marcó **no entra en la cuenta**. O sea que una
+  profesora que no pasa lista **no produce ausentes: produce alumnos invisibles**, y la pantalla lo dice
+  con esas palabras. Es el único sitio del panel donde eso está escrito, y por eso la asistencia tiene
+  **entrada propia en la navegación**: enterrada un clic dentro de la pantalla del mes, sólo la
+  encontraría quien ya fue a buscarla, y el resto se quedaría con el porcentaje agregado — justo el
+  número que esta pantalla existe para desmenuzar.
+- ⚠️ **El margen mezcla dos bases, y la pantalla lo avisa.** Lo cobrado se cuenta **por fecha de pago**;
+  el costo de las profesoras, **por mes devengado**. `margen = cobrado - costoProfesoras` es una resta
+  entre dos cosas que no se midieron igual: quien paga octubre el 28 de septiembre entra en la caja de
+  septiembre y da clases en octubre.
+- **Una cortesía no es facturación.** `CORTESIA` se aparta antes de agrupar por método: una clase
+  regalada entró al salón y **no entró a la caja**. Se cuenta aparte, y nada obliga a que su monto sea
+  cero.
+- ⚠️ **`pendienteEstimado` no es una deuda.** Es el precio del pack de quien no tiene pago vigente,
+  porque el sistema **no lleva cuenta corriente**. La pantalla no usa la palabra «deuda» **ni siquiera
+  para negarla**: un «esto no es una deuda» la deja igual en la pantalla, y quien la cruza de reojo se
+  queda con ella.
+- ⚠️ **Dos respuestas vuelven recortadas, así que se muestra lo que se miró y no lo que se pidió.**
+  `/stats/turnos-libres` recorta a `MAX_MESES_ADELANTE` = **12** y `/stats/asistencia` recorta el
+  `hasta` a `MAX_DIAS_DE_RANGO` = **366**, porque recortar y contestar es mejor respuesta que un 400.
+  Las dos pantallas pintan el encabezado **desde la respuesta** y, cuando no coincide con lo pedido, lo
+  dicen en una línea. Es el mismo criterio que el mes de Análisis, que sale del `actual` que devuelve el
+  servidor y no del `<select>`.
+
+Y **no se promete «en vivo»**: `CacheDeStats` guarda cada reporte 300 segundos del lado del servidor. En
+el camino normal, registrar un pago **sí** mueve la caja —las escrituras invalidan subiendo la versión
+del gimnasio—, pero puede no moverla y la pantalla no tiene forma de saber cuál de los dos casos está
+enseñando. Lo dice en una frase y **no hay botón de actualizar**: volvería a pedir, el servidor
+contestaría lo mismo desde su caché, y la promesa sería falsa justo cuando hace falta.
+
+### El dinero nunca pasa por un float
+
+`Importe` es `{ centavos, texto }` y **no existe un campo con los pesos como `number`**. Cualquier
+cuenta de la pantalla —la participación de cada método, el total del desglose— se hace **sobre
+`centavos`**, con aritmética entera, y el `texto` se usa **sólo para mostrar**. `textoDeCentavos` es
+copia deliberada del `aTexto` de la API hasta en el detalle de no escribir `(c / 100).toFixed(2)`, que
+reintroduciría el float por la puerta de atrás.
+
+Y las cuentas de la caja son **de verdad**, no de adorno: el total del desglose se suma de las filas
+pintadas y queda al lado del `cobrado` que manda el servidor. Si el desglose pierde un método, **se ve
+en la pantalla**.
+
+### Sin librería de gráficos
+
+`div`s y Tailwind. El motivo que más pesa no es el tamaño del bundle: **permite escribir el numerador y
+el denominador al lado del porcentaje**, que es justo lo que una librería de gráficos empuja a esconder.
+Un `78%` sin su fracción no deja distinguir un mes flojo de un mes con tres turnos. Por lo mismo el
+margen negativo **se dice con palabras** —«Este mes cerró en pérdida»— y no sólo con color: el color
+solo no le llega a todo el mundo.
+
+### Lo que esta fase NO trae
+
+**Exportar a CSV o a PDF.** **Rangos comparativos propios**: lo único que compara es el trimestre que el
+operativo ya devuelve, y «este mes contra el mismo mes del año pasado» no existe. Y **las pantallas de
+profesor**, que siguen sin existir después de siete fases.
+
 ## Tests
 
 Unitarios:

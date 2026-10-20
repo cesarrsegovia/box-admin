@@ -2664,3 +2664,443 @@ nadie renombre el campo— más centinelas de tenant y de dinero por si alguien 
 | `packages/shared` | 103 / 4 | 103 / 4 |
 
 eslint de la API en cero, `tsc` limpio en los dos paquetes.
+
+---
+
+# Progreso Fase 11 — Análisis
+
+**Spec:** `docs/superpowers/specs/2026-10-17-fase11-analisis.md`
+**Plan:** `docs/superpowers/plans/2026-10-17-fase11-analisis.md` (7 tareas)
+
+Los **seis reportes de `/stats`** de la 6A, que llevaban **cuatro fases terminados en la API y sin
+ninguna forma de leerlos que no fuera un `curl`**. Cierra el área **Análisis**. **No se tocó un solo
+endpoint.**
+
+- [x] T1 — Los seis hooks (`use-stats.ts`)
+- [x] T2 — El operativo: las cinco métricas del mes y el trimestre
+- [x] T3 — La caja y la composición de alumnos
+- [x] T4 — La asistencia, con pantalla y entrada propias
+- [x] T5 — Pagos pendientes, **en la portada del panel**
+- [x] T6 — Turnos libres, **en la ficha de la persona**
+- [x] T7 — Verificación, README y tracker
+
+**Y una corrección de arranque que arrastrábamos desde el resumen de la 6A: son SEIS endpoints, no
+siete reportes.** `operativo` trae cinco porcentajes más el trimestre adentro, y de ahí salía la cuenta
+vieja.
+
+## Los errores de este plan
+
+Los nueve, sin suavizar. Los encontraron los agentes **midiendo**, no acomodándose.
+
+1. ⚠️ **`perfilId` no sirve para abrir la ficha de nadie.** La ruta es `/usuarios/[id]` →
+   `GET /usuarios/:id`, que compara contra `actor.sub` (id de **Usuario**) y lee `datos.perfil.id`
+   aparte. Con la respuesta de `pagos-pendientes` sola **no se puede enlazar a ninguna ficha**, así que
+   mi test «cada fila lleva a la ficha de ESA persona» era **imposible tal cual**. Se resolvió con una
+   segunda petición a `GET /usuarios` —el único sitio donde los dos ids viajan juntos—, contada en la
+   lista blanca, con el fixture sembrando `id` ≠ `perfilId` y una aserción de que **ningún `href` usa
+   el `perfilId`**. Sin eso las dos implementaciones eran indistinguibles.
+2. ⚠️ **El mensaje de rango invertido de stats NO es el de los otros cinco módulos.**
+   `/stats/asistencia` contesta **«El rango esta invertido: hasta es anterior a desde.»**
+   (`stats.service.ts:763`); `hasta no puede ser anterior a desde` es el de `ausencias`, `vacaciones`,
+   `rutinas`, `horarios-profesor` y `mi-calendario`. **Stats es el raro**, y queda anotado en el spec
+   para que nadie lo «uniforme».
+3. ⚠️ **El trimestre trae SIEMPRE tres meses.** Dije que un gimnasio nuevo devolvería un trimestre
+   corto: `calcularOperativo` recorre `mesesAnteriores(anio, mes, 3)` **sin condiciones**
+   (`stats.service.ts:375-380`). Un gimnasio nuevo recibe **tres meses con denominador cero**, o sea
+   que ese caso **es** el caso del control de porcentaje y no uno aparte.
+4. ⚠️ **`not.toContain('0%')` pasa sobre un `100%`.** Un test mío era verde **por casualidad
+   ortográfica**. Todas las aserciones del cero pasaron a igualdad exacta sobre `[data-numero]`.
+   (Es la cuarta forma de que un test no pueda fallar, y aquí mordió de verdad.)
+5. ⚠️ **`navigator.sendBeacon` NO EXISTE en jsdom.** O sea que `navigator.sendBeacon?.(dato)` —la forma
+   que escribe cualquiera con cuidado— **no revienta, no hace nada y pasa en verde**, mientras en el
+   navegador manda la petición. **Eso no era cobertura: era un agujero con forma de código prudente.**
+6. ⚠️ **`window.postMessage` es un ACCESOR PROPIO de `window`, no un método de prototipo.** Su
+   descriptor trae `get`/`set` y no `value`, y `Object.getPrototypeOf(window)` es un `Object` pelado:
+   se **redefine**, no se espía. Es la trampa de `performance` otra vez en otra forma. Y de paso:
+   `postMessage(x, '*')` **no lo recibe «cualquier iframe o ventana abridora»** — despacha un `message`
+   en **esta** ventana y se lo lleva cualquier script que comparta la página (analítica, chat
+   embebido, content script de una extensión). El peligro es real; el mecanismo era otro.
+7. ⚠️ **Vitest 3.2.7 no tiene una lista de relojes por defecto escrita** —la calcula en caliente en
+   `FakeTimers#useFakeTimers`— **y su documentación miente sobre el `@default`**: dice «todo menos
+   `nextTick`» y también quita `queueMicrotask`. Además el tipo `FakeMethod` **no incluye `'Intl'`**
+   aunque el runner sí lo falsea: hizo falta un cast documentado. **El tipo va por detrás del
+   runtime.**
+8. ⚠️ **«React y el runner emiten sus propias marcas de rendimiento»: FALSO hoy.** Medido con una sonda
+   sobre los 58 archivos: **cero marcas y cero medidas**, con React 19.1 y Vitest 3.2. La forma de
+   `window.name` («no hay ninguna marca») habría sido verde hoy mismo. Se mantuvo la forma de los
+   almacenes igual, pero por dos razones que sí aguantan: ese verde **no depende de nosotros** y
+   **medir latencia es legítimo**.
+9. ⚠️ **La hipótesis de la T6 era falsa, y medirla fue el hallazgo.** El plan decía que los turnos
+   libres debían alimentar los destinos del reasignar de la Fase 9. **Pierde información**:
+   `TurnoLibre` no trae el nombre del turno, y con los destinos acotados a una sala `salaNombre` es
+   constante — el cambio daría «18:00 · Pilates (7/10)» ocho veces donde hoy dice `Flow`. Y la
+   ocupación escrita, que es lo único que ganaría, **ya la tiene**.
+
+**Y dos más del mismo linaje, que se encontraron a sí mismos:** los primeros fijos de la T1 sembraban
+**recortes que la API no puede devolver** («pedí 24 meses, me devolvió 1») y **pasaban los 30 tests**;
+y el portapapeles resultó tener **dos** sitios legítimos y no uno (`usuarios/nuevo/clave-temporal.tsx`
+y `invitaciones/page.tsx:39`), los dos con centinelas registrados.
+
+## Las mutaciones abiertas 33 a 38: seis de seis, y van 38 de 38
+
+| #   | Qué se agregó                                    | El eje que nadie auditaba                                                      |
+| --- | ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| 33  | `performance.mark` con el margen y el rango      | **el búfer de User Timing** — sobrevivió los **1296**                          |
+| 34  | `new Image().src` con el volcado del operativo   | **una petición de red que no pasa por `fetch`** — **1326**                     |
+| 35  | `window.postMessage` con la caja                 | **una puerta de salida que no es `fetch` ni el DOM** — **1352**                |
+| 36  | `caches.open(…).put(…)` con la asistencia        | **CacheStorage: dos puertas al mismo almacén, una sola custodiada** — **1375** |
+| 37  | `requestIdleCallback(() => console.info(…))`     | **no es un canal: es un reloj que apaga los otros nueve** — **1409**           |
+| 38  | `navigator.serviceWorker.controller.postMessage` | **el hilo que sobrevive a la pestaña** — **1421**                              |
+
+**La 33 parece instrumentación de latencia.** El búfer lo lee cualquier script de la página con una
+línea, sobrevive a toda la navegación de la SPA, sale entero en cualquier volcado de rendimiento o
+traza compartida con soporte, y **las SDK de RUM se llevan los user timings por defecto** — igual que
+pasó con `document.title`, sin que nadie lo decida.
+
+**La 34 sale sin `fetch` y sin DOM.** El test de «no habla con la red por fuera de `pedir`» dobla el
+**`fetch` global**, y una imagen no lo usa; y la imagen **nunca se adjunta al documento**, así que no
+la ven el `body`, el `<head>`, la consola, el título, `window.name`, los tres almacenes, el búfer de
+User Timing ni las dos cachés. Sale igual —con la cookie si comparte dominio— y la URL entera queda en
+el registro de acceso del otro lado.
+
+**La 36 es la más grave, y no por la mutación: el repo YA TIENE esa política escrita, y del otro
+lado.** `apps/web/src/app/sw.ts` dice literalmente que el panel del admin no entra nunca en la
+CacheStorage —«un listado de gente con nombres, emails y teléfonos quedaría en la CacheStorage del
+navegador del mostrador, que es una computadora compartida, legible por quien se siente después»— y lo
+cumple con una lista blanca de dos rutas del alumno. **Hay dos puertas al mismo almacén y la política
+sólo custodiaba una**: una pantalla puede escribir ahí por su cuenta sin pasar por el service worker, y
+ese almacén **sobrevive al cierre de sesión, al de la pestaña y al reinicio**. Es la misma forma que el
+`gcTime` de la Fase 7: una decisión tomada, escrita, y custodiada en un solo camino.
+
+**La 37 no es un canal y ésa es toda la lección** (ver abajo).
+
+**La 38 es la asimetría inversa del noveno canal.** Aquél cerró «la página escribe en el almacén del
+worker sin pasar por su lista blanca»; éste cierra «la página le pasa el dato al worker y el `caches`
+que vigilamos ya no lo ve». Eje nuevo por **tres razones medidas**: jsdom no implementa
+`navigator.serviceWorker`; **no es ninguno de los dos `postMessage` ya vigilados** —el tapón dobla el de
+`window`, que es propiedad propia, y el de `BroadcastChannel.prototype`; el del worker vive en
+`ServiceWorker.prototype`—; y **acá hay un service worker de verdad** (`sw.ts` + `@serwist/next` +
+`boton-de-push.tsx`), así que `controller` no es `null` en el mostrador: es un hilo que sobrevive a la
+pestaña y puede hacer `fetch` y `caches.put` con lo que reciba.
+
+## Los cinco canales globales nuevos, y el porqué de cada decisión de forma
+
+`document.head` y los tres almacenes venían de la Fase 10 (canales cuarto y quinto). Esta fase sumó
+cinco más, todos en `vitest.setup.ts` / `src/test/espia-de-consola.ts`, y todos **como dimensión y no
+como caso**: suben al tapón global para que los hereden los 64 archivos, en vez de que cada pantalla se
+acuerde de pedirlos — y la que no se acuerde es justamente la que lo va a necesitar.
+
+**6. El búfer de User Timing (`mark` y `measure`).** Dos mecanismos y los dos hacen falta, medido: el
+búfer solo no alcanza porque `clearMarks()` es API pública y marcar-y-limpiar no deja rastro (el
+`setItem` + `removeItem` de los almacenes otra vez); el espía solo no alcanza porque una marca puesta
+en el cuerpo de un módulo **ya está en el búfer antes de que el espía exista**. Cubre **el `detail`**
+de las dos, que no estaba en el encargo: el segundo argumento se guarda dentro de la entrada y sale en
+su `toJSON()` — un nombre inocente con el secreto en el `detail` es la fuga más silenciosa de las tres.
+
+**7. El `src` de una imagen.** Se midió que **React 19 pasa por el accesor `src` también al pintar un
+`<img>` de JSX**, no sólo por `setAttribute`, así que un `<img>` escondido en el árbol cae por el mismo
+sitio. Vigila las dos mitades: lo asignado al accesor y lo que queda en el documento.
+
+**8. Las salidas laterales.** Tres puertas: `window.postMessage`, `BroadcastChannel.prototype
+.postMessage` y `navigator.sendBeacon` (URL **y** cuerpo, incluido el cuerpo `Blob`, que es la forma de
+los docs). El tapón **define** `sendBeacon`, que jsdom no tiene, con el precio escrito: la detección de
+capacidades ve una baliza que el entorno no implementa. Y el reenganche por test hace falta de verdad:
+las mutaciones hacen caer **los 18 tests del spec y no sólo el primero**, porque ese spec llama a
+`vi.restoreAllMocks()` en su `afterEach` y el `BroadcastChannel` va con `vi.spyOn`.
+
+**9. CacheStorage.** Afirma por centinelas **y** por «no se guardó nada», como los tres almacenes.
+
+**10. El service worker.** Tres puertas: `controller`, `ready.active` y `register`.
+
+**La forma: por centinelas y no por prohibición, en los cinco.** No se puede afirmar «no hay ninguna
+marca» (React instrumenta con `performance.measure` en sus pistas y basta una versión), ni «ninguna
+imagen» (la portada de un gimnasio pinta su logo con una URL externa arbitraria), ni «ningún mensaje al
+worker» (lo hace el botón de push). **Un canal que prohíba algo legítimo es un canal que alguien
+desactiva**, y entonces no vigila nada. La asimetría con el `<head>` —que sí tiene segunda mitad, «no
+crecieron los nodos»— es que meter un `<meta>` en el `<head>` **en esta app no es legítimo nunca**.
+
+**El informe nombra la clave y jamás el valor.** Contado sobre informes reales: en el sexto canal
+`6666.66` sale **cero** veces y `margenDelSalon` siete; en el octavo, `claveDelAlta` veinte veces y
+`Temp0ral!` **cero**. El nodo que el tapón existe para cazar es justamente el que lleva el dato, y
+copiarlo al registro de CI es el mismo modo de fallo que el espía de la consola evita. En el sexto no
+se imprime **ni el nombre de la marca**, aunque daría contexto: el nombre es donde vive la fuga, y
+redactarlo sería una lista negra que publicaría el dato que nadie registró.
+
+**El coste asumido y escrito**, en los cinco: un dato **no registrado** como centinela pasa en verde.
+El canal es tan bueno como los centinelas de cada spec.
+
+**El portapapeles queda SIN vigilar, a conciencia**, y el motivo de peso no es el que anticipé
+(«sería rojo con el código correcto»). Es que **no se puede ver desde el tapón**: los tres specs que lo
+ejercitan le ponen el doble con `Object.defineProperty(navigator, 'clipboard', …)` —propiedad
+**propia**— **dentro del cuerpo del test**, donde ningún `beforeEach` llega. Sonda: el doble del tapón
+registró **0** escrituras. Sería **verde y ciego justo en los tres sitios donde el canal se usa**, y
+«funcionando» en los 61 donde no se puede usar. El agujero queda escrito en `espia-de-consola.ts` con
+su exploit literal —`await navigator.clipboard?.writeText(dato)` dentro de un `try/catch` pasa en
+verde— para que nadie lo descubra creyendo que esto lo tapaba. Se tapa el día que el portapapeles se
+monte una vez para todo el paquete desde el tapón.
+
+**Vecinos descartados con motivo**: `MessagePort`/`MessageChannel` (tubo punto a punto, sólo alcanza a
+quien tenga el otro puerto, que uno mismo crea y guarda), `Worker` (no existe en jsdom), `window.opener`
+(`undefined` en jsdom, y `parent`/`top` ya caen por el enganche de `window`).
+
+## El montaje de `requestIdleCallback` y el guardián de los relojes
+
+**El punto ciego de los relojes (cerrado).** `vi.useFakeTimers()` **sin `toFake` sustituye el objeto
+`performance` global entero** por el falso de sinon, que acepta `mark()` y no guarda nada: ni el espía
+(quedó colgado del objeto de verdad) ni el búfer (la marca nunca llegó). **Tres specs ciegos.** El
+arreglo no fue parchear los tres sino `test.fakeTimers.toFake` en `vitest.config.ts`, con la lista en
+`src/test/relojes-falsos.ts` y su procedencia escrita: **el próximo `vi.useFakeTimers()` nace
+cubierto**, que es lo que no pasó con el `gcTime` en la Fase 7.
+
+| Sitio                              | ANTES            | DESPUÉS     |
+| ---------------------------------- | ---------------- | ----------- |
+| `ausencias/page.spec.tsx:1172`     | **pasa** (ciego) | **cae**     |
+| `usuarios/[id]/page.spec.tsx:1805` | **pasa** (ciego) | **cae**     |
+| `use-calendario-admin.spec.tsx:36` | 23/23 (ciego)    | **11 caen** |
+
+Con **control de que la sonda se ejecuta de verdad**: con la misma sonda puesta, un test del mismo
+archivo que corre con relojes reales sí cae. Sin ese control, «antes no caía» no probaría nada. (Y la
+ventana congelada de `usuarios/[id]:1805` **está vacía**: ese test monta antes de falsear el reloj y
+durante los cinco minutos no corre ni una línea de producción — ahí el agujero era **latente**, no
+alcanzable hoy.)
+
+**La pieza que lo hace durar: `relojes-falsos.spec.ts`, un guardián que MIDE en vez de comparar contra
+otra lista escrita a mano.** Calcula en ejecución el conjunto por defecto de Vitest y el nuestro, y
+exige que la única diferencia sea `performance`. El día que Vitest agregue un reloj, el test **lo
+nombra**.
+
+**Y se pagó solo en la T5.** Montar `requestIdleCallback` en el global hizo que sinon lo encontrara,
+entró en lo que falsea un `vi.useFakeTimers()` desnudo, y el guardián **se puso rojo al instante**. Al
+medirlo apareció una asimetría: **sinon sustituye `requestIdleCallback` y NO `cancelIdleCallback`**, al
+revés que `setTimeout`/`clearTimeout` y `requestAnimationFrame`/`cancelAnimationFrame`. La lista lleva
+uno y no la pareja, con el porqué escrito: con relojes falsos, cancelar un rato libre no lo cancela —
+lo cual, para lo que el tapón existe, **cae del lado seguro**.
+
+**El montaje, no la prohibición.** `requestIdleCallback` se cerró con `montarElRatoLibre()`
+(`src/test/rato-libre.ts`): lo aplazado corre dentro del test y los nueve tapones lo ven solos, **sin
+que ninguna pantalla tenga que saber que existe**. Aplazar trabajo caro es legítimo, y el propio
+archivo del espía razona que un canal que obliga a escribir el código bueno de una forma concreta es el
+que alguien desactiva. Reaplicada la mutación: caen 18 de 28, y **el test que la mata no es uno propio
+sino el tapón global de la consola**.
+
+## Dos lecciones generales, que es lo más transferible de la fase
+
+**1. Una API que jsdom no implementa es un sitio donde nadie mira por construcción.** El `?.` que
+escribe alguien con cuidado convierte **la ausencia del entorno de test en un silencio**: el código
+prudente pasa en verde y en el navegador hace la fuga entera. **Cuatro de las seis fugas de esta fase
+pasaron por ahí** — `sendBeacon`, `globalThis.caches`, `requestIdleCallback` y
+`navigator.serviceWorker`. No es un descuido de quien escribió el `?.`: es la forma correcta de
+escribirlo, y por eso la defensa tiene que estar en el tapón y no en la revisión.
+
+**2. No todo es un canal: `requestIdleCallback` era un reloj que apagaba los otros nueve.** Medido:
+
+```
+console.info('[pagos-pendientes]', datos)       → caen 28 de 28
+window.requestIdleCallback?.(() => lo mismo)    → pasan 28 de 28
+```
+
+**Mismo dato, mismo canal ya vigilado, y la diferencia entera era el envoltorio.** Los nueve tapones
+corren en un `afterEach`; lo que se esconde detrás de una API que jsdom no implementa ocurre
+**después** del test. Antes de escribir el décimo canal hay que preguntarse si lo que se encontró es
+una salida nueva o **un aplazamiento de una salida vieja**.
+
+## La regla del fixture: incoherente en lo derivado, posible en todo lo demás
+
+**Es la quinta forma de que un test no pueda fallar, y gobernó la fase entera.** Los seis contratos
+están llenos de campos derivados —`porcentaje` contra `numerador`/`denominador`, `margen` contra sus
+sumandos, `texto` contra `centavos`, `mesesAdelante` y `hasta` que vuelven recortados— y **un fixture
+coherente los vuelve a todos indistinguibles**: con `{ numerador: 3, denominador: 4, porcentaje: 75 }`
+ningún test puede decir cuál de los dos pinta la pantalla; con `99`, sí. Un fixture incoherente no es un
+fixture sucio: **es el único que prueba algo**, y es por el lado de la **entrada** — ninguna aserción
+sobre un dato mal sembrado puede delatar nada.
+
+**Pero la mitad que faltaba la descubrió la T1 fallando:** sus primeros fijos sembraban recortes que la
+API **no puede devolver** y pasaban los 30 tests. Era un fixture que no hablaba **ni** el idioma del
+código **ni** el del contrato: distinguía argumento de respuesta, que era para lo que estaba, pero
+describía un servidor que no existe. Corregidos a los recortes reales (24 → 12; y 2026-03-01→2028-12-31
+que vuelve 2027-03-01, 366 días contando el primero).
+
+→ **La regla completa: incoherente en lo derivado Y posible en todo lo demás.**
+
+## Trampas nuevas
+
+**Una API que jsdom no implementa no falla: calla.** Ya está arriba, pero es la que hay que recordar.
+
+**`performance` y `window.postMessage` no son métodos de prototipo.** El primero lo sustituye entero
+`vi.useFakeTimers()`; el segundo es un **accesor propio** de `window`, con `get`/`set` y sin `value`.
+Los dos se redefinen; ninguno se espía.
+
+**`not.toContain('0%')` pasa sobre un `100%`.** La prohibición ancha por subcadena sólo sirve cuando la
+raíz no es subcadena de nada legítimo — ahí sí es la correcta: el test de pagos pendientes prohíbe la
+raíz **`deud`** sobre el HTML en minúsculas y caza de un golpe «Deuda», «DEUDA», «adeuda» y «deudor»,
+con la premisa afirmada antes para que una pantalla en blanco no pase.
+
+**Un `<select>` en «todas las salas» manda `''`, no `undefined`.** `salaId: ''` y `salaId: undefined`
+se normalizan a la **misma clave** en el mismo sitio donde se decide si el parámetro viaja. Un
+`salaId ?? null` habría dado **dos claves para una sola petición**, y `''` es el caso común.
+
+**El cero que viaja y el cero que no.** `mesesAdelante: 0` se compara contra `undefined` y **viaja**: el
+cero es un 400 explícito del `@Min(1)`, y borrarlo le devolvería a quien pidió cero **el reporte por
+defecto de 12 meses como si fuera su respuesta**. En cambio la mutación del `||` de la T1 no la caza el
+caso de enero (`mes: 1` pasa igual por un `if (m.mes)`): **la mata el `mes: 0`**.
+
+**Un filtro en la URL dentro de la ficha de la persona rompe dos cosas en silencio.** La ficha declara
+`SIN_QUERY` y no monta frontera de Suspense; meter el filtro de sala en la URL rompería las dos, y
+**`next build` fallaría con `missing-suspense-with-csr-bailout` lejos del archivo**. Por eso el filtro
+del bloque de turnos libres vive en `useState`. (Prima hermana de la trampa de la Fase 10: el `export`
+de más en un `page.tsx`.)
+
+**Juntar dos tests para que la mutación no pueda matar sólo la mitad que no importa.** Con «lista
+vacía» y «fallo al leer» en specs separados, una mutación del bloque de turnos libres tiraba **sólo el
+del fallo** y el otro pasaba en verde. Se juntaron en un test que afirma que **no se ven igual**.
+
+**Hay filtro cliente aunque el service ya filtre.** El bloque descarta `libres > 0` por su cuenta
+porque **lo que la pantalla afirma es más fuerte que lo que el endpoint promete**, y entremedio hay un
+caché de 5 minutos.
+
+**Un chequeo de rol que la API no hace no se inventa en la pantalla.** El bloque de turnos libres **no
+tiene puerta de rol ni filtra por `rol === 'ALUMNO'`**: se buscó ese chequeo en `reservas.service.ts` y
+**no existe**. Esconderlo en la ficha de una profesora sería inventar una regla que la API no tiene.
+
+**Un hook que no está montado no pide nada.** La lista blanca de la ficha **no cambió, a propósito**:
+el reporte de turnos libres se pide **al abrir el bloque**, siguiendo el patrón de `FormularioDeAnotar`.
+Dientes comprobados.
+
+**`rutasPedidas()` ordena alfabéticamente.** Con tres reportes, React corre los efectos de los hijos
+antes que los del padre (caja → composición → operativo). Fijar ese orden haría que **mover un bloque
+rompiera tests sin que cambie nada para quien mira**. Lo que la lista blanca fija es _qué_ y _cuántas
+veces_, y **sigue sin deduplicar**.
+
+**`doblePorRuta` local en el spec de los hooks.** El andamiaje no da un doble que conteste distinto
+según la ruta, y sin eso «cada reporte tiene su propia clave» **no puede ver una colisión**: seis copias
+del mismo dato se ven igual estén donde estén. Caso ciego evitado.
+
+**Un formulario con botón, no navegación en cada `onChange`.** Un mes es un valor; un rango son dos y
+se teclean. Navegar por tecla manda peticiones de rangos que nadie pidió (`2026-0`), llena el historial
+y **entre el `desde` nuevo y el `hasta` nuevo hay un instante con el rango invertido**: la pantalla
+mostraría un error que nadie pidió ver.
+
+**No recortar en el cliente, por una razón de test.** Si la asistencia recortara a 366 días en la
+pantalla, el `hasta` pedido y el devuelto **coincidirían siempre** y el aviso de recorte **nunca podría
+dispararse**. Y el fixture por defecto **ya viene recortado**, no sólo el del test del recorte, para que
+caiga **cualquier** test que pinte el `hasta` equivocado.
+
+## Estado final
+
+|                   |                                                    |
+| ----------------- | -------------------------------------------------- |
+| `apps/web`        | **1421 tests / 64 suites**, tsc limpio, `build` OK |
+| `apps/api`        | **1339 / 67**, eslint en cero — sin tocar          |
+| E2E de la API     | **218 / 13** — ver abajo                           |
+| `packages/shared` | 103 / 4                                            |
+
+De 1266 tests en web al empezar la fase: **+155**, repartidos T1 +30, el guardián de relojes +3, T2
++27, T3 +26, T4 +23, T5 +34, T6 +12.
+
+⚠️ **Los e2e de la API NO se volvieron a correr en este cierre**: el demonio de Docker no estaba
+levantado y necesitan `postgres-test`. El 218 / 13 es el de la última corrida; **esta fase no tocó
+`apps/api` ni `packages/shared`**, y el `tsc`, los 1339 unitarios y el eslint de la API sí se midieron
+y están en verde.
+
+## Deuda anotada
+
+**Nueva de esta fase:**
+
+- ⚠️ **`centavos: 0` significa TRES cosas y no se distinguen desde la respuesta.** `pendientesDe` pone
+  cero cuando `precioPack === null`, que es a la vez «pack a consultar» y «pack borrado» — y **un pack
+  que cueste cero da el mismo cero**. Y un «0.00» al lado de un nombre, **en la pantalla desde la que
+  se llama por teléfono**, se lee «no debés nada» justo a quien está ahí por no tener pago vigente. Hay
+  un aviso por fila redactado para ser verdad en los tres casos, pero **arreglarlo de verdad necesita
+  el endpoint**.
+- **El nombre del pack colapsa tres casos en la composición.**
+  `packId === null ? SIN_PACK : (packs.get(packId)?.nombre ?? SIN_PACK)`: «Sin pack» significa a la vez
+  **sin plan**, **pack borrado** y **un pack real llamado justamente «Sin pack»**. (En pagos pendientes
+  **no** se repite: `perfilesConPack()` filtra `packId: { not: null }`, así que ahí `packNombre: null`
+  significa exactamente «su pack ya no está en la tabla», y la pantalla se ramifica por `=== null` y
+  nunca por el texto.)
+- ⚠️ **`PanelDeReasignar` ofrece como destino turnos PASADOS y LLENOS.** Llama a
+  `useTurnos({ salaId })` **sin filtro de fecha**. Encontrado en la T6 y **no arreglado**: el arreglo
+  no es este reporte sino pasarle `soloLibres: true` y un `desde`, que `GET /turnos` ya acepta y que
+  **conserva el nombre de la clase**. Toca comportamiento de la Fase 9.
+- **El portapapeles sigue sin vigilar**, con su exploit escrito en `espia-de-consola.ts`. Se tapa el
+  día que se monte una vez para todo el paquete desde el tapón.
+- **El cuerpo de las respuestas de CacheStorage no se mira**: `Response.text()` es asíncrono y `put()`
+  se registra en el acto. Mientras la afirmación sea «no se guardó nada», el cuerpo no llega a existir
+  — el día que haya una excepción legítima, sí.
+- **`textoDeCentavos` duplica el `aTexto` de la API.** Es copia deliberada (aritmética entera), y no se
+  puede importar sin tocar `packages/shared`.
+- **Los doce nombres de mes están duplicados** desde `calendario/selectores.tsx`, que es un
+  `'use client'` del que no se puede importar una constante sin arrastrarlo entero.
+
+**Vieja, y sigue en pie:**
+
+- **`use-rutinas.ts` no tiene un solo test**, con 3 mutaciones.
+- **Sobre-invalidación de `/mi-pack`** en `use-acciones-de-turno`: se invalida también al entrar y salir
+  de la lista de espera, que no consume clases. Medido: 1 → 2 peticiones, en el teléfono del alumno.
+- **El 403 de anotar le pone una ruta de API delante a quien está en el mostrador**: «Asignasela con
+  `PATCH /usuarios/:id/salas`». Es `apps/api`.
+- **El job de recordatorios es idempotente por gimnasio y no por persona.**
+- **La rotación de la clave de cifrado.**
+- **El contenedor `api` del compose está roto** por falta de `@nestjs/throttler`.
+- **Los tres campos muertos** (`Sala.exclusiva`, `Ausencia.recuperable` y la franja horaria de una
+  ausencia, que **excluye el día entero**).
+- **Las pantallas de profesor**, que siguen sin existir **después de siete fases**.
+
+## Siguiente paso
+
+Quedan dos áreas y las pantallas que faltan:
+
+- **Dinero** — packs, pagos y comprobantes desde el panel.
+- **Configuración del gimnasio**, que es **la contrapartida de la Fase 10**: hoy la ficha de la sala
+  dice «Hereda del gimnasio» y **no hay dónde mirar qué dice el gimnasio**.
+- **Las pantallas del profesor.**
+
+### El inventario, rehecho el 2026-10-19 — y los números viejos eran correctos
+
+Se cruzaron las **97 rutas** de los controllers contra lo que `apps/web` pide de verdad. **Quedan 26
+endpoints sin pantalla**, en tres áreas:
+
+| Área | Endpoints | Desglose |
+| --- | --- | --- |
+| **Configuración del gimnasio** | **14** | web pública 6, email 4, check-in QR 3, jobs 1 |
+| **Dinero** | **9** | pagos 3, packs 3, comprobantes 2, liquidación 1 |
+| **Pantallas del profesor** | **3** | `mis-clases`: listado, alumnos de una clase, pasar lista |
+
+**O sea que los conteos que veníamos arrastrando de la 6A eran exactos.** Lo que estaba mal era una
+cuenta cruda por módulo que hice al vuelo —«packs tiene 5, no 3»— que contaba **todos** los endpoints
+del módulo en vez de **los que no tienen pantalla**: de los 5 de packs, 2 ya se consumen como
+catálogo. La sospecha de que el inventario estaba desactualizado era mía y era infundada.
+
+⚠️ **Tres cosas que parecen huecos y no lo son**, por si alguien repite el cruce:
+
+- **Los 7 de `auth`** no pasan por `pedir`: van por los route handlers de Next (`/api/auth/login`) y
+  por `lib/sesion.ts`.
+- **`GET /calendario/:salaId/:anio/:mes/conflictos` NO se pide a propósito**, y está escrito en
+  `use-calendario-admin.ts`: devuelve exactamente `plan.conflictos`, que ya viene dentro de la otra
+  respuesta. Una segunda petición sería pedir dos veces lo mismo.
+- **Los 2 de `archivos-locales`** son URLs firmadas que **genera la propia API** (`almacen-local.ts`)
+  y que el navegador abre como archivo, no desde el cliente de peticiones.
+
+Y dos trampas del cruce automático, para quien lo rehaga: **un archivo puede tener varios
+`@Controller`** (`reservas.controller.ts` tiene dos: `turnos/:turnoId/reservas` y `reservas`), y
+**muchas rutas se arman en un helper** (`` pedir(`${base(mes)}/publicar`) ``), así que un `grep` del
+literal las da por no consumidas.
+
+## El checklist a mano (para Cesar)
+
+Seis comprobaciones que **ningún test puede hacer** y que no se corrieron: no hay navegador en el
+entorno. Se ejecutan en el panel, a mano.
+
+- [ ] **Entrar como `ADMIN_OPERATIVO`** y comprobar en `/analisis` que **la caja no está en el
+      marcado** —no escondida con CSS— y que **no se pide**: la pestaña de red no debe mostrar ninguna
+      llamada a `/stats/caja`.
+- [ ] **Mirar un mes sin turnos** y comprobar que la ocupación **no dice `0%`**: tiene que decir
+      `Sin datos` con la fracción al lado.
+- [ ] **Mirar a un alumno al que nunca se le pasó lista** en `/analisis/asistencia` y comprobar que
+      **no dice 0% de asistencia**, sino que no tiene clases con lista pasada.
+- [ ] **Pedir 24 meses de turnos libres** desde la ficha de una persona y comprobar que la pantalla
+      **dice que miró 12**.
+- [ ] **Registrar un pago** y volver a `/analisis`: la caja **tiene que moverse** (el caché se invalida
+      por escritura). **Si no se mueve, es un hallazgo.**
+- [ ] **Abrir el panel en la máquina del mostrador** y comprobar en DevTools → Application que **no hay
+      nada del panel en Cache Storage**.
