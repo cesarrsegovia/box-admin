@@ -142,9 +142,15 @@ apps/web/src/
 
 > ⚠️ **Errata 2, corregida al cerrar la fase (2026-10-21).** **Son CINCO lecturas y NUEVE
 > escrituras**, medido por la T1 contra los controllers. Los 14 endpoints estaban bien; el reparto,
-> no. Importa porque **cada escritura es un `gcTime: 0` y una decisión de invalidación**, y **dos de
-> las nueve no tienen nada que invalidar** (`useEncolarHealthCheck`, que no tiene GET ni clave, y el
-> borrado que ya cubre la clave de la web).
+> no. Las cinco lecturas son los cuatro `GET` de configuración **más la imagen del QR**. Importa
+> porque **cada escritura es un `gcTime: 0` y una decisión de invalidación**, y **UNA de las nueve no
+> tiene nada que invalidar**: `useEncolarHealthCheck`, que no tiene `GET`, no tiene clave y no cambia
+> ninguna configuración.
+>
+> (Al cerrar se recontó también lo que había escrito la propia T1 en el docblock de
+> `use-configuracion.ts`: decía «**dos** de las nueve» y es una, y decía «las **SEIS** escrituras de
+> la web» cuando son **cinco** — las seis son las **rutas** del controller, y una de las seis es el
+> `GET`. Los dos números quedaron corregidos en el archivo.)
 
 - [ ] **Step 1: Verificá las rutas antes de escribir**
 
@@ -434,7 +440,8 @@ it('la clave NO queda en la cache de mutaciones', () => {
   // `gcTime: 0`. Medilo sobre el QueryClient, no leyendo el hook.
 });
 it('el error del servidor de correo se muestra TAL CUAL', () => {});
-it('la clave no aparece en ninguno de los diez canales', () => {
+// (Al cerrar la fase son TRECE canales y dos ejes, no diez: ver la errata 1.)
+it('la clave no aparece en ninguno de los canales globales', () => {
   // Registrala en vigilarEstosDatos. Es lo mas sensible del sistema.
 });
 ```
@@ -543,7 +550,11 @@ proceso. Necesitan `postgres-test`: `docker compose up -d postgres postgres-test
 Al final del bloque del tracker:
 
 - Entrar como `ADMIN_OPERATIVO` y comprobar que **Configuración no está en la navegación** y que las
-  cuatro rutas **no piden nada** (pestaña de red).
+  tres rutas **no piden nada** (pestaña de red). ⚠️ **Errata 3, corregida al cerrar la fase
+  (2026-10-21): son TRES rutas, no cuatro.** El plan describía **cuatro pantallas** y quedaron
+  **tres** (`web`, `email`, `checkin`) **más el botón de health-check en el índice**: encolar un ping
+  es una acción de operación y no una configuración, y **una página entera para un botón es peor que
+  la alternativa**.
 - Guardar el SMTP con una contraseña mal puesta y comprobar que **el error es el del servidor de
   correo** y que **no contiene la contraseña**.
 - Cambiar sólo el puerto y comprobar que **la pantalla avisa de que hay que reescribir la clave**.
@@ -577,3 +588,20 @@ un marcador inexistente como **hueco** y no literal; y qué pasó con el health-
 - **Subir imágenes** para la web pública: `imagenPrincipalUrl` es una URL.
 - **Un editor visual de HTML.** Es un campo de texto con previsualización.
 - **Las pantallas del profesor**, que siguen sin existir.
+
+---
+
+## Erratas de este plan, corregidas al cerrar la fase (2026-10-21)
+
+Tres cosas que este plan afirmaba y resultaron falsas. **Se corrigieron arriba, en su sitio**, y se
+listan aquí para que nadie las copie de una versión vieja. (La lista completa de errores del plan
+—los quince— está en el bloque de la Fase 12 de `PROGRESO.md`.)
+
+1. ⚠️ **«Diez canales globales» → trece canales y dos ejes.** Esta fase sumó **IndexedDB** (once),
+   **los atributos del `<html>` y del `<body>`** (doce) y **la URL del documento** (trece), más el
+   **eje quince** (los eventos de salida de la pestaña). El catorce es `montarElRatoLibre()`.
+2. ⚠️ **«Siete lecturas y siete escrituras» → cinco y nueve.** Lo midió la T1. Las cinco lecturas
+   incluyen **la imagen del QR**, que no pasa por `pedir`. **Una sola** de las nueve escrituras no
+   tiene nada que invalidar.
+3. ⚠️ **«Cuatro pantallas» → tres pantallas más el botón de health-check en el índice.** Una página
+   entera para un botón es peor que la alternativa.

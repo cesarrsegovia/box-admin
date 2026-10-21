@@ -37,13 +37,12 @@ import { type ErrorDeApi, pedir } from '@/lib/cliente';
  * porque cada escritura es un `gcTime: 0` y una invalidacion que decidir.
  *
  * DE LAS NUEVE, UNA SOLA NO TIENE NADA QUE INVALIDAR: `useEncolarHealthCheck`.
- * (Recontado al cerrar la fase: el docblock decia «dos» y es UNA. Las otras
- * OCHO llevan `onSuccess`, y se cuentan a ojo en este archivo: seis a
- * `webSalon`, una a `smtp`, una a `plantillas` y una a `checkin` son nueve
- * invalidaciones... no: son 6+1+1+1 = 9 llamadas pero OCHO mutaciones, porque
- * las seis de la web comparten `useInvalidarWebSalon`. Ocho `onSuccess` y un
- * `useMutation` sin el: ese es el health-check. Una medicion anotada
- * envejece, y esta ademas nacio mal.)
+ * Las otras OCHO llevan `onSuccess` —cinco a `webSalon`, una a `smtp`, una a
+ * `plantillas`, una a `checkin`—, y son contables a ojo en este archivo.
+ *
+ * ⚠️ RECONTADO AL CERRAR LA FASE: este docblock decia «dos de las nueve» y es
+ * UNA. Una medicion anotada envejece y ademas puede nacer mal; se recontaron
+ * los `onSuccess` del archivo en vez de arrastrar el numero.
  *
  * LOS CATORCE PIDEN `ADMIN_SALON`, comprobado decorador por decorador. No hay
  * ni uno de `ADMIN_OPERATIVO`: lo que se decide aqui son las credenciales del
@@ -97,7 +96,12 @@ export function useConfigWebSalon() {
 }
 
 /**
- * Tras cualquiera de las SEIS escrituras de la web: la web, y nada mas.
+ * Tras cualquiera de las CINCO escrituras de la web: la web, y nada mas.
+ *
+ * ⚠️ RECONTADO AL CERRAR LA FASE: decia «SEIS», que son las seis RUTAS del
+ * `@Controller('config/web-salon')` — y una de las seis es el `GET`. Las
+ * escrituras son cinco: el `PUT`, los dos `POST` y los dos `DELETE`. Este
+ * `useInvalidarWebSalon` lo usan cinco hooks, contados.
  *
  * Las seis invalidan LA MISMA clave —no solo el `PUT`— porque
  * `ConfiguracionWebSalon` lleva `testimonios` y `preguntas` DENTRO: un

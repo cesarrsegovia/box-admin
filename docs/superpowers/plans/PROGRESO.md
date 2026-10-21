@@ -3104,3 +3104,566 @@ entorno. Se ejecutan en el panel, a mano.
       por escritura). **Si no se mueve, es un hallazgo.**
 - [ ] **Abrir el panel en la máquina del mostrador** y comprobar en DevTools → Application que **no hay
       nada del panel en Cache Storage**.
+
+# Progreso Fase 12 — La configuración del gimnasio
+
+**Spec:** `docs/superpowers/specs/2026-10-19-fase12-configuracion.md`
+**Plan:** `docs/superpowers/plans/2026-10-19-fase12-configuracion.md` (7 tareas)
+
+Los **14 endpoints de configuración**, **todos `ADMIN_SALON`**, que hasta hoy sólo se operaban por
+`curl`. **No se tocó un solo endpoint.** Y cierra una promesa que estaba en producción: **la ficha de
+la sala de la Fase 10 dice «Hereda del gimnasio» y no había dónde mirar qué dice el gimnasio.**
+
+- [x] T1 — Los hooks de las cuatro áreas (`use-configuracion.ts`) · 1421 → 1481
+- [x] T2 — El índice, la puerta de rol y el health-check · 1481 → 1496
+- [x] T3 — El check-in por QR · 1494 → 1509 _(los 2 que faltan entre 1496 y 1494 los quita el canal
+      doce al subir a global: la copia local que reemplaza era 2 tests duplicados)_
+- [x] T4 — La web pública, con testimonios y FAQ · 1509 → 1537
+- [x] T5 — El SMTP · 1537 → 1561
+- [x] T6 — Las plantillas de email · 1561 → 1572
+- [x] T7 — Verificación, erratas, README y tracker
+
+Y **seis piezas de infraestructura de tests**, que es la mitad del valor de la fase: **tres canales
+globales nuevos** (el once, el doce y el trece), **un eje nuevo** (el quince) y **dos mutaciones
+abiertas reportadas y no cerradas**.
+
+## Los errores de este plan
+
+Sin suavizar. Los encontraron los agentes **midiendo**, no acomodándose.
+
+1. ⚠️ **No eran «siete lecturas y siete escrituras»: son CINCO y NUEVE.** Los 14 endpoints estaban
+   bien; el reparto, no. Las cinco lecturas incluyen **la imagen del QR**, que no pasa por `pedir`.
+   Importa porque **cada escritura es un `gcTime: 0` y una decisión de invalidación**.
+   **Y el recuento de la T1 también nació mal, encontrado al cerrar:** su propio docblock decía «dos
+   de las nueve no tienen nada que invalidar» cuando es **UNA** (`useEncolarHealthCheck`: ocho
+   `onSuccess` y un `useMutation` sin él, contados), y decía «las **SEIS** escrituras de la web»
+   cuando son **CINCO** — las seis son las **rutas** del `@Controller('config/web-salon')`, y una de
+   las seis es el `GET`. **Los dos números quedaron corregidos en el archivo.**
+2. ⚠️ **`ConfigCheckInController` NO TIENE ARCHIVO PROPIO.** Es el **segundo `@Controller`** dentro de
+   `apps/api/src/checkin/checkin.controller.ts`, debajo de `CheckinController`. Buscar
+   `config-checkin.controller.ts` no da nada. **Es exactamente la misma trampa que
+   `reservas.controller.ts`**, que ya había mordido al rehacer el inventario de endpoints de la
+   Fase 11 — y está anotada ahí, al final de aquel bloque, y volvió a morder igual.
+3. ⚠️ **El POST del FAQ es `/config/web-salon/faq`**, aunque el contrato y el service las llamen
+   `preguntas`. **Deducir la ruta del nombre del tipo es un 404.** (Y un 404 en esta fase se dibuja
+   como dato vacío, que es la trampa de la Fase 10.)
+4. ⚠️ **Un test que pedí NO PODÍA FALLAR.** «El índice no le pide NADA a un operativo», sola, está
+   **montada en el caso ciego**: este índice no tiene **ninguna** consulta —los cuatro recursos viven
+   en las pantallas de las tareas 3 a 6—, así que tampoco pide nada siendo `ADMIN_SALON`. Se resolvió
+   sin inventar un endpoint: el test **pulsa todo botón del marcado crudo** con `fireEvent`, que
+   dispara sobre lo oculto, y **recién después** afirma que `pedir` no se llamó — **las dos
+   afirmaciones en ese orden a propósito**, porque con la del marcado delante el test abortaría ahí y
+   la mitad de «no pide» no se ejercitaría nunca.
+5. ⚠️ **`mostrarPrecios` y `seguro` vienen en `true` por defecto.** `WEB_SALON_POR_DEFECTO.mostrarPrecios`
+   es `true` y `guardar()` hace `dto.mostrarPrecios ?? ese_defecto`; `seguro` es `@IsOptional()` en el
+   DTO y `dto.seguro ?? true` en el service. O sea que el reflejo natural —«los opcionales se omiten
+   cuando están vacíos»— **publica los precios de un gimnasio que los tenía ocultos** y **le enciende
+   el TLS a uno que corría sin cifrar**, sin que nadie haya tocado nada. Y hay dos más del mismo
+   linaje: omitir `activa` (defecto `false`) **despublica el sitio**, y el service hace
+   `emailDestino: dto.emailDestino ?? null`, así que omitirlo **borra** la dirección de respuesta.
+   Por eso los cinco booleanos de la web y el `seguro` del SMTP **viajan siempre con su valor**, con
+   test propio.
+6. ⚠️ **`ESPERADO_POR_ROL` de `armazon.spec.tsx` eran TRES REFERENCIAS AL MISMO ARREGLO.** El `it.each`
+   que «barre los tres roles» **afirmaba tres veces lo mismo**, y lo único medido de `enlacesPara` era
+   la dirección de la lista vacía (`ALUMNO`, `PROFESOR`). **Que un rol que SÍ entra vea MENOS que otro
+   no había pasado nunca**, porque las once entradas del panel pedían `ADMIN_OPERATIVO`: esta fase
+   estrena esa dirección con **la primera entrada `ADMIN_SALON`**. Arreglado con las dos piezas
+   escritas a mano y **las dos mitades en el mismo test**: por separado, la primera pasaría con la
+   entrada borrada y la segunda con un `minimo: 'ADMIN_OPERATIVO'`; lo que se fija es **la diferencia**.
+7. ⚠️ **«Diez canales globales» eran once al empezar la T2 y son trece al cerrar.** Y el plan
+   describía **cuatro pantallas**: quedaron **tres más el botón de health-check en el índice**, porque
+   encolar un ping es una acción de operación y **una página entera para un botón es peor que la
+   alternativa**. Las tres erratas quedaron corregidas en la spec y en el plan, con nota de que se
+   corrigieron al cerrar.
+8. ⚠️ **`verSmtp()` lanza 404 cuando no hay fila** (`'Este gimnasio no tiene SMTP configurado'`).
+   Dibujarlo como fallo de lectura deja a un gimnasio recién dado de alta **sin el único formulario
+   desde el que se configura el correo**: la bandera apagada que no se puede encender, con el área
+   entera adentro. Se separó **por el estado y no por el mensaje**: 404 → formulario vacío con cartel;
+   cualquier otro estado → sin formulario. Par de tests (404 abre / 503 no).
+9. ⚠️ **`motivoSeguro` garantiza que la clave no sale, pero el texto que llega casi nunca es el del
+   servidor**: devuelve el `code` de nodemailer (`EAUTH`, `ECONNREFUSED`) **en cuanto tiene forma de
+   code, y descarta el mensaje**. El caso común le enseña `EAUTH` al admin, no la línea `535 5.7.8`.
+   Por eso el test de «TAL CUAL» corre sobre **dos** mensajes, uno de cada forma: con uno solo, una
+   pantalla que lo tuviera escrito a mano pasaba en verde.
+10. **El molde de hook que di (`useActualizarHorario(id)`) no servía.** La pantalla lista N
+    testimonios con su botón de borrar por fila, y un hook por fila es **un hook dentro de un bucle**.
+    El `id` viaja en **las variables**, con precedente escrito en el repo (`useCambiarActiva` de
+    `use-invitaciones.ts`). Lo mismo el `tipo` de plantilla, **y eso es deliberado**: si fuera
+    argumento del hook, «el tipo no viaja en el cuerpo» **sería cierto por construcción y el test no
+    podría caer nunca**.
+11. **Corrección menor de nombres:** los hooks del check-in son `useConfigCheckIn` y
+    `useGuardarCheckIn`, con **I mayúscula**.
+12. ⚠️ **Tres límites de jsdom que el plan no contemplaba, en la T6:** **no carga el `srcdoc`** (el
+    `contentDocument` queda vacío, así que «el HTML vive dentro del marco» no se puede ejercitar — lo
+    que el test fija es que **no es nodo del documento de arriba**); **no implementa
+    `HTMLIFrameElement.sandbox`** (`marco.sandbox` es `undefined`, así que afirmar sobre el marcado no
+    era sólo lo correcto, **era lo único posible**); y **`userEvent.type` interpreta las llaves**
+    (`{` abre un descriptor de tecla), así que tecleando `{{alumno}}` escribe otra cosa — **todo el
+    texto de plantilla va por `fireEvent.change`**.
+
+**Y una afirmación mía que resultó benigna, medida en vez de supuesta:** los tres enlaces del índice a
+rutas que todavía no existían **no rompían el build**. `next.config.mjs` **no activa `typedRoutes`**,
+así que el `href` de un `<Link>` es una cadena y el build no valida el destino; al pulsar uno salía el
+**404 de Next en tiempo de ejecución**. Las tareas 3 a 6 no tuvieron que tocar nada.
+
+## Las mutaciones abiertas 39 a 44: seis de seis, y van 44 de 44
+
+| #   | Qué se agregó                                              | El eje que nadie auditaba                                                             |
+| --- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 39a | `navigator.credentials.store(new PasswordCredential(…))`   | **no es un almacén nuestro: la credencial sale del edificio**                         |
+| 39b | `objectStore.put(variables, 'smtp')` con la clave en claro | **IndexedDB, el quinto almacén y el único fuera de la lista** — **1480/1481**         |
+| 40  | `document.documentElement.dataset.ultimoHealthCheck`       | **los dos elementos que no mira nadie** — sobrevivió los **1494**                     |
+| 41  | `history.replaceState(null, '', '#dijo=' + error)`         | **la URL del documento: el hueco ENTRE dos defensas** — **1507**, 67 specs            |
+| 42  | `href={…?vista=${JSON.stringify(web)}}` en un `<Link>`     | **los atributos de los DESCENDIENTES del `<body>`** — 26/28 y trece tapones ciegos    |
+| 43  | `addEventListener('pagehide', … localStorage.setItem(…))`  | **no es un canal nuevo: está programada para DESPUÉS de los tapones** — **1561/1561** |
+| 44  | un `<iframe>` oculto que escribe en su `title` y su `name` | **los tapones están atados a UN documento y UNA ventana** — **35/35**                 |
+
+**La 39a es la que pasa una revisión sin ruido**, porque `navigator.credentials.store` existe
+**exactamente para eso**. El eje es que **no es un almacén nuestro**: los tapones vigilan sitios de
+este origen y esta pestaña, y el gestor de contraseñas **se sincroniza con la cuenta de Google o
+Firefox de quien esté en el mostrador y aparece en su teléfono**. Y es la lección 1 de la Fase 11
+medida con sonda: **`typeof navigator.credentials` es `'undefined'` en jsdom**, así que escrita como la
+escribiría alguien con cuidado —`if ('credentials' in navigator)` + `?.`— **no hace nada y pasa en
+verde**. Cerrada en el spec **con un test de instrumento propio** que comprueba que el doble registra
+lo que sí se le manda: sin eso, el otro sería verde para siempre.
+
+**La 39b sobrevivió y por eso hay un canal once.** Dos razones, las dos medidas: `typeof indexedDB` es
+`'undefined'` en jsdom —y las **doce** clases `IDB*` también—, así que `globalThis.indexedDB?.open(…)`
+es un no-op silencioso; y ⚠️ **el tapón de «los tres almacenes» es una LISTA CERRADA**: `CacheStorage`
+se agregó en su día por ser un cuarto almacén y **IndexedDB es el quinto y quedó fuera**. Y es **peor
+que los tres vigilados**: sobrevive al logout, al cierre de la pestaña y al reinicio igual que
+`localStorage`, pero **no tiene tope de 5 MB** y **guarda objetos estructurados** — `put(variables)`
+mete el objeto entero sin que nadie tenga que acordarse de serializar.
+
+**La 40 es distinta de las cinco fugas anteriores.** Aquéllas pasaban por APIs que jsdom no implementa;
+**jsdom implementa esto entero**, así que **no hay ningún `?.` que delate nada**. El sitio no estaba
+ciego por el entorno: **estaba ciego porque nadie lo nombró nunca.** Cero coincidencias de
+`documentElement` en todo `apps/web/src`. Y **no vive en el árbol que `render` monta, así que
+`cleanup()` no lo borra**: contamina los tests siguientes del mismo archivo — se vio en vivo, el
+segundo test falló por el atributo que había dejado el primero.
+
+**La 41 es el hueco ENTRE DOS DEFENSAS, no detrás de una.** Los tests de pantalla miran dentro del
+`<body>` y la lista de peticiones; los doce tapones miraban todo lo demás. **`location` no caía en
+ninguno de los dos lados**, y `cleanup()` no lo toca: se observó la query de un test apareciendo
+intacta en el siguiente. Es de los peores canales de un navegador —va en la barra de direcciones de la
+máquina del mostrador, entra en el historial, se copia y se pega entera y **viaja como `Referer` a
+terceros**— y nada de eso deja rastro en la pestaña de red ni en el marcado.
+
+**La 43 no abre una puerta: mueve el momento.** ⚠️ **El canal NO estaba sin vigilar** —`localStorage`
+es uno de los trece—: **la fuga está programada para DESPUÉS de que todos los tapones hayan corrido**.
+Medido con sonda: despachando `pagehide` a mano dentro de un test, el tapón la agarra al instante. **El
+instrumento funcionaba; lo único que faltaba era el evento**, y jsdom no dispara nunca `pagehide`,
+`beforeunload`, `unload`, `visibilitychange` ni `freeze`. Es pariente de `requestIdleCallback` en la
+forma, con otro mecanismo: allí la respuesta fue **montar** la API, acá **despachar los eventos de
+salida antes de auditar**.
+
+**Las 42 y 44 se reportaron y NO se cerraron como canal.** Van como deuda, con su medición, abajo.
+
+## Los tres canales globales nuevos y el eje quince, con el porqué de cada decisión de forma
+
+Van en `vitest.setup.ts` / `src/test/espia-de-consola.ts`, y **como dimensión y no como caso**: suben
+al tapón global para que los hereden los 70 archivos, en vez de que cada pantalla se acuerde de
+pedirlos — y la que no se acuerde es justamente la que lo va a necesitar.
+
+### 11. IndexedDB — forma FUERTE, y los centinelas delante igual
+
+**La forma fuerte es «no se usó en absoluto», y la decisión se midió por TRES caminos**, no por dos: el
+grep (cero coincidencias en `apps/web/src`), la revisión de dependencias, y —la que de verdad decide—
+**instalar el tapón con la afirmación fuerte puesta y correr los 65 specs**. Verdes. O sea que **nadie
+del árbol abre una base durante un test, medido y no deducido**.
+
+**Pero los centinelas van primero y a propósito.** Con la fuerte sola, el informe diría «la pantalla
+escribió en IndexedDB» y habría que ir a buscar **qué** se fue; con los centinelas delante lo dice
+solo. Ésa es la regla general de las dos formas: **la fuerte decide si hay que mirar, el centinela dice
+qué mirar**, y la fuerte sólo se puede usar cuando se ha medido que el árbol entero no toca esa API.
+
+⚠️ **`serwist` SÍ abre una base** (`openDB` de `idb`, para la expiración de cachés). **Lo que la
+neutraliza es que `src/app/sw.spec.ts` mockea el módulo entero con `vi.mock`**, y queda escrito en el
+docblock: **si alguien quita ese mock, la afirmación fuerte se pone ROJA con el código correcto**, y
+hay que bajar a centinelas.
+
+⚠️ **Se aplaza con `Promise.resolve().then()` y NO con `queueMicrotask`.** Hay que aplazar porque la
+fuga asigna `apertura.onsuccess` **después** de que `open()` devuelva. Y no con `queueMicrotask`
+**porque está en el conjunto que sinon falsea**: un spec con `vi.useFakeTimers()` lo dejaría encolado
+hasta que alguien avanzara el reloj, o sea nunca — **el canal funcionaría en 60 specs y mentiría en los
+que usan relojes falsos**. Es la lección de `performance` aplicada a otra cosa.
+
+Puertas cubiertas: `objectStore.put`, `objectStore.add`, **`IDBCursor.update`** (la tercera puerta, que
+no pasa por ninguna de las otras dos), **la clave además del valor** (`put(1, claveSecreta)` cae), **el
+nombre de la base** (`open(claveTemporal)` publica el dato sin escribir un registro) y el de
+`deleteDatabase`. **Dos formas de escuchar** —`peticion.onsuccess = …` y `addEventListener('success')`—
+porque cubrir una sola era la trampa de `mark` sin `measure`, y el evento lleva `target` porque la
+forma común no es `peticion.result` sino `evento.target.result`. **La base de mentira guarda de
+verdad**: sin registros no hay cursor, y `openCursor()` sobre un almacén vacío entrega `null`, con lo
+que `cursor.update(dato)` no se ejecutaría nunca y el test sería verde mientras en el navegador la
+misma línea reescribe cada fila.
+
+**El informe nombra la clave y JAMÁS el valor**, grepeado sobre el real: **cero apariciones de los
+cinco secretos**. Lo único que se publica es el nombre del dato y un `true`. Es la misma política que
+se le exigió a la copia local del canal doce, y el motivo es que el informe **viaja a CI**.
+
+### 12. Los atributos del `<html>` y del `<body>` — el único canal SIN espía
+
+**1496 → 1494** (bajan 2 por los duplicados de la copia local, que la global cubre entera).
+
+⚠️ **Es el único canal sin espía, y por un motivo real que queda escrito para que nadie «arregle» la
+ausencia.** Los otros doce doblan una función o un accesor y tienen que reengancharse en cada
+`beforeEach`, porque el `vi.restoreAllMocks()` de los specs corre antes. **Acá no hay nada que doblar**:
+el estado que delata la fuga son **los atributos que quedan en el documento**. Sin espía no hay nada
+que restaurar y nada que `restoreAllMocks` pueda apagar.
+
+**Se lee DESPUÉS de `cleanup()`, al revés que el `<head>`**, y se verificó en vez de razonarlo: el
+`<head>` hay que leerlo antes porque React **se lleva** sus `<meta>` al desmontar; estos atributos **no
+los borra el desmontaje**, así que leer después no pierde nada **y gana cazar el atributo que escribe
+la limpieza de un `useEffect`** — medido con una mutación extra, que cae nombrando `data-al-desmontar`.
+Leyendo antes, eso sería verde y ciego.
+
+**Y el tapón BORRA los atributos antes de afirmar**, en el bloque donde ya se restauran los almacenes:
+sin eso, quien escribe uno hace caer también a todos los tests que vengan detrás y **el informe acusa
+al inocente**. Se nota en la tabla de la mutación: fallan **4 de 12**, no 12 de 12.
+
+**Se afirma por igualdad contra el conjunto VACÍO y no contra una foto inicial**: con una foto, un
+atributo dejado por un test anterior estaría en las dos y pasaría en verde. **`lang = 'es'` cae
+también, y no es falso positivo**: poner el idioma desde un efecto de _pantalla_ es exactamente el
+error que el canal existe para cazar — **el idioma lo decide el layout, del lado del servidor, donde
+este tapón no corre**.
+
+**La copia local que se sacó era peor que la global en un eje que nadie había pedido:** usaba
+`expect(atributosDe(...)).toEqual([])`, que **imprime los atributos con sus VALORES** al fallar — el
+mismo modo de fuga hacia CI contra el que predica todo el archivo.
+
+### 13. La URL del documento — forma FUERTE, y salió gratis
+
+**1509 → 1509**: sale 1 test (el de la Fase 9) y entra 1 que cubre lo que el canal no cubre.
+
+**La medición que decide**: los **26 specs** que usan `next/navigation` **lo doblan todos** con
+`vi.mock` y **ninguno toca `location`**; y la prueba de verdad, instalar la forma fuerte y correr los
+67 specs, salió verde. **La forma fuerte sale gratis.**
+
+**Mira la URL partida en cinco —origen, ruta, query, hash y ESTADO del historial— y no el `href`
+entero**, por dos motivos: el informe dice «cambió: hash», que **ubica la fuga sin publicar un
+carácter** (un `href` entero en el mensaje sería la fuga otra vez), y **`history.state` no es parte del
+`href`**. **Dos mitades**: la comparación contra la foto de **al cargar** (no del `beforeEach`, mismo
+argumento que el canal 12) **sin espía**, más un espía sobre las **cinco puertas de
+`History.prototype`** que **registra y deja pasar** — si se tragara la llamada dejaría ciega a la
+primera mitad. **Se lee después de `cleanup()`**, por el mismo motivo que el doce.
+
+**Cinco cosas que se afirmaron y eran falsas o incompletas:**
+
+1. **`location.href`, `search` y `hash` no son tres puertas equivalentes**: sólo `hash` hace algo en
+   jsdom. Y **ninguna de las tres es doblable**: son accesores **propios** con `configurable: false`.
+2. **`location.assign`/`replace` no se pueden doblar DE NINGUNA MANERA**, ni con un `Proxy`: es
+   invariante del lenguaje. Se intentó y **se documentó en vez de fingir que estaban cubiertas**.
+3. ⚠️ **`history.state` es una puerta que ninguna de las dos listas nombraba.** Un
+   `pushState(datos, '', la misma URL)` guarda el objeto entero **sin mover un carácter de la URL**
+   —medido— y ese estado va al **archivo de restauración de sesión en disco**.
+4. ⚠️ **La codificación.** Un centinela con espacios **no aparece literal** en el `href` (`%20`). Sin
+   mirar la URL **también decodificada**, la mitad de las fugas con un mensaje de la API dentro pasaban
+   en verde. **Es la diferencia entre que el canal funcione y que no.**
+5. **`location.hash = …` deja `history.state` en `undefined` mientras que al cargar es `null`**: sin
+   igualar las dos cosas, una escritura de hash **acusaba además a la parte `estado`**, que nadie había
+   escrito.
+
+**Lo que el canal NO ve, dicho en el código y no escondido:** las navegaciones **a otro documento**,
+que en jsdom son no-ops. Cerrarlo pedía fabricar un `Location` entero de mentira **y entonces el canal
+mediría nuestro doble**. Además es el menos grave: una navegación a otro documento **se lleva la
+página**, y la fuga callada —la que deja a la persona donde estaba y le mete el dato en la barra— es
+siempre al mismo documento, y ésa cae entera.
+
+### 15. Los eventos de salida de la pestaña — por qué va como PRIMERA LÍNEA del `afterEach`
+
+**1561 → 1561.** No abre una puerta nueva: **mueve el momento**. Los canales siguen siendo trece; ahora
+hay **dos ejes** (el catorce es el rato libre, el quince es éste). Archivo propio
+(`src/test/salida-de-la-pestana.ts`) pero **llamado desde dentro del `afterEach` del espía**, no desde
+`vitest.setup.ts`: su sitio exacto depende del `cleanup()`, y un `afterEach` suelto en el setup
+**dependería del orden de registro del archivo**, que cualquiera puede reordenar sin darse cuenta.
+
+⚠️ **La medición que lo decidía: el oyente NO sobrevive a `cleanup()`.** Sonda con el mismo
+`dispatchEvent` dos veces: **antes, 1 golpe; después, 0**. **Despachar tarde habría cerrado el eje en
+falso, verde y ciego.** Y tampoco servía «antes del `cleanup()` pero después de las lecturas»: el
+`<head>` y los `<img>` se leen **antes** de desmontar, así que un oyente de salida que subiera un
+`<meta>` no lo vería nadie. → **primera línea del `afterEach`**, para que los trece tapones miren **un
+mundo en el que la pestaña ya se cerró**.
+
+**El orden de los cinco eventos no es arbitrario:** `beforeunload` primero, **cancelable y con la
+pestaña todavía visible** —es el único cancelable: existe para que la persona pueda decir que no se va,
+y mandarlo con la pestaña ya oculta describiría un mundo donde ya se fue y todavía se le pregunta—;
+`visibilitychange` con `visibilityState` en `'hidden'`, que es **el evento que la plataforma recomienda
+para guardar estado** y por tanto donde más probable es encontrar la línea que escribe; `freeze`, que
+viene **de** oculta y por eso va aquí y no detrás; `pagehide` como **`PageTransitionEvent` con
+`persisted: false`**, porque el código real lee `evento.persisted` y con un `Event` pelado valdría
+`undefined`, que no es ni una cosa ni la otra; y `unload` último, aunque esté en retirada. **La pestaña
+vuelve a visible en un `finally`**: un oyente que explote dejaría `visibilityState` en `'hidden'` para
+todo el resto del archivo y **el informe acusaría al inocente**.
+
+**Tres cosas que se afirmaron y salieron distintas:**
+
+1. **Esta vez el global y la clase SÍ son lo mismo**: `Object.getPrototypeOf(document) === Document.prototype`.
+   La trampa de `performance` no se repitió. Se saca del objeto igual, que es lo que no depende de que
+   siga siendo cierto.
+2. **El canal de la consola NO queda ciego**, al revés de lo que se supuso: medido con un
+   `console.error` dentro del oyente, **tiró 3 tests de 24**. El límite existe y está acotado: **18 de
+   los 69 specs** llaman a `vi.restoreAllMocks()` en su propio `afterEach`. **Los canales que se leen
+   por ESTADO** —los cinco almacenes, el título, `window.name`, el `<head>`, los atributos, la URL, el
+   búfer de marcas— lo ven en los 69, **y son justamente los que esta forma de fuga usa**: un oyente de
+   `pagehide` _guarda_ algo, no lo cuenta.
+3. **Licencia deliberada, dicha para que no se descubra sola**: `freeze` se despacha **burbujeando**
+   aunque la plataforma no lo haga, porque un `window.addEventListener('freeze', …)` —la forma que
+   escribe cualquiera por simetría con `pagehide`— **no se oiría aquí y sí en el navegador**, que es el
+   agujero que el archivo existe para cerrar.
+
+**Alguien ya escuchaba uno:** `usuarios/nuevo/clave-temporal.tsx:66` escucha `beforeunload` para frenar
+un F5 con la contraseña temporal en pantalla. Su oyente hace **sólo `preventDefault()`** y acá nadie
+mira si se canceló, así que despacharlo en los 69 archivos no le cambia nada — medido, sus specs siguen
+verdes. **Ninguna otra pantalla escucha `pagehide`, `unload`, `visibilitychange` ni `freeze`.**
+
+## ⚠️ EL HALLAZGO DE LA FASE, y no es de este proyecto
+
+**Un `<input type="password">` CONTROLADO de React escribe la contraseña en el ATRIBUTO `value` del
+marcado.** React sincroniza `node.defaultValue` con el valor controlado, y **`defaultValue` ES el
+atributo**. El `outerHTML` del documento traía `value="Clave-SMTP-Del-Mostrador-77"` **en claro**.
+
+O sea: **la forma normal de escribir ese campo** —igual que todos los demás del panel— deja la
+credencial del servidor de correo escrita en el HTML, de donde la levanta cualquier foto del DOM: un
+reportador de errores, un `innerHTML` en un log, una captura de sesión.
+
+**Lo mismo un `<textarea>`**, donde el `defaultValue` **es su texto hijo**: queda
+`<textarea>CENTINELA</textarea>` en el `innerHTML`.
+
+⚠️ **Se descubrió porque un test falló, no por sospecha.** El campo de la clave se rediseñó: es **el
+único NO controlado de la pantalla**, se lee con un `ref` al guardar y se vacía a mano en el
+`onSuccess`. El `<textarea>` de las plantillas **se dejó así, y escrito por qué**: el cuerpo de una
+plantilla **no es un secreto** —vuelve entero en cada `GET` y se dibuja—, a diferencia de la clave, que
+no vuelve nunca. Pero **una foto del DOM lleva el texto de las cinco**, y eso queda como deuda.
+
+## ⚠️ LA REGLA QUE COSTÓ CARO: no instalar dobles locales de nada que vigile el tapón global
+
+`turnos/page.spec.tsx` doblaba las cinco puertas de la History API **como propiedades PROPIAS de
+`window.history`** —que **tapan** el espía del prototipo— y además **se tragaba la llamada** en vez de
+reenviarla, así que `location` tampoco llegaba a moverse.
+
+**Medido:** con una fuga sembrada en `turnos/page.tsx`, fallaba **1 test de 25** y **los otros 24
+pasaban en verde con la fuga delante**. Quitado el doble, la misma mutación hace caer **25 de 25**.
+
+**No era una copia local redundante: era una copia local que APAGABA la defensa general**, y llevaba
+ahí desde la Fase 9. → **Regla: no se instala un doble local de nada que ya vigile el tapón global.**
+Es el mismo criterio por el que la T4 se escribió **sin ningún doble local**.
+
+## ⚠️ Una categoría nueva de deuda: una MEDICIÓN ANOTADA envejece
+
+El comentario del sexto canal decía: _«MEDIDO, hoy el buffer está vacío en los 58 archivos […] así que
+un `toBe(0)` sobre las entradas nuevas pasaría en verde ahora mismo»_. Remedido sobre los 66: **ya es
+falso.** Y no por React ni por el runner: **lo volvió falso el propio spec que custodia ese canal**
+—`relojes-falsos.spec.ts` siembra una marca a propósito para probar que con los relojes falsos la marca
+llega al búfer de verdad—. O sea que **la forma fuerte ahí sería roja hoy, y contra el único spec que
+existe para custodiar ese canal**.
+
+El comentario se reescribió: ya no dice «pasaría en verde», dice **qué se midió entonces, qué se mide
+ahora**, y suma una tercera razón —que dejó de ser hipotética— para no usar la fuerte ahí. Se
+arreglaron además las cuentas desactualizadas de `vitest.setup.ts`, del docblock de `espia-de-consola.ts`
+y de `rato-libre.ts`, que repetía cinco veces «diez canales».
+
+**Es deuda que parece documentación**: una medición escrita envejece en silencio, y el que la lee la
+toma por cierta. **Conviene revisarlas cuando el número de specs cambia mucho.** (Y al cerrar esta fase
+mordió otra vez, en el docblock de `use-configuracion.ts`: ver el error 1.)
+
+## Trampas nuevas
+
+**Un `page.tsx` no puede exportar nada que no sea el `default`** (Next 15), así que los textos van como
+**constantes del módulo SIN exportar** y el spec los repite escritos a mano. **Y además**: importar la
+constante y compararla contra sí misma **dejaría pasar en verde un «todo funciona»**. Autorreferencia
+evitada por partida doble, y verificado con la mutación.
+
+**Igualdad exacta y no `toContain` para el nombre de un botón.** `toContain('Probar')` pasa sobre
+«Probar que todo funciona», que es justo lo que el botón NO puede afirmar.
+
+**Un centinela numérico es un falso positivo con patas.** La pantalla del check-in tiene en la mano
+**dos enteros**: un centinela `'15'` o `'0'` es subcadena de casi cualquier cosa y dispararía en los
+doce ejes a la vez — **la casualidad ortográfica, del lado del tapón**. Lleva **un solo centinela**, y
+el motivo está escrito.
+
+**No buscar subcadenas para afirmar una ausencia de cartel.** Un `not.toContain('sin configurar')` pasa
+sobre «Sin Configurar» y sobre las otras veinte formas de decirlo. El test **monta la pantalla dos
+veces** (15/15 y 7/42) y afirma que el `textContent` es **idéntico salvo los dígitos** (`\d+` → `#`):
+eso mata cualquier cartel que aparezca sólo en el caso por defecto, **lo diga como lo diga y esté donde
+esté**. El escenario donde la distinción existe **es el par de montajes**: con uno solo el test no
+podría fallar.
+
+**El caso ciego se cubre por pares.** «Un fallo al leer no se parece a ceros» iría verde con una
+pantalla que no pintara nunca nada, así que tiene su gemelo «y una ventana en cero de verdad sí se
+dibuja». Y el test de los campos vacíos (`Number('') === 0`) es el espejo del de cero.
+
+**Un fallo al leer no dibuja formulario, ni deshabilitado.** Dos ceros son una ventana **válida y
+plausible**: un formulario vacío se lee como «mi gimnasio está así».
+
+**La validación del cliente sólo parsea; la política se queda en el DTO.** El tope de 720 **no se
+repite** en la pantalla: sería una segunda fuente de verdad que el día que cambie deja la pantalla
+rechazando lo que la API acepta.
+
+**Un `<img>` pelado y no `next/image`.** El componente de Next reescribe el `src` a
+`/_next/image?url=…`, que es **su optimizador y no nuestro proxy**: por ahí no viaja la cookie. Y un
+`ADMIN_OPERATIVO` **tampoco tiene el `<img>`**, porque **el `src` es una petición de red que no pasa
+por `fetch` ni por `pedir`** y un `hidden` la dejaría saliendo igual.
+
+**El diálogo que apaga la web enumera sólo lo que está encendido de verdad.** Una lista fija diría
+«dejan de verse los precios» a un gimnasio que los tiene ocultos — **una frase falsa dentro del diálogo
+que decide si se apaga el sitio**. Par de tests: con dos banderas y con las cuatro.
+
+**El interruptor maestro manda lo del SERVIDOR con `activa` cambiada, no el borrador.** Con el borrador
+delante, pulsar «apagar» **publicaría de paso el tagline a medio escribir**.
+
+**Los colores van en cajas de texto, no en `<input type="color">`.** `@IsHexColor` acepta `#abc` y
+`#aabbccdd`, y el selector nativo **reescribe a `#000000` lo que no entiende** — convertiría «no sé
+dibujar tu color» en «tu color es negro».
+
+**Cada plantilla monta su propio `useGuardarPlantilla`.** Uno compartido haría que un 400 de una **se
+pintara debajo de las cuatro que están bien**. Y el SMTP usa su propia instancia del hook en el
+diálogo, por lo mismo.
+
+**`ErrorDeApi` se deja REAL en el spec del SMTP.** La pantalla hace `instanceof` para separar el 404, y
+con una clase de mentira ese `instanceof` sería `false` para siempre y **el 404 caería del lado
+equivocado en verde**.
+
+**Los errores de campo no se pintan hasta el primer intento de guardar.** Con un gimnasio sin
+configurar, la pantalla recibiría a quien viene a configurar el correo **con cinco carteles rojos de
+cosas que todavía no tuvo ocasión de hacer mal**.
+
+**El borrado por fila no confirma, pero el botón NOMBRA la fila** («Borrar el testimonio de Lucía
+Ferrer»): un testimonio se recupera reescribiéndolo, el sitio público no. **Y los ids de fila no se
+escriben en el marcado** (ni `id`, ni `data-`, ni `aria-controls`): viajan sólo dentro del `onClick`.
+
+**El `orden` se ofrece en el alta porque no hay endpoint de edición**, y **vacío se omite**: mandar `0`
+sería elegir por quien no eligió.
+
+**La lista de marcadores se conserva con un `useRef<Map>`, que no deduce nada: recuerda lo que vio
+llegar por defecto en esta sesión.** Sin eso la lista desaparecía **justo al guardar**, que es cuando
+se está usando.
+
+**El ejemplo de la previsualización se fabrica con el nombre del marcador** (`{{alumno}}` → «alumno»):
+una tabla de ejemplos sería otra lista a mano, y **no podría cubrir un marcador que todavía no existe**.
+
+**El asunto va como texto y fuera del marco.** `resolverMensaje` lo renderiza **sin escapar** y termina
+en el `subject`, que es texto plano: dibujarlo como HTML enseñaría algo que no existe.
+
+**El sandbox no impide que el documento anidado pida recursos**, y está escrito: un
+`<img src="https://…">` dentro de una plantilla **hace su petición al previsualizar**. Por eso va
+también `referrerPolicy="no-referrer"`.
+
+## Estado final
+
+|                   |                                                    |
+| ----------------- | -------------------------------------------------- |
+| `apps/web`        | **1572 tests / 70 suites**, tsc limpio, `build` OK |
+| `apps/api`        | **1339 / 67**, eslint en cero — sin tocar          |
+| E2E de la API     | **218 / 13** — medidos en este cierre, verdes      |
+| `packages/shared` | 103 / 4                                            |
+
+De 1421 tests en web al empezar la fase: **+151**, repartidos T1 +60, T2 +15, el canal doce −2, T3 +15,
+el canal trece ±0, T4 +28, T5 +24, el eje quince ±0, T6 +11.
+
+**Los e2e sí se corrieron en este cierre** (`docker start` de `postgres`, `postgres-test` y `redis`;
+nunca `docker compose up` pelado), al revés que en la Fase 11. **Esta fase no tocó `apps/api` ni
+`packages/shared`**, y los 218 siguen verdes.
+
+## Deuda anotada
+
+**Nueva de esta fase:**
+
+- ⚠️ **`planDestacadoId` no tiene editor, y el `PUT` REEMPLAZA.** El campo se devuelve tal cual y
+  omitirlo lo pone en `null`: **guardar el tagline borraría el plan destacado de la landing en
+  silencio**. Elegirlo de verdad pide `usePacks()`, que es un **séptimo endpoint** y la tarea tenía
+  seis; una caja de texto para pegar un id de base no es un editor. **Está en el checklist a mano:**
+  si al guardar el tagline el plan destacado desaparece, la deuda queda confirmada.
+- ⚠️ **El contexto de navegación ANIDADO — la mutación 44, reportada y NO cerrada.** Los trece tapones
+  están atados a **UN documento y UNA ventana, la de arriba**. No es la brújula de los descendientes
+  del `<body>`: **esto es otro documento.** La tabla, medida:
+
+  | Canal                                   | ¿Lo ve el tapón dentro de un iframe?                                                                                                                                      |
+  | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `contentWindow.console.*`               | **SÍ**, pero **por accidente de jsdom** (todo embudea en la misma `VirtualConsole`). En un navegador son dos consolas: **ese verde se vuelve falso si el tapón se porta** |
+  | `contentWindow.localStorage`            | **SÍ** (objeto distinto, misma área por mismo origen)                                                                                                                     |
+  | `contentDocument.title`                 | **NO**                                                                                                                                                                    |
+  | `<meta>` en el `<head>` anidado         | **NO**                                                                                                                                                                    |
+  | `contentWindow.name`                    | **NO** — y en un navegador **sobrevive a la navegación de ese marco**: el canal clásico de transferencia a un tercero                                                     |
+  | atributos del `documentElement` anidado | **NO**                                                                                                                                                                    |
+
+  **Se decidió no cerrarlo**: hoy **hay un solo `<iframe>` en todo el repo**, es el de las plantillas,
+  va con `sandbox` sin permisos, y la mutación necesitó **crear un segundo marco oculto** — bastante
+  más raro de escribir que un `setItem`. Los canales de esta fase tapaban agujeros que **cualquier
+  pantalla podía abrir con una línea**; éste no. **La forma del arreglo, para cuando aparezca el
+  segundo iframe**: recorrer `document.querySelectorAll('iframe')` al terminar cada test y auditar
+  `contentDocument.title`, su `<head>`, los atributos de su `documentElement` y su
+  `contentWindow.name`; y para el marco que se crea y se borra en el mismo tick, doblar
+  `document.createElement('iframe')` o `HTMLIFrameElement.prototype.remove`. **No sería un canal nuevo:
+  sería «el mismo canal, en otro documento»** — la misma forma de hueco que el eje catorce (otro
+  momento) y el quince (otro momento).
+
+- ⚠️ **Los atributos de los DESCENDIENTES del `<body>` — la mutación 42, también abierta.** El tapón
+  del canal doce mira `document.documentElement` y `document.body`, **los dos elementos, NO sus
+  descendientes**, y los tests de pantalla miran `textContent`, que **no ve ningún atributo**. Es el
+  mismo hueco entre defensas que dio la URL, **un nivel más adentro**. Se cerró **en el spec de la T4**
+  con dos tests —uno barre nombre y valor de todos los atributos de todo lo que cuelga del `<body>`
+  buscando los cinco ids, **con una premisa `atributos.length > 50` para que el barrido no sea ciego**;
+  el otro afirma la lista entera de enlaces por igualdad y no con un `not.toContain`— pero **es una
+  dimensión, no un caso**: queda como **candidato a canal catorce**.
+- **El `<textarea>` controlado deja el texto de las cinco plantillas en el `innerHTML`** (y en el
+  `srcdoc`, que es otro atributo con el mismo texto). Se dejó así **y escrito**: el cuerpo de una
+  plantilla no es un secreto, vuelve entero en cada `GET` y se dibuja. Pero **una foto del DOM lleva el
+  texto de las cinco**.
+- ⚠️ **La cobertura de la consola dentro de un iframe funciona POR ACCIDENTE de jsdom**, no por
+  diseño: todo embudea en la misma `VirtualConsole`. En un navegador son dos consolas distintas. **Ese
+  verde se vuelve falso el día que el entorno se porte bien**, que es la peor clase de verde.
+- **La imagen del QR no la ve ningún tapón de red**, por construcción: el `src` de un `<img>` no pasa
+  por `fetch` ni por `pedir`. Está cubierto en esta pantalla por un test que afirma que un operativo no
+  tiene el `<img>` en el marcado, pero **no hay nada global que lo vigile**.
+
+**Vieja, y sigue en pie:**
+
+- **`use-rutinas.ts` no tiene un solo test**, con 3 mutaciones.
+- **Sobre-invalidación de `/mi-pack`** en `use-acciones-de-turno`: se invalida también al entrar y
+  salir de la lista de espera, que no consume clases. Medido: 1 → 2 peticiones, en el teléfono del
+  alumno.
+- **El 403 de anotar le pone una ruta de API delante a quien está en el mostrador**: «Asignasela con
+  `PATCH /usuarios/:id/salas`». Es `apps/api`.
+- **El job de recordatorios es idempotente por gimnasio y no por persona.**
+- **La rotación de la clave de cifrado.**
+- **El contenedor `api` del compose está roto** por falta de `@nestjs/throttler`.
+- **Los tres campos muertos** (`Sala.exclusiva`, `Ausencia.recuperable` y la franja horaria de una
+  ausencia, que **excluye el día entero**).
+- **`PanelDeReasignar` ofrece como destino turnos PASADOS y LLENOS.**
+- **`centavos: 0` significa TRES cosas** y no se distinguen desde la respuesta.
+- **Las pantallas de profesor**, que siguen sin existir **después de ocho fases**.
+
+## Siguiente paso
+
+⚠️ **El inventario está rehecho y verificado el 2026-10-19 y está en el tracker, al final del bloque de
+la Fase 11: 26 endpoints sin pantalla. NO HAY QUE REHACERLO.** Esta fase se lleva **14**, así que
+**quedan 12**, en dos áreas:
+
+| Área                       | Endpoints | Desglose                                                 |
+| -------------------------- | --------- | -------------------------------------------------------- |
+| **Dinero**                 | **9**     | pagos 3, packs 3, comprobantes 2, liquidación 1          |
+| **Pantallas del profesor** | **3**     | `mis-clases`: listado, alumnos de una clase, pasar lista |
+
+Y las dos trampas del cruce que ya están anotadas allí **volvieron a morder en esta fase**, así que
+valen el doble: **un archivo puede tener varios `@Controller`** (lo de `ConfigCheckInController`) y
+**muchas rutas se arman en un helper**, así que un `grep` del literal las da por no consumidas.
+
+## El checklist a mano (para Cesar)
+
+Siete comprobaciones que **ningún test puede hacer** y que no se corrieron: no hay navegador en el
+entorno. Se ejecutan en el panel, a mano.
+
+- [ ] **Entrar como `ADMIN_OPERATIVO`** y comprobar que **Configuración no está en la navegación** —no
+      escondida con CSS— y que las **tres rutas** (`/configuracion/web`, `/configuracion/email`,
+      `/configuracion/checkin`) **no piden nada**: la pestaña de red no debe mostrar ninguna llamada.
+- [ ] **Guardar el SMTP con una contraseña mal puesta** y comprobar que **el error que se ve es el del
+      servidor de correo** y que **no contiene la contraseña** en ninguna parte.
+- [ ] **Cambiar sólo el puerto** y comprobar que **la pantalla avisa de que hay que reescribir la
+      clave** — no que la conserva.
+- [ ] **Escribir `{{clase}}` en la plantilla de recordatorio de pago** y comprobar que **avisa sin
+      bloquear**: el aviso tiene que aparecer y el botón de guardar tiene que seguir funcionando.
+- [ ] **Apagar `activa`** y comprobar que la web pública **deja de verse**, y volver a encenderla.
+- [ ] **Encender `mostrarTurnosLibres`** y mirar la web pública **desde una ventana sin sesión**.
+- [ ] **Guardar el tagline** y comprobar **si el plan destacado sigue ahí**. ⚠️ **Si desaparece, la
+      deuda de `planDestacadoId` queda confirmada** y hay que arreglarla antes de la fase de Dinero.

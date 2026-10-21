@@ -2117,6 +2117,184 @@ solo no le llega a todo el mundo.
 operativo ya devuelve, y «este mes contra el mismo mes del año pasado» no existe. Y **las pantallas de
 profesor**, que siguen sin existir después de siete fases.
 
+## La configuración del gimnasio — Fase 12
+
+Los **14 endpoints de configuración** que existían desde hace fases y que hasta hoy sólo se operaban
+con un `curl`. **No toca ni un endpoint**, y cierra una promesa que ya estaba en producción: **la
+ficha de la sala de la Fase 10 dice «Hereda del gimnasio» en tres ajustes y no había dónde mirar qué
+dice el gimnasio.**
+
+| Ruta                                  | Qué configura                                                          | Rol           |
+| ------------------------------------- | ---------------------------------------------------------------------- | ------------- |
+| `/{slug}/admin/configuracion`         | El índice de las tres áreas **y el botón de la cola de trabajos**      | `ADMIN_SALON` |
+| `/{slug}/admin/configuracion/web`     | La web pública: la portada, los testimonios y las preguntas frecuentes | `ADMIN_SALON` |
+| `/{slug}/admin/configuracion/email`   | Las credenciales SMTP y las cinco plantillas de los avisos             | `ADMIN_SALON` |
+| `/{slug}/admin/configuracion/checkin` | La ventana de tiempo del check-in y el cartel con el QR                | `ADMIN_SALON` |
+
+**La puerta es del área entera, y es la primera del panel con ese mínimo.** Los 14 endpoints piden
+`ADMIN_SALON`, comprobado decorador por decorador, así que aquí no hay nada que un `ADMIN_OPERATIVO`
+pueda hacer. Al revés que en la Fase 11 —donde sólo `/stats/caja` pedía `ADMIN_SALON` y había que
+esconder **un bloque** dentro de una pantalla que el operativo usa todos los días—, aquí la puerta va
+delante de todo, y son **dos mitades que hacen falta las dos**: la **entrada no existe en el marcado**
+de la navegación (no escondida con CSS) y **las pantallas no piden nada**, porque el chequeo de rol va
+**antes de los hooks** y en un componente aparte. Un `enabled: false` dejaría la petición escrita a un
+refactor de distancia de salir. **Sin proveedor de rol falla cerrada**, y **a quien no le alcanza no se
+le dibuja nada en su lugar**: un «tu rol no alcanza» anunciaría que hay credenciales de correo detrás.
+Y se comprueba contra `rolAlcanza`, que es una jerarquía: **un `SUPERADMIN` entra también.**
+
+### La clave SMTP no se puede conservar, y la pantalla lo dice en vez de fingirlo
+
+`ConfiguracionSmtpPublica` **no devuelve la contraseña, ni cifrada ni enmascarada** —sólo un
+`tieneClave: boolean`—, y el contrato explica por qué: _«una máscara sigue confirmando su longitud»_.
+Pero `GuardarSmtpDto` declara **`clave!: string`, obligatoria, sin `@IsOptional()`** (a diferencia de
+`seguro` y `emailDestino`, dos líneas más abajo del mismo archivo).
+
+⚠️ **O sea que no existe «dejá el campo vacío para conservar la que hay»: cambiar el puerto obliga a
+reescribir la contraseña entera.** La pantalla lo escribe, con esas palabras y **fuera del bloque que
+cambia según `tieneClave`**, porque el límite es el mismo haya clave guardada o no. Un campo con
+puntitos de relleno que al guardar mandara vacío sería exactamente la clase de mentira que esta fase
+existe para no cometer. Es la misma familia que los tres límites que las pantallas explican desde la
+Fase 7.
+
+**Y el campo de la contraseña es el único NO controlado de la pantalla**, por un hallazgo que no es de
+este proyecto: ver más abajo.
+
+### Guardar el SMTP verifica la conexión antes de escribir
+
+`guardarSmtp` llama a la verificación **antes** de tocar la base, y hay un test del repo que fija ese
+orden. Si el servidor de correo rechaza las credenciales, **no se guarda nada**. Por eso un guardado
+bueno sí afirma algo —que el servidor contestó y aceptó los datos— y se para ahí: **no dice que ningún
+email haya llegado a nadie**.
+
+Cuando falla, **lo que se muestra es el error del servidor de correo, tal cual**, sin reescribirlo
+«para que se entienda mejor»: es la única pista de qué está mal. Ese mensaje ya pasa por `motivoSeguro`
+del lado de la API, que **redacta la contraseña** antes de que salga. En el caso común lo que llega es
+el `code` de nodemailer (`EAUTH`, `ECONNREFUSED`) y no la línea `535 5.7.8`, porque `motivoSeguro`
+descarta el mensaje en cuanto tiene forma de code.
+
+⚠️ **Omitir un booleano opcional no es neutro, y por eso todos viajan con su valor.** `seguro` es
+`@IsOptional()` en el DTO y `dto.seguro ?? true` en el service: omitirlo **le enciende el TLS a un
+gimnasio que corría sin cifrar**. `emailDestino` es `?? null`: omitirlo **borra** la dirección de
+respuesta. Lo mismo del otro lado, en la web pública, con `mostrarPrecios`, cuyo defecto es `true`:
+el reflejo de «los opcionales se omiten cuando están vacíos» **publicaría los precios de un gimnasio
+que los tenía ocultos**.
+
+Y un gimnasio recién dado de alta **no tiene fila de SMTP**: `verSmtp()` contesta **404**. Dibujarlo
+como fallo de lectura lo dejaría sin el único formulario desde el que se configura el correo, así que
+la pantalla se ramifica **por el estado y no por el mensaje**: **404 → formulario vacío con cartel;
+cualquier otro estado → sin formulario**. El puerto arranca **vacío y no en 587**: un número puesto
+por nosotros se ve igual que uno elegido por el gimnasio.
+
+### Una plantilla por defecto no es una plantilla tuya
+
+Las cinco (`CONFIRMACION`, `CANCELACION`, `RECORDATORIO_PAGO`, `LISTA_ESPERA`, `VENCIMIENTO_PACK`)
+devuelven siempre algo, y `PlantillaPublica.esPorDefecto` dice si lo que se está viendo es **la del
+código** o la que el gimnasio escribió. La pantalla lo distingue: un gimnasio nuevo funciona sin
+configurar nada, y eso no es lo mismo que haber decidido ese texto.
+
+⚠️ **Handlebars renderiza un marcador que no existe como HUECO, no como literal.** Un `{{clase}}` en
+el recordatorio de pago **no sale como `{{clase}}`: sale como nada**. «Te esperamos en » y se acaba la
+frase. El admin no se entera nunca; lo sufre un alumno. Y `DatosDePlantilla` es un
+`Record<string, string>`: **los marcadores válidos de cada tipo no están declarados en ningún sitio**,
+son los que cada emisor pasa.
+
+Por eso **los marcadores se listan del texto que manda la API, no de una copia**. `listarPlantillas()`
+devuelve las cinco siempre, y para un tipo con `esPorDefecto: true` el asunto y el cuerpo que viajan
+**son**, campo a campo, los del `plantillas.ts` de la API; la lista se extrae con una regex sobre ese
+texto. `plantillas.ts` **sigue siendo la única fuente: viaja por el cable en vez de estar copiada**, y
+el día que alguien le agregue un `{{hora}}` al texto por defecto el panel lo lista **sin que nadie
+toque un archivo del web**. Una lista escrita a mano en `apps/web` sería una segunda fuente de verdad
+que se desincroniza en silencio, y **un marcador de más en la lista es un hueco en el email de un
+alumno**.
+
+**El límite va dicho y no disimulado:** de un tipo que el gimnasio **ya reescribió** la plantilla por
+defecto no viaja, y **de ése no se lista ninguno** (`data-marcadores="no-se-saben"`). Mejor listar
+menos que inventar. La lista **under-reporta a propósito**, así que usar un marcador que no esté en
+ella **avisa sin bloquear**: puede ser un hueco de verdad o un dato que el emisor sí manda.
+
+### La previsualización va en un `<iframe sandbox>` sin permisos, y no es un render
+
+El HTML de una plantilla lo escribe un admin y lo mira otro: el `sandbox` **vacío** —que es un sandbox
+sin ningún permiso— es lo que impide que ese HTML corra en la sesión de quien lo revisa. El HTML entra
+por el atributo `srcdoc`, va con `referrerPolicy="no-referrer"`, y la pantalla **dice que el sandbox no
+impide que el documento anidado pida recursos**: un `<img src="https://…">` dentro de una plantilla
+hace su petición al previsualizar.
+
+⚠️ **Y la previsualización no es un render de Handlebars, dicho en la pantalla.** `handlebars` no está
+en las dependencias de `apps/web`, y meter el compilador al bundle para pintar un ejemplo no se
+justifica: lo que hace es sustituir los **marcadores sueltos** por un ejemplo fabricado con el propio
+nombre del marcador. **Los bloques `{{#if}}` se ven tal cual están escritos.** El asunto va como
+texto y **fuera del marco**, porque termina en el `subject` de un email, que es texto plano: dibujarlo
+como HTML enseñaría algo que no existe.
+
+### `mostrarTurnosLibres` dice su consecuencia al lado
+
+Las cinco banderas de la web pública no son equivalentes, y **sólo dos llevan una consecuencia escrita
+al lado**: `mostrarPrecios` y `mostrarTurnosLibres`, que son las dos que **publican algo que nadie
+tecleó para publicarse**. La de los turnos libres dice que **publica la agenda del gimnasio y cuán
+vacía está**: un gimnasio con la agenda vacía está publicando que está vacío, y eso no se lee en el
+nombre de la casilla.
+
+Apagar la web pública **confirma enumerando sólo lo que está encendido de verdad** —una lista fija le
+diría «dejan de verse los precios» a un gimnasio que los tiene ocultos, que es una frase falsa dentro
+del diálogo que decide si se apaga el sitio—, y **manda lo del servidor con `activa` cambiada y no el
+borrador**: con el borrador delante, pulsar «apagar» publicaría de paso el tagline a medio escribir.
+
+Los colores van en **cajas de texto y no en `<input type="color">`**: `@IsHexColor` acepta `#abc` y
+`#aabbccdd`, y el selector nativo **reescribe a `#000000` lo que no entiende**, que convertiría «no sé
+dibujar tu color» en «tu color es negro».
+
+### El check-in: dos enteros, y lo que la respuesta no puede decir
+
+`GET /config/checkin-qr` devuelve la ventana de minutos antes y después del inicio del turno. ⚠️ **El
+service devuelve los valores por defecto (15 y 15) cuando no hay fila, sin ninguna marca que
+acompañe**, así que **desde la respuesta no se puede saber si alguien eligió 15 y 15 o si nunca tocó
+nada** — y a diferencia de los nulos de la Fase 10, **el comportamiento es idéntico en los dos casos**.
+La pantalla **no lo afirma**, en ninguna de las dos direcciones.
+
+La validación del cliente **sólo parsea; la política se queda en el DTO**: corta el campo vacío
+(`Number('')` es `0`, y borrar y guardar mandaría «sólo a la hora exacta» sin que nadie lo eligiera) y
+el no-entero, pero **el tope de 720 no se repite**, que sería una segunda fuente de verdad dejando la
+pantalla rechazando lo que la API acepta.
+
+El QR va como `src` de un **`<img>` pelado y no un `next/image`**: el componente de Next reescribe el
+`src` a `/_next/image?url=…`, que es **su optimizador y no nuestro proxy**, y por ahí no viaja la
+cookie de sesión. Y **sin `?t=Date.now()`**: ataría el `src` al reloj y volvería a pedir el PNG en cada
+render. Guardar la ventana **dice lo que NO cambia** —«el cartel del QR no cambia: lleva la firma del
+gimnasio y no los minutos, así que el que ya está pegado en la pared sigue sirviendo»—, porque quien
+guarda está mirando el QR en la misma pantalla y la lectura obvia de un «guardado» suelto es «hay que
+reimprimir».
+
+### El health-check se llama por lo que prueba
+
+El botón del índice dice **«Probar que la API alcanza la cola»**, y no «probar que todo funciona».
+`POST /jobs/health-check` encola un ping y devuelve `{ jobId }`; **no hay ningún endpoint que lea el
+resultado** —el procesador escribe una línea en el registro del servidor, que quien está en el
+mostrador no ve nunca—. Aun así se dibuja, porque si Redis está caído **el POST falla**: encolar sí
+demuestra algo verdadero y más chico que «todo funciona». La respuesta a eso no es esconderlo, es
+nombrarlo bien.
+
+Y **el mensaje de éxito lleva la aclaración en la misma frase**, no en una nota al pie: _«La API
+alcanzó la cola: el ping quedó encolado. Esto NO confirma que el trabajo se haya procesado — el
+resultado sólo queda en el registro del servidor y no hay forma de leerlo desde acá.»_ Un «funciona»
+suelto delante del mostrador se lee como «los emails están saliendo». El éxito y el fallo se
+distinguen **por un atributo propio** y no por el color, y el `jobId` **se pinta cuando llega y la
+línea entera desaparece cuando no**, porque `JSON.stringify({ jobId: undefined })` es `{}` y la clave
+puede no llegar siquiera: un hueco con forma de dato es peor que no tener el dato.
+
+### Lo que esta fase NO trae
+
+- **El editor de `planDestacadoId`.** El campo se devuelve tal cual y no tiene editor, y como el `PUT`
+  **reemplaza**, omitirlo lo pone en `null`: ⚠️ **guardar el tagline borraría el plan destacado de la
+  landing en silencio.** Elegirlo de verdad pide `usePacks()`, que es un séptimo endpoint; una caja de
+  texto para pegar un id de base no es un editor. **Queda anotado como deuda.**
+- **Un endpoint que lea el resultado del health-check**, que es lo que haría falta para que ese botón
+  cumpliera lo que su nombre habitual promete.
+- **Subir imágenes** para la web pública: `imagenPrincipalUrl` es una URL, y de dónde sale es otra
+  conversación.
+- **Un editor visual de HTML** para las plantillas. Es un campo de texto con previsualización.
+- **Las pantallas del profesor**, que siguen sin existir después de ocho fases.
+
 ## Tests
 
 Unitarios:

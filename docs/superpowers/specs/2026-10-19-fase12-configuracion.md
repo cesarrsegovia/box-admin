@@ -212,8 +212,12 @@ vieja.**
    (el doce) y **la URL del documento** (el trece), más el eje **quince** (los eventos de salida de
    la pestaña); el catorce es `montarElRatoLibre()`, de la Fase 11. Corregido en el §9.
 2. ⚠️ **«Siete lecturas y siete escrituras» → cinco y nueve.** Es del plan y lo midió la T1. Los 14
-   endpoints estaban bien; el reparto, no. Importa porque **cada escritura es un `gcTime: 0` y una
-   decisión de invalidación**, y dos de las nueve no tienen nada que invalidar.
+   endpoints estaban bien; el reparto, no. Las cinco lecturas incluyen **la imagen del QR**, que no
+   pasa por `pedir`. Importa porque **cada escritura es un `gcTime: 0` y una decisión de
+   invalidación**, y **UNA sola** de las nueve no tiene nada que invalidar: `useEncolarHealthCheck`.
+   (El docblock de `use-configuracion.ts` decía «dos» y decía «las SEIS escrituras de la web» cuando
+   son cinco — las seis son las **rutas** del controller, y una de las seis es el `GET`. Los dos
+   números quedaron corregidos en el archivo al cerrar.)
 3. ⚠️ **«Cuatro pantallas» → tres pantallas más el botón de health-check en el índice.** La cola de
    trabajos es **un botón**, y encolar un ping es una acción de operación, no una configuración:
    **una página entera para un botón es peor que la alternativa**. Corregido en el §2, el §3 y el
