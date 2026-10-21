@@ -27,7 +27,8 @@ afterEach(() => {
 });
 
 /**
- * EL TAPON DE LOS TRECE CANALES QUE NO SON EL `<body>`, EN TODOS LOS SPECS.
+ * EL TAPON DE LOS TRECE CANALES QUE NO SON EL `<body>`, EN TODOS LOS SPECS —Y
+ * EL EJE DECIMOQUINTO, QUE VIAJA DENTRO DE EL.
  *
  * `console.*`, `document.title`, `window.name`, el `<head>`, los tres
  * almacenes del navegador, el buffer de User Timing, el `src` de una imagen y
@@ -60,11 +61,28 @@ afterEach(() => {
  *
  * Vigila los secretos del panel siempre, y lo que cada spec agregue con
  * `vigilarEstosDatos`. Ver el comentario de `vigilarLosCanalesDeSalida`.
+ *
+ * Y DENTRO DE EL VIAJA EL EJE DECIMOQUINTO, que no se llama desde aqui a
+ * proposito. jsdom no dispara NUNCA `beforeunload`, `visibilitychange`,
+ * `pagehide`, `unload` ni `freeze`: un oyente que una pantalla registre en un
+ * `useEffect` para guardar algo al salir —«que no se pierda lo tecleado si se
+ * cierra la pestaña»— vive y muere sin que nadie le hable, y la linea que en
+ * el mostrador escribe la clave del servidor de correo en `localStorage` no
+ * corre ni una vez en los 1561 tests. Los cinco se despachan como PRIMERA
+ * linea del `afterEach` del tapon de arriba, y tiene que ser ahi y no en un
+ * `afterEach` suelto de este archivo: el oyente se quita en la limpieza del
+ * `useEffect`, o sea que despues del `cleanup()` ya no escucha nadie —medido:
+ * un golpe antes, cero despues—. El razonamiento entero, el orden de los cinco
+ * y lo que cuesta: `src/test/salida-de-la-pestana.ts`.
  */
 vigilarLosCanalesDeSalida();
 
 /**
  * Y EL EJE DECIMOCUARTO, QUE NO ES UN CANAL SINO UN RELOJ.
+ *
+ * (El decimoquinto —los eventos de salida de la pestaña— es el otro eje, y se
+ * engancha dentro del tapon de arriba porque su sitio exacto depende del
+ * `cleanup()`. Ver el comentario de ahi.)
  *
  * jsdom no implementa `requestIdleCallback`, asi que un
  * `window.requestIdleCallback?.(() => …)` es un no-op silencioso en los tests

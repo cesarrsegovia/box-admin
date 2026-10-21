@@ -62,6 +62,12 @@ los tres almacenes del navegador, `performance.mark`/`measure`, el `src` de una 
 laterales (`postMessage`/`BroadcastChannel`/`sendBeacon`), **CacheStorage** y **el service worker**.
 Más `montarElRatoLibre()`, que monta `requestIdleCallback` para que lo aplazado corra dentro del test.
 
+> ⚠️ **Errata 1, corregida al cerrar la fase (2026-10-21).** Eran diez **al escribir este plan**; al
+> cerrar son **trece canales y dos ejes**. Esta fase sumó **IndexedDB** (el once), **los atributos
+> del `<html>` y del `<body>`** (el doce) y **la URL del documento** (el trece). `montarElRatoLibre()`
+> es el **eje catorce** y los **eventos de salida de la pestaña** (`src/test/salida-de-la-pestana.ts`)
+> el **quince**: no abren una puerta nueva, **mueven el momento** en que los tapones miran.
+
 ⚠️ **Esta fase siembra la credencial de un servidor de correo.** Los centinelas importan más que en
 ninguna otra: la clave SMTP, el usuario, el host y los textos de las plantillas.
 
@@ -133,6 +139,12 @@ apps/web/src/
 **Files:** crear `apps/web/src/hooks/use-configuracion.ts` · `use-configuracion.spec.tsx`
 
 **Catorce endpoints, cuatro recursos independientes.** Siete lecturas y siete escrituras.
+
+> ⚠️ **Errata 2, corregida al cerrar la fase (2026-10-21).** **Son CINCO lecturas y NUEVE
+> escrituras**, medido por la T1 contra los controllers. Los 14 endpoints estaban bien; el reparto,
+> no. Importa porque **cada escritura es un `gcTime: 0` y una decisión de invalidación**, y **dos de
+> las nueve no tienen nada que invalidar** (`useEncolarHealthCheck`, que no tiene GET ni clave, y el
+> borrado que ya cubre la clave de la web).
 
 - [ ] **Step 1: Verificá las rutas antes de escribir**
 

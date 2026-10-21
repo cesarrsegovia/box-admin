@@ -34,8 +34,16 @@ import { type ErrorDeApi, pedir } from '@/lib/cliente';
  *
  * NO SON SIETE LECTURAS Y SIETE ESCRITURAS: son CINCO lecturas (las cuatro
  * `GET` de configuracion y la imagen) y NUEVE escrituras. El reparto importa
- * porque cada escritura es un `gcTime: 0` y una invalidacion que decidir, y
- * dos de las nueve no tienen nada que invalidar.
+ * porque cada escritura es un `gcTime: 0` y una invalidacion que decidir.
+ *
+ * DE LAS NUEVE, UNA SOLA NO TIENE NADA QUE INVALIDAR: `useEncolarHealthCheck`.
+ * (Recontado al cerrar la fase: el docblock decia «dos» y es UNA. Las otras
+ * OCHO llevan `onSuccess`, y se cuentan a ojo en este archivo: seis a
+ * `webSalon`, una a `smtp`, una a `plantillas` y una a `checkin` son nueve
+ * invalidaciones... no: son 6+1+1+1 = 9 llamadas pero OCHO mutaciones, porque
+ * las seis de la web comparten `useInvalidarWebSalon`. Ocho `onSuccess` y un
+ * `useMutation` sin el: ese es el health-check. Una medicion anotada
+ * envejece, y esta ademas nacio mal.)
  *
  * LOS CATORCE PIDEN `ADMIN_SALON`, comprobado decorador por decorador. No hay
  * ni uno de `ADMIN_OPERATIVO`: lo que se decide aqui son las credenciales del

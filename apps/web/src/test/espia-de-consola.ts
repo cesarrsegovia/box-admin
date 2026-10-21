@@ -1,5 +1,6 @@
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
+import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
 
 /**
  * LOS CANALES POR LOS QUE UNA PANTALLA DICE ALGO FUERA DEL `<body>`.
@@ -38,6 +39,22 @@ import { afterEach, beforeEach, expect, vi } from 'vitest';
  *    con el nombre de una profesora, o con la lista de turnos del dia, pasaba en
  *    verde. Era una lista negra —el patron contra el que este repo predica—
  *    puesta en infraestructura que comparten cuarenta y nueve specs.
+ *
+ * TRECE CANALES Y DOS EJES. Los canales son PUERTAS: sitios por donde sale un
+ * dato. Los ejes no abren ninguna puerta nueva — mueven el MOMENTO en que la
+ * pantalla habla a un hueco donde ninguno de los trece tapones esta mirando, y
+ * por eso los apagan todos de una linea, incluidos los que se tapen mañana.
+ * Van numerados detras de los canales y viven cada uno en su archivo:
+ *
+ *  - EL DECIMOCUARTO, `src/test/rato-libre.ts`: `requestIdleCallback`, que
+ *    jsdom no implementa, asi que lo aplazado al rato libre no corre NUNCA
+ *    dentro del test. Se tapa MONTANDO la API para que corra.
+ *  - EL DECIMOQUINTO, `src/test/salida-de-la-pestana.ts`: los cinco eventos de
+ *    salida de la pestaña —`beforeunload`, `visibilitychange`, `freeze`,
+ *    `pagehide` y `unload`—, que jsdom no dispara NUNCA, asi que un oyente
+ *    registrado en un `useEffect` vive y muere sin que nadie le hable. Se tapa
+ *    DESPACHANDOLOS, como primera linea del `afterEach` de aqui abajo y antes
+ *    del `cleanup()`, que es donde el oyente todavia esta puesto.
  */
 
 /**
@@ -1519,7 +1536,13 @@ interface LlamadaAlHistorial {
 }
 
 /**
- * EL TAPON DE LOS TRECE CANALES, en todos los specs.
+ * EL TAPON DE LOS TRECE CANALES —Y EL EJE DECIMOQUINTO—, en todos los specs.
+ *
+ * Los trece canales son los de abajo. El eje decimoquinto no es uno de ellos:
+ * es el despacho de los eventos de salida de la pestaña, que corre como
+ * PRIMERA linea del `afterEach` para que los trece miren un mundo en el que la
+ * pestaña ya se cerro. Vive en `src/test/salida-de-la-pestana.ts` y el porque
+ * de su sitio exacto esta ahi y en el comentario de esa primera linea.
  *
  * **La consola.** Antes de que esto existiera, ni un solo spec de `apps/web`
  * mencionaba `console`, y un `console.info('[alta]', respuesta)` —la traza de
@@ -2209,6 +2232,28 @@ export function vigilarLosCanalesDeSalida(): void {
   });
 
   afterEach(() => {
+    /**
+     * LA PESTAÑA SE CIERRA AQUI, ANTES DE LEER NI UNO DE LOS TRECE CANALES.
+     *
+     * Es el eje decimoquinto, y esta primero por dos medidas que no se
+     * adivinan y estan las dos en `salida-de-la-pestana.ts`:
+     *
+     * 1. EL OYENTE DE UNA FUGA DE SALIDA SE QUITA EN EL DESMONTAJE. Lo registra
+     *    un `useEffect` y lo borra su `return`, o sea que despues del
+     *    `cleanup()` de mas abajo ya no escucha nadie. Medido: el mismo
+     *    `dispatchEvent` da un golpe antes del `cleanup()` y cero despues.
+     *    Despachar detras seria cerrar el eje EN FALSO —verde y ciego—, que es
+     *    el modo de fallo que todo este archivo existe para evitar.
+     *
+     * 2. Y TAMPOCO ENTRE MEDIAS. El `<head>` y los `<img>` del documento se
+     *    leen aqui abajo con el arbol todavia montado; el resto, despues del
+     *    `cleanup()`. Despachando entre la foto de la cabecera y el desmontaje,
+     *    un oyente de `pagehide` que subiera un `<meta>` al `<head>` no lo
+     *    veria nadie. Desde aqui arriba, los trece tapones miran un mundo en el
+     *    que la pestaña ya se cerro.
+     */
+    despacharLaSalidaDeLaPestana();
+
     const titulo = document.title;
     const nombreDeLaPestana = window.name;
     // Se mira el TOTAL de lo dicho, serializado, no un metodo concreto ni el

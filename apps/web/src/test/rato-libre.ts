@@ -2,6 +2,14 @@
  * EL EJE DECIMOCUARTO: `requestIdleCallback`, QUE NO ES UN CANAL SINO UN
  * RELOJ — Y QUE APAGA LOS OTROS TRECE DE UNA SOLA LINEA.
  *
+ * Es EL PRIMERO DE LOS DOS EJES, no el unico: el decimoquinto
+ * —`src/test/salida-de-la-pestana.ts`— cierra la otra forma de aplazar una
+ * fuga a despues de los tapones, los eventos de salida de la pestaña, que
+ * jsdom tampoco dispara nunca. Son parientes en la FORMA —los dos mueven la
+ * salida a un hueco donde nadie mira— y distintos en el MECANISMO: alli la
+ * respuesta fue MONTAR una API que falta, aqui DESPACHAR unos eventos que
+ * nunca llegan. Montar el rato libre no cubre aquello, ni al reves.
+ *
  * `espia-de-consola.ts` tapa trece puertas por las que una pantalla puede
  * decir algo fuera del `<body>`: la consola, el titulo, `window.name`, el
  * `<head>`, los tres almacenes, el buffer de User Timing, el `src` de una
@@ -88,7 +96,8 @@ const MILISEGUNDOS_DE_SOBRA = 50;
 /**
  * Monta `requestIdleCallback` y `cancelIdleCallback` para todo el paquete.
  *
- * Se llama desde `vitest.setup.ts`, al lado del tapon de los trece canales y
+ * Se llama desde `vitest.setup.ts`, al lado del tapon de los trece canales —que
+ * lleva dentro el otro eje, el decimoquinto— y
  * por el mismo motivo: un agujero de canal no es de una pantalla, y la que no
  * se acuerde de pedirlo es justamente la que lo va a necesitar.
  */

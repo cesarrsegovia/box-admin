@@ -20,7 +20,8 @@ gimnasio» en tres ajustes, y no hay dónde mirar qué dice el gimnasio.**
 
 ## 2. Decisiones cerradas con Cesar
 
-1. **Cuatro pantallas bajo un índice** (`/admin/configuracion`), no una página con secciones. La web
+1. **Tres pantallas bajo un índice** (`/admin/configuracion`) **más el botón de health-check en el
+   propio índice** —ver la errata 3 al final—, no una página con secciones. La web
    pública sola son 6 endpoints con dos listas anidadas: es una pantalla por derecho propio. Y
    mezclar la identidad visual del gimnasio con credenciales SMTP hace que el guardar de una se
    parezca al de la otra.
@@ -35,7 +36,7 @@ gimnasio» en tres ajustes, y no hay dónde mirar qué dice el gimnasio.**
 había que esconder un bloque dentro de una pantalla— acá la puerta es **del área entera**.
 
 ⚠️ Para un `ADMIN_OPERATIVO`, **la entrada de Configuración no existe en el marcado** de la
-navegación, y las cuatro pantallas **tampoco piden nada**: el gate va antes de los hooks, no con un
+navegación, y el índice y las tres pantallas **tampoco piden nada**: el gate va antes de los hooks, no con un
 `enabled: false`. Es el patrón de horarios de la Fase 10. Y **sin proveedor de rol tampoco**: falla
 cerrada.
 
@@ -149,6 +150,13 @@ andamiaje de hooks, y los **diez canales globales** de `vitest.setup.ts` —cons
 imagen, las salidas laterales, CacheStorage y el service worker— más el montaje de
 `requestIdleCallback`.
 
+> ⚠️ **Errata 1, corregida al cerrar la fase (2026-10-21).** Eran diez **al escribir esta spec**; al
+> cerrar son **trece canales y dos ejes**. Los tres canales que sumó esta fase: **IndexedDB** (el
+> once), **los atributos del `<html>` y del `<body>`** (el doce) y **la URL del documento** (el
+> trece). Los dos ejes —que no abren una puerta nueva, **mueven el momento** en que se mira— son
+> **`montarElRatoLibre()`** (el catorce, de la Fase 11) y **los eventos de salida de la pestaña**
+> (el quince, `src/test/salida-de-la-pestana.ts`, de esta fase).
+
 ⚠️ **Esta fase siembra la credencial de un servidor de correo.** Los centinelas importan más que en
 ninguna otra: la clave SMTP, el usuario, el host y los textos de las plantillas.
 
@@ -165,7 +173,7 @@ ninguna otra: la clave SMTP, el usuario, el host y los textos de las plantillas.
 - **Apagar la web pública confirma diciendo qué deja de verse.**
 - **Un `ADMIN_OPERATIVO` no tiene Configuración en el marcado y las pantallas no piden nada.**
 - **Al montar sale esta lista de peticiones y ninguna más.**
-- **Una respuesta vacía se distingue de un fallo al leer**, en las cuatro.
+- **Una respuesta vacía se distingue de un fallo al leer**, en las tres pantallas.
 
 ### La mutación abierta
 
@@ -192,3 +200,21 @@ código en vez del contrato** — **incoherente en lo derivado, posible en todo 
   conversación.
 - **Un editor visual de HTML** para las plantillas. Es un campo de texto con previsualización.
 - **Las pantallas del profesor**, que siguen sin existir.
+
+## 12. Erratas corregidas al cerrar la fase (2026-10-21)
+
+Tres cosas que esta spec afirmaba y que al cerrar la Fase 12 resultaron falsas. **Se corrigieron
+arriba, en su sitio, y se dejan listadas aquí para que nadie las vuelva a copiar de una versión
+vieja.**
+
+1. ⚠️ **«Diez canales globales» → trece canales y dos ejes.** La cuenta era la del día que se
+   escribió. Esta fase sumó **IndexedDB** (el once), **los atributos del `<html>` y del `<body>`**
+   (el doce) y **la URL del documento** (el trece), más el eje **quince** (los eventos de salida de
+   la pestaña); el catorce es `montarElRatoLibre()`, de la Fase 11. Corregido en el §9.
+2. ⚠️ **«Siete lecturas y siete escrituras» → cinco y nueve.** Es del plan y lo midió la T1. Los 14
+   endpoints estaban bien; el reparto, no. Importa porque **cada escritura es un `gcTime: 0` y una
+   decisión de invalidación**, y dos de las nueve no tienen nada que invalidar.
+3. ⚠️ **«Cuatro pantallas» → tres pantallas más el botón de health-check en el índice.** La cola de
+   trabajos es **un botón**, y encolar un ping es una acción de operación, no una configuración:
+   **una página entera para un botón es peor que la alternativa**. Corregido en el §2, el §3 y el
+   §10.
