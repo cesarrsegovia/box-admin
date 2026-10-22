@@ -5,11 +5,11 @@ import { SECRETOS_DEL_PANEL, vinoDePedir } from './espia-de-consola';
 /**
  * EL GUARDIAN DEL DECIMOCUARTO CANAL, Y POR QUE ESTE SI TIENE SPEC.
  *
- * Los catorce canales no tienen spec a proposito: lo que hay que comprobar de
+ * Los demas canales no tienen spec a proposito: lo que hay que comprobar de
  * un tapon es que una mutacion lo hace caer, y eso se mide con la mutacion y no
  * con un test que repita el codigo del tapon en otro orden. Aqui la situacion
- * es la de `relojes-falsos.spec.ts` y la de `alfabeto-de-centinelas.spec.ts`:
- * ESTO NO SE VE DESDE FUERA.
+ * es la de `relojes-falsos.spec.ts`, la de `alfabeto-de-centinelas.spec.ts` y
+ * la de `lo-que-el-marcado-no-serializa.spec.ts`: ESTO NO SE VE DESDE FUERA.
  *
  * El canal entero cuelga de UNA pregunta —«¿esta llamada salio de dentro de
  * `pedir`?»—, que se contesta leyendo la pila. Si `vinoDePedir` empezara a

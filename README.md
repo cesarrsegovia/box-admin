@@ -2295,6 +2295,114 @@ puede no llegar siquiera: un hueco con forma de dato es peor que no tener el dat
 - **Un editor visual de HTML** para las plantillas. Es un campo de texto con previsualización.
 - **Las pantallas del profesor**, que siguen sin existir después de ocho fases.
 
+## El área del profesor — Fase 13
+
+Las **pantallas del profesor** que la Fase 12 anotó como lo que seguía sin existir. Son **tres
+endpoints que existen desde la Fase 4** y que en nueve fases no tuvieron dónde dibujarse. **No toca
+ni un endpoint**, y es la primera fase en la que **una pantalla que faltaba dejaba mintiendo a una
+que ya estaba entregada**.
+
+| Ruta                           | Qué hace                                                       | Rol        |
+| ------------------------------ | -------------------------------------------------------------- | ---------- |
+| `/{slug}/mis-clases`           | La agenda: las clases del rango, con cuántos faltan por marcar | `PROFESOR` |
+| `/{slug}/mis-clases/{turnoId}` | Pasar lista de una clase                                       | `PROFESOR` |
+
+**Es un grupo de rutas propio, `(profesor)`, con su layout, y está pensado para un teléfono**
+(`max-w-md`, como `(alumno)`). Quien abre esto está de pie en la sala, entrando a una clase o
+acabando de salir — no sentado delante de un panel.
+
+**La puerta pide `rol === 'PROFESOR'`, con igualdad y no con jerarquía**, igual que la del alumno: el
+área de la profesora es de la profesora, y un admin no es «una profesora con más permisos». A quien
+no entra **no se lo manda al login** —volver a autenticarse no cambia el rol, sería un bucle— sino
+que se le ofrece el sitio donde sí tiene algo, y esa URL sale de `destinoPorRol` y de ningún otro
+lado.
+
+### Hasta esta fase nadie en todo el sistema podía marcar una ausencia
+
+`POST /mis-clases/:turnoId/asistencia` es **el único sitio de la API que escribe `asistio: false`**.
+El check-in por QR escribe `asistio: true` y nunca otra cosa. Y ese endpoint **no tenía pantalla**.
+
+⚠️ **O sea que no había un solo alumno marcado ausente en ningún gimnasio, y el reporte de asistencia
+de la Fase 11 —que cuenta presentes y ausentes— no podía mostrar ni una.** Los ausentes sólo podían
+ser cero. Esta fase es lo que destraba ese reporte.
+
+Y del otro lado: **una profesora que ponía bien su contraseña aterrizaba en «Esta no es tu área»**.
+`destinoPorRol` sólo distinguía `ADMIN_OPERATIVO` de todo lo demás y mandaba al calendario, cuyo
+layout exige `rol === 'ALUMNO'`. **Entrar correctamente la echaba.** El mismo bug estaba del otro
+lado del mostrador, en el 403 del panel, que mandaba a cualquier rol rechazado al calendario: ahora
+también sale de `destinoPorRol`, **con la única excepción que no se puede delegar — al `FANTASMA` se
+le da el botón de cerrar sesión**, porque `destinoPorRol` lo manda al calendario y el calendario
+también lo rechaza.
+
+### `listaPasada` no se usa, y es una decisión
+
+`ClaseDelProfesor.listaPasada` es `reservas.some(r => r.asistio !== null)`. Como el check-in por QR
+escribe `asistio`, **un solo alumno que escanea hace que la clase figure como «lista pasada»** aunque
+la profesora no la haya tocado.
+
+⚠️ **Lo que lo vuelve indefendible es que el servicio del alumno YA resolvió esto bien**: separa
+`yaMarcada` —que mira la fila de `Asistencia`— de `listaPasada` —que mira `Reserva.asistio`—, y su
+comentario dice por qué: _«fusionarlos le diría "ya marcaste" a alguien que no marcó»_. El contrato de
+la profesora las fusiona, y **para ella la fusión dice lo simétrico y peor**.
+
+Así que la agenda **no lo usa y dice qué falta de verdad**: «Faltan 7 de 9 por marcar», sacado de
+`GET /mis-clases/:id/alumnos`. Son **tres frases distintas y no una con números** —«Faltan N de M»,
+«Ya están los M marcados», «No se anotó nadie en esta clase»— porque **un «Faltan 0 de 9» es
+invisible de reojo**, y una clase vacía no es una clase resuelta. Los dos números salen de **la
+misma respuesta**: mezclar el denominador de la agenda daría una fracción de dos peticiones en dos
+momentos, y una cancelación entre medias la dejaría sin cuadrar con nada.
+
+### El rango por defecto es hoy, y el tope son 12 clases
+
+Esa frase **cuesta una petición por clase**. El rango por defecto es **hoy** —la pregunta que se hace
+de verdad quien está entrando a dar clase— y **a partir de 12 clases el detalle no se pide y se
+dice**. Las otras dos salidas eran peores: pedir igual son 25 peticiones en paralelo desde un móvil,
+y caer al `listaPasada` gratis **sólo mentiría en los rangos largos, donde nadie va a comprobarlo**.
+
+**Por qué 12 y no otro número**: tiene que cumplir dos cosas con margen por los dos lados. **El
+defecto nunca lo toca** —si lo rozara, la pantalla normal estaría a una clase de dejar de
+contestar— y **una semana siempre lo pasa** (3 al día son 21). Es decir que «mirar la semana» cae del
+lado honesto **a propósito y no por accidente**. Es un tope sobre **cuántas clases vuelven**, no
+sobre cuántos días se piden: lo que cuesta son las peticiones, y un mes de vacaciones son cero.
+
+### Pasar lista es un reemplazo total, y eso tiene tres consecuencias
+
+El cuerpo es `{ presentes: string[] }` y **todo lo que no esté en la lista queda en `false`**.
+
+1. ⚠️ **Un guardado puede pisar un check-in real.** Si la pantalla llegara con todo destildado, el
+   flujo natural —abrir, tildar a los que ves, guardar— **marcaría ausente a quien se chequeó por QR y
+   vino**. Por eso **los que ya tienen `asistio: true` llegan tildados**: no es comodidad, es lo único
+   que impide que la pantalla destruya un dato verdadero.
+2. **Los tildes se siembran una sola vez.** Si cada respuesta volviera a sembrarlos, el refetch que
+   dispara la propia invalidación le borraría a la profesora lo que lleva tildado de pie en la sala.
+3. **Marcar ausente a toda la clase se puede**, y es un caso legítimo —la clase que nadie fue—, así
+   que no se prohíbe: **se confirma, y la confirmación nombra el tamaño**: _«Marcar ausentes a los N
+   anotados de esta clase»_. «¿Estás seguro?» es un trámite, no una pregunta. Y **la confirmación sólo
+   existe en ese caso**: una en cada guardado es una que a la tercera clase del día nadie lee, **y eso
+   la volvería decorativa justo cuando hace falta**.
+
+El `POST` **devuelve la lista entera ya marcada**, así que el cartel de «guardada» cuenta **la
+respuesta y no lo tildado**: si a alguien le cancelan la reserva entre la lectura y el guardado, los
+dos números se separan de verdad, y el que vale es el del servidor.
+
+Dos reglas que la API tiene y la pantalla **no repite**: no se pasa lista de una clase que no empezó
+(_«Esa clase todavia no empezo»_) y un id sin reserva activa se rechaza nombrando a los intrusos.
+Hacia atrás **no hay límite**, razonado en la API: _«una profesora que se olvidó tres semanas puede
+ponerse al día»_.
+
+### Lo que esta fase NO trae
+
+- **Arreglar `listaPasada` en el contrato.** La pantalla lo esquiva; el campo sigue mintiendo para
+  cualquiera que lo consuma. **Queda anotado como deuda.**
+- **Que la profesora vea su liquidación.** ⚠️ `GET /liquidacion/:profesorId` pide `ADMIN_SALON`
+  —«esto enseña tarifas», dice el controller—, así que **hoy no puede ver lo que va a cobrar**. No es
+  una pantalla que falte: es una decisión de permisos que hay que tomar antes.
+- **Editar la asistencia de una sola persona.** El único endpoint es el reemplazo total; corregir a
+  uno obliga a mandar la clase entera.
+- **La ficha de alumno.** No existe para su rol, y `AlumnoEnClase` es deliberadamente escueto
+  —`perfilId`, `nombreCompleto`, `asistio`— con el motivo escrito en el contrato: ni teléfono ni ficha
+  médica.
+
 ## Tests
 
 Unitarios:

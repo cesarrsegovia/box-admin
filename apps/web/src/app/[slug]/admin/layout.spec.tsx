@@ -1,15 +1,20 @@
 import type { ReactNode } from 'react';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import type { MeRespuesta } from '@boxadmin/shared';
+import { destinoPorRol } from '@/lib/destino-por-rol';
 import { rutaDeRetornoSegura } from '@/lib/ruta-de-retorno';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const redirigir = vi.fn();
+const navegar = vi.fn();
 vi.mock('next/navigation', () => ({
   redirect: (destino: string) => {
     redirigir(destino);
     throw new Error('NEXT_REDIRECT');
   },
+  // El boton de salir que ve el FANTASMA es de cliente y pide `useRouter`. No
+  // se prueba aqui —tiene su propio spec— pero sin esto ni se monta.
+  useRouter: () => ({ push: navegar }),
 }));
 
 /**
@@ -147,6 +152,77 @@ describe('la puerta del panel', () => {
     await montar();
 
     expect(screen.queryByText('el panel')).not.toBeInTheDocument();
+  });
+
+  /**
+   * EL MISMO BUG DE LA FASE 13, DEL OTRO LADO DEL MOSTRADOR.
+   *
+   * Esta salida estaba cableada a `/${slug}/calendario` para CUALQUIER rol
+   * rechazado. Para una profesora que abria una URL del panel —un enlace que le
+   * pasaron, un favorito viejo— eso no era «una pantalla que no es la suya»:
+   * era un segundo callejon. El calendario exige `rol === 'ALUMNO'`, asi que
+   * salir de aqui la dejaba en «Esta no es tu area».
+   *
+   * El `href` se afirma ENTERO y no por subcadena: `/mi-gym/` esta dentro de
+   * `/mi-gym/calendario` tambien.
+   */
+  it('a una profesora rechazada se le ofrece SU area, no el calendario', async () => {
+    leerSesion.mockResolvedValue({ access: 'tok', slug: 'mi-gym' });
+    leerRol.mockResolvedValue({ rol: 'PROFESOR' });
+
+    await montar();
+
+    const salida = document.querySelector('[data-salida]');
+    expect(salida?.getAttribute('href')).toBe('/mi-gym/mis-clases');
+    expect(salida?.getAttribute('href')).not.toBe('/mi-gym/calendario');
+    // Y el enlace DICE adonde lleva: «Ir a donde si tenes algo» es un enlace
+    // que no se puede decidir pulsar.
+    expect(salida?.textContent).toBe('Ir a tus clases');
+  });
+
+  /**
+   * LA SALIDA SALE DE `destinoPorRol` Y NO DE UNA RAMA ESCRITA AQUI.
+   *
+   * Dos ideas de «donde tiene algo esta persona» es lo que se separa con el
+   * tiempo, y la que se quedaria vieja es la de esta pantalla. Se barren los
+   * dos roles que pueden llegar de verdad: los tres de admin entran, y el
+   * FANTASMA tiene su propio caso porque NO recibe enlace.
+   */
+  it('el href de cada rol rechazado es el que dice `destinoPorRol`', async () => {
+    for (const rol of ['PROFESOR', 'ALUMNO'] as const) {
+      // El `cleanup()` global corre entre TESTS, no entre vueltas de un bucle.
+      cleanup();
+      leerRol.mockReset();
+      leerSesion.mockResolvedValue({ access: 'tok', slug: 'mi-gym' });
+      leerRol.mockResolvedValue({ rol });
+
+      await montar();
+
+      const salida = document.querySelector('[data-salida]');
+      expect(salida?.getAttribute('href'), `con rol ${rol}`).toBe(destinoPorRol(rol, 'mi-gym'));
+      // UNO, no dos: un `getByRole(..., { name })` encuentra el suyo aunque al
+      // lado cuelguen otros tres. Solo el total los ve.
+      expect(screen.queryAllByRole('link'), `con rol ${rol}`).toHaveLength(1);
+    }
+  });
+
+  /**
+   * EL FANTASMA NO TIENE ADONDE IR, Y ESO SE DICE CON UN BOTON Y NO CON UN
+   * ENLACE.
+   *
+   * `destinoPorRol` lo manda al calendario porque es el respaldo de todo lo que
+   * no es admin ni profesor, pero el calendario tambien lo rechaza: es un rol
+   * tecnico, rango 0. Delegar aqui sin excepcion seria arreglar el bug de la
+   * profesora y reabrirlo con otro rol en la misma linea.
+   */
+  it('a un FANTASMA no se le ofrece ningun enlace, solo cerrar sesion', async () => {
+    leerSesion.mockResolvedValue({ access: 'tok', slug: 'mi-gym' });
+    leerRol.mockResolvedValue({ rol: 'FANTASMA' });
+
+    await montar();
+
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: /cerrar sesion/i })).toBeInTheDocument();
   });
 
   it('un ADMIN_OPERATIVO entra', async () => {

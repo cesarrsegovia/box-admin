@@ -3667,3 +3667,402 @@ entorno. Se ejecutan en el panel, a mano.
 - [ ] **Encender `mostrarTurnosLibres`** y mirar la web pública **desde una ventana sin sesión**.
 - [ ] **Guardar el tagline** y comprobar **si el plan destacado sigue ahí**. ⚠️ **Si desaparece, la
       deuda de `planDestacadoId` queda confirmada** y hay que arreglarla antes de la fase de Dinero.
+
+# Progreso Fase 13 — El área del profesor
+
+**Spec:** `docs/superpowers/specs/2026-10-22-fase13-profesor.md`
+**Plan:** `docs/superpowers/plans/2026-10-22-fase13-profesor.md` (4 tareas)
+
+Los **3 endpoints de `mis-clases`**, que existían desde la Fase 4 y que en nueve fases no tuvieron
+dónde dibujarse — lo que el bloque de la Fase 12 anotó como «las pantallas de profesor, que siguen sin
+existir después de ocho fases». **No se tocó un solo endpoint.** Y es la primera fase en la que **una
+pantalla que faltaba dejaba mintiendo a una que ya estaba entregada**: hasta hoy **nadie en todo el
+sistema podía marcar una ausencia**, así que el reporte de asistencia de la Fase 11 contaba presentes
+y ausentes **y los ausentes sólo podían ser cero**.
+
+- [x] T1 — El hook (`use-mis-clases.ts`) · 1572 → 1599
+- [x] T2 — El área, la puerta de rol y la agenda · 1608 → 1645
+- [x] T3 — Pasar lista · 1650 → 1665
+- [x] T4 — Verificación, los dos arreglos anotados, README y tracker · 1675 → 1689
+
+Y **cuatro piezas de infraestructura de tests**, que es la mitad del valor de la fase: **el alfabeto de
+centinelas** (1599 → 1608), **el canal catorce** (1645 → 1650), **el canal quince** (1665 → 1675) y los
+**recuentos** — quince canales, ejes decimosexto y decimoséptimo.
+
+## Los errores de este plan
+
+Sin suavizar. Los encontraron los agentes **midiendo**, no acomodándose. Cada corrección mejoró el
+resultado.
+
+1. ⚠️ **`POST /mis-clases/:turnoId/asistencia` SÍ devuelve cuerpo útil.** El plan decía «sin cuerpo
+   útil» y lo quería tipado `null`, a la manera de los 204 de la Fase 10. El controller lo declara
+   `Promise<AlumnoEnClase[]>` y `pasarLista` termina con `listaDeAlumnos(cliente, turnoId)` **después
+   del commit**: devuelve **la lista entera ya marcada**. Tipado como `null`, **la pantalla habría
+   tirado el único dato que le llega al instante** — y es justo el que hace que el cartel de «guardada»
+   cuente la respuesta y no lo tildado.
+2. ⚠️ **`<input type="hidden">` NO se escapa, y la premisa del informe que descubrió la mutación 47
+   era falsa.** El informe decía que el `.value` de un control es una propiedad que no se refleja al
+   atributo. **Es verdad sólo a medias, y se midió tipo por tipo con sonda**: el `.value` tiene **dos
+   modos**. En _modo valor_ (`text`, `password`, `search`, `tel`, `url`, `email` y `<textarea>`)
+   asignarlo **no** toca el atributo; en **modo defecto** —`hidden`, `checkbox`, `radio`, `submit`,
+   `button`, `image`, `reset`, y también `<button>`, `<output>`, `<data>`, `<option>`— **el `.value` es
+   un reflejo del atributo y asignarlo lo escribe**. Comprobado aplicando la mutación original tal cual,
+   con `type="hidden"`: **la caza el test de marcado que ya existía**. El agujero real es otro, y más
+   chico de lo que decía el informe: **el `.value` que NO se refleja**, más el **`shadowRoot` abierto**.
+3. **Las copias a mano del test de red eran CUATRO, no tres.** El docblock de la cuarta —la de la T2—
+   decía «ese test existe en tres specs de setenta y cuatro, y este no era uno de ellos»; al escribirla
+   pasó a ser la cuarta y la cuenta se quedó vieja en el mismo commit que la cambió.
+4. **Un «no se llamó a `fetch`» sería rojo en 23 de 74 specs, no «en casi todos».** En los otros 51
+   `pedir` está doblado con `vi.mock` y el `fetch` real no se llama nunca.
+5. ⚠️ **`true`, `false` y `null` SÍ conviven en una misma clase**, comprobado en vez de supuesto:
+   **`ReservasService.crear` no mira el reloj del turno** —no hay ni una comprobación de fecha en el
+   método—, así que un admin puede anotar a alguien que llegó tarde **cuando la lista ya estaba
+   pasada**, y esa reserva nace en `null` y entra en la lista. Es lo único que deja probar por separado
+   «`false` llega sin tildar» y «`null` llega sin tildar» **con un `true` al lado cerrando el caso
+   ciego**. Y en el otro sentido: el fijo del QR es mitad y mitad **sin ningún `false`**, porque no
+   podría tenerlo — `false` sólo lo escribe `pasarLista`, que marca la clase entera de una vez.
+6. **El fijo de la mutación del conteo era IMPOSIBLE.** No cayó a la primera porque tenía 3 anotados y
+   0 marcados, así que `faltan` y `anotados` valían los dos 3 — caso ciego de manual. Y al ir a
+   arreglarlo: `listaPasada: true` sobre tres `asistio: null` **es una respuesta que la API no puede
+   dar**, porque el `.some()` sería falso. La quinta forma otra vez. Rehecho como el caso real —uno
+   marcado por el QR, los otros dos en `null`, 3/1/2— los tres números son distintos entre sí, y como
+   los dos montajes ya no pueden tener la misma lista, la comparación pasó a ser **el texto con los
+   dígitos enmascarados**: literalmente «idéntico salvo los números», y **más fuerte**.
+7. Dos citas mal: los mensajes del rango están en `:55` y `:58`, no en `:53`; la rama de la lista vacía
+   está en `:155-170`, no `:154-169`.
+
+## Las mutaciones abiertas 45 a 47: tres de tres, y van 47 de 47
+
+| #   | Qué se agregó                                                        | El eje que nadie auditaba                                                                      |
+| --- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 45  | `console.info('…', btoa(encodeURIComponent(JSON.stringify(lista))))` | **no es una puerta nueva: es un ALFABETO** — pasó por el canal más vigilado, **1599/1599**     |
+| 46a | un `fetch` a un dominio externo con la lista entera de cada clase    | **la red por fuera de `pedir`**, que sólo se vigilaba en 3 de 74 specs — **19/19**             |
+| 46b | `void navigator.clipboard?.writeText(JSON.stringify(alumnos.data))`  | **el portapapeles es del SISTEMA, no de la pestaña** — **20/20**, y **SIGUE ABIERTA**          |
+| 47  | `caja.current.value = JSON.stringify(alumnos)` en un `<input>`       | **lo que el marcado no serializa: el `.value` que no se refleja** — **1665/1665**, 76 archivos |
+
+### ⚠️ El hallazgo más transferible de la fase: un ALFABETO y no una puerta
+
+La 45 **pasa por el canal más vigilado de los trece y no la nota nadie**. El dato codificado con
+`btoa` **derrotaba los trece canales a la vez**, y el motivo no lo enunciaba ningún test: **todos
+afirman por búsqueda de subcadena del valor vigilado**. Corolario: **cualquier transformación del dato
+los derrota a todos** — `btoa`, un `TextEncoder`, un `replacer`, un `.split('')`, una compresión.
+
+**Control que aísla la causa**: la misma línea **sin codificar** hace caer **8 tests** (el plan decía 5;
+medido contra el espía viejo y el nuevo, son 8). El instrumento funcionaba: **lo único que cambia entre
+caer y no caer es la codificación.** Y es **la brecha más barata de explotar** de las 47 — no hay que
+encontrar nada, se escribe sola, y «lo codifico para que no se lea de un vistazo en la consola» **suena
+a buena práctica**.
+
+Por eso el arreglo **no es un canal catorce**: cada centinela se convierte en una **lista de agujas**
+(`formasDe`, memoizada por valor) y hay **un solo punto de comparación**, `formaQueSeFue(texto, valor)`,
+que devuelve **qué forma** emparejó. Ningún canal prohíbe ninguna llamada nueva: **sólo cambió cómo se
+busca**. En claro va **primera**, para que el informe de la fuga normal sea idéntico al de antes.
+
+⚠️ **El detalle que lo hace funcionar: base64 se alinea en bloques de 3 bytes**, así que la codificación
+de una subcadena sólo aparece dentro de la del todo si se generan **los tres desplazamientos** y se
+recortan los bordes. Medido sobre `'Sofia-Pereyra-Vino-Marcador'` dentro de un volcado, con relleno de 0
+a 5: **la aguja ingenua `btoa(NOMBRE)` empareja 2 de 6** —sólo las posiciones múltiplo de 3, o sea que
+**dos de cada tres fugas se le escapan**— y **los tres desplazamientos, 6 de 6**, exactamente una cada
+vez. **Las dos están en el guardián, y la ingenua se mide a propósito**: si se pusiera verde con las
+seis, las tres agujas sobrarían.
+
+### ⚠️ Y la generalización que parecía correcta y era la mala
+
+Lo natural sería **decodificar el volcado** en el sitio común, en vez de codificar la aguja. **No**:
+`decodeURIComponent` **revienta con un `%` suelto** —un `console.log` que diga «50% de asistencia» ya lo
+tiene— y el `catch` **se comería el volcado entero, dejando el canal ciego por haberlo querido
+reforzar**. Codificar la aguja no tiene ese modo de fallo y se paga **una vez por centinela**, no una
+por volcado y por test. (El canal de la URL sí decodifica y se dejó: ahí `urlComoTexto` le pega su
+`decodeURIComponent` al `href`, que es **más fuerte** que una aguja.)
+
+**Descartadas, con el argumento escrito en el código**: partir el dato (exigiría buscar subsecuencias, y
+el que parte en dos parte en tres), comprimir (nadie comprime una traza sin intención, y no hay API
+síncrona para el `afterEach`), hashear o cifrar (**no se puede**: sal, algoritmo y codificación no
+tienen fondo) y los bytes sueltos (donde pasa de verdad —el cuerpo de una baliza— **ya estaba cubierto
+por el otro lado**).
+
+**Costo: +0,1 s**, dentro del ruido; las agujas se calculan **una vez por centinela para todo el
+archivo**. **Guardián propio** (`alfabeto-de-centinelas.spec.ts`, 9 tests), porque la aritmética de los
+desplazamientos es invisible desde fuera: simplificar las tres agujas a una **deja los 1599 en verde** y
+el tapón ciego justo para la fuga real. Y el guardián ejercita la familia `btoa(encodeURIComponent(…))`
+con `'Sofia Pereyra Vino Marcador'` **con espacio**, porque los centinelas de ese spec son con guiones,
+que `encodeURIComponent` no toca: **sin un nombre con espacio o acento esa familia quedaba sin probar**.
+
+## El canal catorce — la red por fuera de `pedir` (1645 → 1650)
+
+**El criterio es LA PILA, no la URL.** `pedir` llama a `fetch` **sincrónicamente** desde su cuerpo, así
+que un `new Error().stack` trae `at pedir (…/src/lib/cliente.ts)` como segundo marco. **Por qué se
+descartó la URL, medido**: el agujero que deja es **exactamente la mutación que `ausencias/page.spec.tsx`
+ya tiene documentada** —un `fetch('/api/bx/stats/caja')` en un `useEffect`, que va al proxy con la cookie
+y por la URL es indistinguible de `pedir`—. Con la pila cae; con la URL pasaba.
+
+⚠️ **La trampa que se comió y quedó escrita**: la primera sonda buscaba `/src/lib/cliente.ts` con las
+barras al derecho, y en Windows la pila las trae al revés. Resultado: «ninguna de las 467 pasó por
+`pedir`». **Las dos formas están fijadas en el guardián.**
+
+⚠️ **Y la segunda entrada de la puerta, que es lo que lo hace servir**: las 467 peticiones pasan por un
+doble que el spec instala con **`vi.stubGlobal`**, ni una por el `fetch` del entorno. Un enganche sólo en
+`beforeEach` estaría ciego **en los 23 specs donde corre el `pedir` de verdad** —los únicos con tráfico
+que vigilar—. Medido en la fuente de Vitest: `stubGlobal` hace `defineProperty` con `value`, que
+**sustituye el descriptor entero** (un accesor no sobrevive), y ningún hook corre después del
+`beforeEach` del spec. Por eso el espía **engancha `vi.stubGlobal` una vez al cargar**.
+
+**La forma de cada puerta**: `fetch` por **centinelas** —hay 96 peticiones legítimas por fuera de
+`pedir`, así que la fuerte sería **roja con el código correcto en cinco specs**, y sostenerla pediría una
+**lista blanca de destinos**, el patrón contra el que este repo predica—; `XMLHttpRequest`, `WebSocket` y
+`EventSource` **fuertes**, y este último **se DEFINE** porque no existe en jsdom y un
+`if ('EventSource' in window)` **no hace nada y pasa en verde**. **El precio, sin adornar**: un `fetch` a
+otro origen **sin ningún centinela** pasa en verde. **El informe no publica la URL**: nombra el origen y
+nunca la ruta ni el query, y pasa igual por `claveSegura`.
+
+**Las cuatro copias a mano se quedan**: comprueban **la forma fuerte**, que en esos cuatro specs sale
+gratis —`pedir` está doblado y no hay ni una petición legítima— y caza además **el dato que nadie
+registró**. Lo global cubre los 74 con centinelas y tres puertas más; lo local cubre cuatro con la
+fuerte. **No se tapan.** Costo +0,3 % a +1,8 %.
+
+### La auditoría retroactiva: nada escondido, pero una promesa falsa
+
+**467 peticiones al `fetch` global en los 74 archivos: 371 de `pedir` y 96 que no**, de **cinco sitios de
+producción, todos deliberados y con su motivo escrito** (la landing pública desde el servidor con
+`credentials: 'omit'`, las tres pantallas que llaman a las rutas del BFF que escriben la cookie
+httpOnly, y el `PUT` del comprobante a la URL firmada del almacén). **Nada escondido: no hubo que parar
+ni arreglar.**
+
+⚠️ **Pero dejó una frase falsa en pie**: `lib/cliente.ts` se abría diciendo «el único fetch del navegador
+en toda la aplicación», y hacía cuatro fases que no era cierto. **Es la tercera vez en tres fases que
+aparece la misma forma de deuda — una medición anotada envejece, y envejece en silencio porque parece
+documentación.** Cerrado en la T4, y **no sólo corrigiendo la frase**: ver abajo.
+
+## El canal quince — lo que el marcado no serializa (1665 → 1675)
+
+**El eje**: el `.value` de un control **no siempre** es un reflejo del atributo (ver el error 2), y
+cuando no lo es **no aparece en ningún `innerHTML` ni en ningún `textContent`** — y sin embargo está en
+la página, se pinta, se autocompleta, viaja en un envío de formulario y lo lee cualquier extensión. **El
+`shadowRoot` abierto es la otra mitad**, medida: `querySelectorAll('*')` **no desciende** a él, el
+anfitrión no lo serializa, **y ahí cabe un árbol entero**. Es **el hueco entre las dos defensas**: los
+catorce canales miran todo lo que **no** es el `<body>`; los tests de pantalla miran el `<body>` por
+`innerHTML` y `textContent`. **Y no es especulativo**: el test de la agenda «ni un nombre ni un
+`perfilId` llega al marcado» mira `document.body.innerHTML`, **y el mismo `.value` lo esquiva ahí
+también**.
+
+### ⚠️ La forma es por centinelas CON UNA RESTA, la única del archivo que la tiene
+
+**Un centinela sólo cuenta si NO está también en el marcado.** Una pantalla de edición pinta
+`<input value={persona.nombreCompleto}>` y React escribe el atributo **y** la propiedad: afirmar «ningún
+centinela en ningún `.value`» sería **rojo con el código correcto en media docena de specs**. Lo que se
+afirma es que no haya ninguno **escondido**.
+
+⚠️ **La auditoría retroactiva encontró 10 tests rojos en 2 archivos, CON EL CÓDIGO CORRECTO**: la clave
+del SMTP y el motivo de unas vacaciones estaban en el `.value` de su campo **porque la persona los
+tecleó**. Uno de los que caía se llama _«tras un fallo el formulario sigue ahí, con lo que ya se había
+escrito»_: **el valor en el campo ES la cosa afirmada**. El criterio que los distingue, y es medible:
+**lo que la persona escribe llega por un evento `input`/`change`, que burbujea; lo que una pantalla
+escribe a escondidas en un `useEffect` no despacha ninguno.** Un oyente en captura sobre el `document` y
+un `WeakSet`. **El hueco que deja está escrito**: un campo donde la persona escribió **y** que además
+recibe una fuga queda fuera.
+
+**Se lee ANTES de `cleanup()`, al revés que diez de los otros**: `cleanup()` vacía el `<body>`, así que
+leer después sería leer siempre la lista vacía — **verde y ciego**. Lo que pierde a cambio: el `.value`
+que escriba la limpieza de un `useEffect`, que es justo lo que ganan los atributos de alrededor y la URL
+leyéndose después. **Y la foto del marcado se toma en la misma línea**, porque si no la resta compararía
+contra un cuerpo vacío.
+
+**Fuera, con argumento**: `.checked` / `.selectedIndex` / `.valueAsNumber` (no pueden llevar el dato: un
+booleano no tiene un nombre dentro); **`dataset`, que SÍ se refleja** —comprobado, con test propio para
+que si deja de ser cierto entre—; el `shadowRoot` **cerrado** (`host.shadowRoot` es `null`: no es
+decisión, es la plataforma); los internos de React (`__reactProps$`), porque **no hay forma de escribir
+ahí que no sea escribir en el marcado**, y atarse a un interno de framework es lo contrario de lo que
+hace el resto del archivo; y `.files`, que es una entrada y no un escondite.
+
+**Costo +0,55 %**, por debajo del ruido. **Guardián propio** (`lo-que-el-marcado-no-serializa.spec.ts`,
+10 tests): **tres «simplificaciones» razonables dejan el canal ciego sin poner rojo ni uno de los 1675** —
+cambiar el `typeof === 'string'` por una lista de etiquetas, quitar la rama del `shadowRoot` (que hoy no
+caza nada porque no hay un `attachShadow` en `src/`, **así que parece código muerto y no lo es**) y mover
+la lectura detrás del `cleanup()`.
+
+**La copia local de `[turnoId]/page.spec.tsx` se quedó**, porque comprueba dos cosas que la global no
+puede: **la forma estricta sin la resta** (esa pantalla no tiene un solo `<input value={…}>` legítimo) y
+**el control del caso ciego** (`escondites.length >= filas().length`).
+
+## Las decisiones de producto, y por qué
+
+- **`listaPasada` NO se usa.** Es `reservas.some(r => r.asistio !== null)` y el check-in por QR escribe
+  `asistio`, así que **un solo alumno que escanea hace que la clase figure como «lista pasada»**.
+  ⚠️ **Lo que lo vuelve indefendible: el servicio del alumno YA resolvió esto bien** —separa `yaMarcada`
+  de `listaPasada` con el comentario «fusionarlos le diría "ya marcaste" a alguien que no marcó»— y **el
+  contrato de la profesora los fusiona**. La agenda dice **cuántos quedan sin marcar**, sacado de
+  `GET /mis-clases/:id/alumnos`.
+- **Rango por defecto HOY y tope de 12 clases.** Un día son 2-3 clases; una semana serían 15-20
+  peticiones **en el teléfono de la profesora**. Pasado el tope **no se pide el detalle y se dice**: las
+  otras dos salidas eran pedir igual (25 peticiones en paralelo desde un móvil) o **caer al `listaPasada`
+  gratis — la peor, porque sólo mentiría en los rangos largos, donde nadie va a comprobarlo**. **Por qué
+  12**: el defecto **nunca lo toca** y **una semana siempre lo pasa** (3/día = 21), o sea que «mirar la
+  semana» cae del lado honesto **a propósito y no por accidente**. Hay **test del borde exacto**, porque
+  sin él un `<` donde va un `<=` pasaría inadvertido.
+- **Tres consecuencias del reemplazo total.** (1) ⚠️ **Pasar lista puede pisar un check-in real**, y por
+  eso **los que ya tienen `asistio: true` llegan tildados** — no es comodidad, es lo único que impide que
+  la pantalla destruya un dato verdadero. (2) **Los tildes se siembran una sola vez**
+  (`useState(() => …)` + `key={turnoId}`): si cada respuesta re-sembrara, **el refetch que dispara la
+  propia invalidación le borraría a la profesora lo que lleva tildado de pie en la sala**. **No tiene
+  test, y lo dice**: con los flujos disponibles no es observable. (3) **El cartel de «guardada» cuenta la
+  RESPUESTA, no lo tildado**, aprovechando que el POST devuelve la lista entera; probado con un fijo
+  donde los dos números se separan de verdad.
+- **Marcar ausente a toda la clase se puede, y confirma nombrando el tamaño** («Marcar ausentes a los N
+  anotados de esta clase»), porque **«¿estás seguro?» es un trámite, no una pregunta**. **La confirmación
+  sólo existe en ese caso**: una en cada guardado es una que a la tercera clase del día nadie lee, **y
+  eso la volvería decorativa justo cuando hace falta**.
+- **Las claves del hook van en DOS RAMAS, no anidadas** (`['mis-clases','agenda',…]` y
+  `['mis-clases','alumnos',turnoId]`): la agenda hay que invalidarla **en todos los rangos**, así que su
+  clave tiene que ser un prefijo que **no** cubra los alumnos. Con `['mis-clases',turnoId,'alumnos']`,
+  invalidar la agenda arrastraría los alumnos de todas las clases abiertas **y el test de «y nada más» no
+  podría existir**.
+- **Orden en `destinoPorRol`: jerarquía primero, `=== 'PROFESOR'` después.** Un
+  `rolAlcanza(rol,'PROFESOR')` ahí **mandaría a los tres roles de admin a la agenda de una profesora** si
+  alguien reordena las líneas. Hay test que barre todos los roles por ese lado.
+- **No hay enlace de «Volver».** El botón de atrás del teléfono es el **único** que devuelve la agenda
+  **con el rango que tenía**; un «Volver a mis clases» cableado la devolvería a _hoy_ después de haber
+  estado mirando el martes pasado, **y encima parecería que funciona**.
+
+## Los dos arreglos de la T4
+
+### 2a — El mismo bug, del otro lado del mostrador
+
+`admin/sin-permiso.tsx` mandaba a **cualquier** rol rechazado a `/{slug}/calendario`, `PROFESOR`
+incluido: una profesora que abría una URL del panel **salía de ahí hacia el «Esta no es tu área» del
+alumno**. El `href` sale ahora de `destinoPorRol`, **con la excepción que no se puede delegar: el
+`FANTASMA` recibe el botón de cerrar sesión**, porque `destinoPorRol` lo manda al calendario y el
+calendario también lo rechaza. **Sí aplicaba**, igual que en el layout del profesor. Tres tests nuevos en
+`admin/layout.spec.tsx`, uno de ellos atando el `href` de cada rol rechazado a lo que devuelve
+`destinoPorRol`, y las palabras en un `Record` **sin `FANTASMA`** para que agregar un rol al enum rompa
+la compilación en vez de pintar un enlace sin texto.
+
+### 2b — ⚠️ La medición anotada, cerrada con un test que CUENTA
+
+`lib/el-unico-fetch.spec.ts`, **11 tests**. No corrige sólo la frase: es el molde de
+`apps/api/src/common/guards/rutas-publicas.spec.ts` —**no una lista de archivos sino una tabla de
+archivos CONTRA SU MOTIVO**, comparada entera y en los dos sentidos—. Agregar un `fetch` suelto deja la
+tabla corta; quitar uno la deja larga; **y `llamadas` está en la tabla además del motivo porque colar una
+segunda petición en un archivo que ya está en la lista no agrega ningún archivo nuevo**.
+
+⚠️ **Y midiendo salió una corrección a la auditoría del canal catorce: no son cinco sitios, son DIEZ.**
+El canal mide **tráfico en jsdom**, así que sólo ve lo que algún spec ejecuta — o sea, **sólo el
+navegador**. El inventario **lee `src/` entero** y encuentra seis más, todos de servidor y ninguno
+escondido: **el proxy `api/bx/[...ruta]/route.ts` (2 llamadas)**, las **tres rutas del BFF vistas desde
+dentro**, la landing `[slug]/page.tsx`, y ⚠️ **`lib/sesion.ts`, que pide `GET /auth/me` desde el servidor
+y no estaba en ninguna de las dos listas**. En el **navegador** son **exactamente cuatro**, y hay un caso
+que lo afirma por igualdad — que es la frase de `lib/cliente.ts` convertida en test.
+
+El contador tiene **su propio guardián de 7 casos**, por el motivo de siempre: el `(?<!\w)` que distingue
+`fetch(` de los **cuarenta y pico `refetch()`** de React Query, y el recorte de comentarios que impide
+que medio repo entre por hablar de `fetch` en sus docblocks, **son invisibles desde fuera** — sin ellos
+la tabla cuadraría al tamaño equivocado y lo único que pasaría es que alguien la agranda. **Verificado
+con mutación**: un archivo nuevo con un `fetch` pone el inventario rojo nombrándolo. El docblock de
+`cliente.ts` se reescribió **apuntando al spec**, y el del canal catorce también.
+
+## Trampas nuevas
+
+**`vitest run "ruta/[id]"` sólo funciona desde PowerShell**: los corchetes del App Router los expande el
+shell POSIX y el spec no se encuentra.
+
+**`apps/web` no tiene eslint**: no hay script `lint` ni configuración propia, y `eslint` desde la raíz no
+encuentra config para `apps/web/src`. Lo que cubre esos archivos es `tsc --noEmit`, `next build` y
+`prettier --check`. **No es un olvido de este cierre: es el estado del repo**, y conviene saberlo antes de
+anotar «eslint en cero» para web.
+
+## Estado final
+
+|                   |                                                     |
+| ----------------- | --------------------------------------------------- |
+| `apps/web`        | **1689 tests / 78 suites**, tsc limpio, `build` OK  |
+| `apps/api`        | **1339 / 67**, eslint en cero — sin tocar           |
+| E2E de la API     | **218 / 13 — ARRASTRADO, NO MEDIDO** en este cierre |
+| `packages/shared` | 103 / 4                                             |
+
+De 1572 tests en web al empezar la fase: **+117**, repartidos T1 +27, el alfabeto +9, T2 +37, el canal
+catorce +5, T3 +15, el canal quince +10, T4 +14 (3 del arreglo 2a y 11 del inventario del `fetch`).
+
+⚠️ **Los e2e NO se corrieron**: el demonio de Docker no estaba levantado en esta máquina
+(`npipe:////./pipe/dockerDesktopLinuxEngine` no existe), así que no hubo `postgres-test` contra el que
+correrlos. **El 218 viene arrastrado de la Fase 12.** Esta fase **no tocó `apps/api` ni
+`packages/shared`**, así que no hay motivo para que haya cambiado — pero **no está medido y no se afirma
+como medido**.
+
+## Deuda anotada
+
+**Nueva de esta fase:**
+
+- ⚠️ **`navigator.clipboard` — la mutación 46b, reportada y NO cerrada.** `navigator.clipboard` es
+  `undefined` en jsdom, así que el `?.` es un no-op silencioso en los 1675. **Ya estaba documentado como
+  hueco abierto a conciencia desde la Fase 11** —los tres specs que lo usan le pisan el objeto a
+  `navigator` **desde dentro del test**, donde ningún `beforeEach` llega, así que el tapón registraría
+  cero escrituras **justo en los tres sitios donde el canal se usa**—. Lo que esta vuelta agrega es el
+  argumento de daño: **el portapapeles es del SISTEMA y no de la pestaña** —sobrevive al navegador y
+  aterriza en lo próximo donde la persona pegue algo— y **ninguno de los quince canales tiene esa
+  propiedad**.
+- ⚠️ **El contexto de navegación ANIDADO** (la 44 de la Fase 12) **sigue abierto**, con su tabla medida
+  en el bloque anterior.
+- ⚠️ **Los atributos de los DESCENDIENTES del `<body>` (la 42 de la Fase 12) SIGUEN ABIERTOS: el canal
+  quince NO los cerró.** Comprobado leyendo el tapón: el barrido nuevo recorre
+  `document.body.querySelectorAll('*')` pero sólo mira **el `.value` y el `shadowRoot`** de cada nodo;
+  los atributos los sigue mirando **el canal doce, y sólo sobre `documentElement` y `body`**, los dos
+  elementos y no sus descendientes. La única cobertura sigue siendo **local**, en el spec de la T4 de la
+  Fase 12. **El canal quince entra por el mismo bucle, así que cerrarlo ahora cuesta poco**: es el
+  candidato más barato a canal dieciséis.
+- **Partir el dato en trozos** sigue fuera del alfabeto, **a propósito y con el argumento escrito**:
+  cubrirlo exigiría buscar subsecuencias, que pondría rojo cualquier volcado que contenga las letras en
+  orden, y el que parte en dos parte en tres.
+- **El `.value` que escriba la LIMPIEZA de un `useEffect`** queda fuera del canal quince, porque se lee
+  antes de `cleanup()`. Es el precio exacto de no leer siempre una lista vacía, y está escrito en el
+  docblock.
+- **Un campo donde la persona escribió Y que además recibe una fuga** queda fuera de la resta del canal
+  quince. También escrito.
+
+**Vieja, y sigue en pie:**
+
+- **`use-rutinas.ts` no tiene un solo test**, con 3 mutaciones.
+- **Sobre-invalidación de `/mi-pack`** en `use-acciones-de-turno`: medido, 1 → 2 peticiones.
+- **El 403 de anotar le pone una ruta de API delante a quien está en el mostrador.** Es `apps/api`.
+- **El job de recordatorios es idempotente por gimnasio y no por persona.**
+- **La rotación de la clave de cifrado.**
+- **El contenedor `api` del compose está roto** por falta de `@nestjs/throttler`.
+- **Los tres campos muertos** (`Sala.exclusiva`, `Ausencia.recuperable` y la franja horaria de una
+  ausencia, que **excluye el día entero**).
+- **`PanelDeReasignar` ofrece como destino turnos PASADOS y LLENOS.**
+- **`centavos: 0` significa TRES cosas** y no se distinguen desde la respuesta.
+- **`planDestacadoId` no tiene editor**, y el `PUT` reemplaza.
+- ⚠️ **Nuevo en la lista vieja, y es de contrato: `listaPasada` sigue mintiendo** para cualquiera que lo
+  consuma. La pantalla lo esquiva; el campo no se arregló.
+- ⚠️ **`GET /liquidacion/:profesorId` pide `ADMIN_SALON`** —«esto enseña tarifas», dice el controller—,
+  así que **la profesora hoy no puede ver lo que va a cobrar**. No es una pantalla que falte: es una
+  decisión de permisos que hay que tomar antes.
+
+## Siguiente paso
+
+⚠️ **El inventario está rehecho y verificado el 2026-10-19, al final del bloque de la Fase 11: eran 26
+endpoints sin pantalla. NO HAY QUE REHACERLO.** La Fase 12 se llevó **14** y ésta **3**, así que
+**quedan 9**, en un área sola:
+
+| Área       | Endpoints | Desglose                                        |
+| ---------- | --------- | ----------------------------------------------- |
+| **Dinero** | **9**     | pagos 3, packs 3, comprobantes 2, liquidación 1 |
+
+Y las dos trampas del cruce siguen valiendo: **un archivo puede tener varios `@Controller`** y **muchas
+rutas se arman en un helper**, así que un `grep` del literal las da por no consumidas.
+
+## El checklist a mano (para Cesar)
+
+Seis comprobaciones que **ningún test puede hacer** y que no se corrieron: no hay navegador en el
+entorno.
+
+- [ ] **Entrar con una cuenta de profesora** y comprobar que se aterriza en **la agenda**, no en «Esta no
+      es tu área». ⚠️ Es el bug que esta fase existe para arreglar: **entrar correctamente la echaba**.
+- [ ] **Entrar como alumno y como admin** y comprobar que **no** se entra a `/{slug}/mis-clases` — y que
+      a cada uno se le ofrece su sitio con el nombre puesto.
+- [ ] **Abrir una URL del panel con la cuenta de profesora** y comprobar que **ahora ofrece su área** y
+      no el calendario (el arreglo 2a).
+- [ ] **Chequearse por QR en una clase** y comprobar que la agenda **no dice «lista pasada»** y sí dice
+      **cuántos faltan por marcar**.
+- [ ] **Abrir esa clase** y comprobar que **quien se chequeó llega tildado**. ⚠️ Si llega destildado,
+      guardar le borra un check-in real.
+- [ ] **Pasar lista** y comprobar en el **reporte de asistencia de Análisis** que **aparecen ausentes**.
+      ⚠️ Es la comprobación que cierra la fase: **hasta hoy ese número sólo podía ser cero.**

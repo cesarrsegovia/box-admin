@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, vi } from 'vitest';
 import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
 
 /**
- * LOS CANALES POR LOS QUE UNA PANTALLA DICE ALGO FUERA DEL `<body>`.
+ * LOS CANALES POR LOS QUE UNA PANTALLA DICE ALGO QUE NO MIRA NADIE.
  *
  * `console.*`, `document.title`, `window.name`, el `<head>` del documento, los
  * tres almacenes del navegador, el buffer de User Timing
@@ -21,10 +21,21 @@ import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
  * copia solo, y LA RED POR FUERA DE `pedir` —`fetch`, `XMLHttpRequest`,
  * `WebSocket` y `EventSource`—, que es la defensa que los canales septimo y
  * octavo daban por supuesta y que vivia, a mano, en tres specs de setenta y
- * cuatro. Ninguno lo mira un test de
+ * cuatro. Ninguno de esos QUINCE lo mira un test de
  * pantalla: los tests
  * miran el marcado DEL CUERPO, los cuerpos de las peticiones, las rutas y las
- * dos caches. Se vigilan todos juntos, GLOBAL —desde `vitest.setup.ts`— y
+ * dos caches.
+ *
+ * Y EL DECIMOQUINTO ESTA DEL OTRO LADO DE ESA FRASE, que es lo que lo hace
+ * distinto de los catorce: LO QUE EL MARCADO DEL `<body>` **NO SERIALIZA** —el
+ * `.value` de un control, que para los tipos en modo valor y para un
+ * `<textarea>` no se refleja a ningun atributo, y el contenido de un
+ * `shadowRoot` abierto—. Esta DENTRO del cuerpo, o sea del lado que miran los
+ * tests de pantalla, y aun asi no lo ve ninguno: leen `innerHTML` y
+ * `textContent`, y ahi eso no sale. Es el hueco entre las DOS defensas visto
+ * por dentro, como la URL del documento lo era visto por fuera.
+ *
+ * Se vigilan todos juntos, GLOBAL —desde `vitest.setup.ts`— y
  * contra EL MISMO registro de datos vigilados, por tres motivos que ya se
  * pagaron una vez cada uno:
  *
@@ -43,16 +54,16 @@ import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
  *    verde. Era una lista negra —el patron contra el que este repo predica—
  *    puesta en infraestructura que comparten cuarenta y nueve specs.
  *
- * CATORCE CANALES Y DOS EJES. Los canales son PUERTAS: sitios por donde sale un
+ * QUINCE CANALES Y DOS EJES. Los canales son PUERTAS: sitios por donde sale un
  * dato. Los ejes no abren ninguna puerta nueva — mueven el MOMENTO en que la
- * pantalla habla a un hueco donde ninguno de los catorce tapones esta mirando, y
+ * pantalla habla a un hueco donde ninguno de los quince tapones esta mirando, y
  * por eso los apagan todos de una linea, incluidos los que se tapen mañana.
  * Van numerados detras de los canales y viven cada uno en su archivo:
  *
- *  - EL DECIMOQUINTO, `src/test/rato-libre.ts`: `requestIdleCallback`, que
+ *  - EL DECIMOSEXTO, `src/test/rato-libre.ts`: `requestIdleCallback`, que
  *    jsdom no implementa, asi que lo aplazado al rato libre no corre NUNCA
  *    dentro del test. Se tapa MONTANDO la API para que corra.
- *  - EL DECIMOSEXTO, `src/test/salida-de-la-pestana.ts`: los cinco eventos de
+ *  - EL DECIMOSEPTIMO, `src/test/salida-de-la-pestana.ts`: los cinco eventos de
  *    salida de la pestaña —`beforeunload`, `visibilitychange`, `freeze`,
  *    `pagehide` y `unload`—, que jsdom no dispara NUNCA, asi que un oyente
  *    registrado en un `useEffect` vive y muere sin que nadie le hable. Se tapa
@@ -111,18 +122,18 @@ function todoLoVigilado(): [string, string][] {
 }
 
 // ---------------------------------------------------------------------------
-// EL ALFABETO: no es un canal mas, es COMO se busca el centinela en los catorce
+// EL ALFABETO: no es un canal mas, es COMO se busca el centinela en los quince
 // ---------------------------------------------------------------------------
 
 /**
- * LOS CATORCE CANALES COMPARTEN UNA PROPIEDAD, Y UNA SOLA LINEA LOS DERROTA.
+ * LOS QUINCE CANALES COMPARTEN UNA PROPIEDAD, Y UNA SOLA LINEA LOS DERROTA.
  *
  * Todos afirman igual: `volcado.includes(valor)`. Esa decision es correcta y
  * esta razonada arriba canal por canal —un tapon que prohiba `console.info`,
  * pedir una imagen o hablarle al worker se desactiva el dia que alguien lo
  * necesite, y entonces no tapa nada—. Pero tiene un corolario que ningun test
  * enunciaba: **buscar por subcadena del valor CRUDO deja pasar cualquier
- * transformacion del dato, y la deja pasar por los catorce a la vez.** No es un
+ * transformacion del dato, y la deja pasar por los quince a la vez.** No es un
  * agujero de un canal: es un agujero del alfabeto.
  *
  * LA MUTACION QUE LO DESCUBRIO, medida, en el `onSuccess` de un hook:
@@ -131,7 +142,7 @@ function todoLoVigilado(): [string, string][] {
  *
  * donde `lista` lleva el nombre propio y la ausencia de cada alumno de una
  * clase. Sobrevivio los 1599 tests del paquete con los trece canales
- * enchufados, Y POR EL CANAL MAS VIGILADO DE LOS CATORCE. El control que lo
+ * enchufados, Y POR EL CANAL MAS VIGILADO DE LOS QUINCE. El control que lo
  * prueba: la MISMA linea sin el `btoa` hace caer 5 tests con «la consola dijo
  * alumnaQueVino». El instrumento funcionaba; lo unico que cambiaba entre caer
  * y no caer era la codificacion.
@@ -146,7 +157,7 @@ function todoLoVigilado(): [string, string][] {
  * ASI QUE SE ARREGLA AQUI Y NO CANAL POR CANAL: lo que cambia no es QUE se
  * prohibe —sigue sin prohibirse ninguna llamada— sino COMO se busca el
  * centinela. Cada centinela se convierte en una LISTA DE AGUJAS —el valor y
- * sus formas codificadas— y los catorce canales buscan la lista entera. Un canal
+ * sus formas codificadas— y los quince canales buscan la lista entera. Un canal
  * que se tape mañana hereda el alfabeto sin escribir una linea, que es el
  * mismo motivo por el que el registro de datos es uno solo y no uno por tapon.
  *
@@ -303,7 +314,7 @@ function agujasDeBase64(texto: string): string[] {
  *
  * Es lo que hace que esto no cueste nada: el registro de datos vigilados no
  * cambia dentro de un spec, asi que codificar se paga una vez por centinela y
- * no catorce veces por test. Lo que queda por test son unos pocos `includes` mas
+ * no quince veces por test. Lo que queda por test son unos pocos `includes` mas
  * sobre un volcado que casi siempre esta vacio.
  */
 const AGUJAS_POR_CENTINELA = new Map<string, FormaDelDato[]>();
@@ -351,7 +362,7 @@ function formasDe(valor: string): FormaDelDato[] {
  * EN QUE FORMA lleva un volcado a un centinela, o `undefined` si no lo lleva.
  *
  * Es el unico sitio donde se compara un centinela con un volcado, y por eso es
- * el unico sitio que hay que tocar para que los catorce canales aprendan una
+ * el unico sitio que hay que tocar para que los quince canales aprendan una
  * forma nueva.
  *
  * SE EXPORTA SOLO PARA SU GUARDIAN, `alfabeto-de-centinelas.spec.ts`, por el
@@ -1881,9 +1892,13 @@ interface LlamadaAlHistorial {
  *  - `use-comprobantes.ts` (6) hace un `PUT` del archivo crudo a la URL firmada
  *    del almacen. Mandar un archivo por el proxy seria absurdo.
  *
- * O sea que la frase con la que se abre `lib/cliente.ts` —«el unico fetch del
- * navegador en toda la aplicacion»— YA NO ES CIERTA, y no por una fuga: por
- * cuatro decisiones de diseño tomadas despues. Una forma fuerte global seria
+ * O sea que la frase con la que se abria `lib/cliente.ts` —«el unico fetch del
+ * navegador en toda la aplicacion»— YA NO ERA CIERTA, y no por una fuga: por
+ * cuatro decisiones de diseño tomadas despues. (Esto se cerro: la frase esta
+ * corregida y las excepciones las CUENTA `lib/el-unico-fetch.spec.ts`, que lee
+ * `src/` entero en vez de medir trafico — y por eso encuentra diez archivos y
+ * no cinco: los seis del servidor no los ejecuta ningun spec de jsdom.) Lo que
+ * sigue valiendo es el razonamiento de abajo. Una forma fuerte global seria
  * roja con el codigo correcto en cinco specs, y la unica manera de sostenerla
  * seria una LISTA BLANCA DE DESTINOS —`/api/auth`, el almacen, la API publica—,
  * que es el patron contra el que este repo predica puesto en infraestructura
@@ -2264,12 +2279,319 @@ function conexionDeMentira(puerta: PuertaDeRed) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// El decimoquinto canal: lo que el `<body>` LLEVA y el marcado NO SERIALIZA
+// ---------------------------------------------------------------------------
+
 /**
- * EL TAPON DE LOS CATORCE CANALES —Y EL EJE DECIMOSEXTO—, en todos los specs.
+ * EL HUECO ENTRE LAS DOS DEFENSAS, POR DENTRO DEL `<body>` ESTA VEZ.
  *
- * Los catorce canales son los de abajo. El eje decimosexto no es uno de ellos:
+ * El reparto de este repo era: los CATORCE canales de arriba miran todo lo que
+ * NO es el `<body>`, y los tests de pantalla miran el `<body>` leyendo
+ * `document.body.innerHTML` y `textContent`. ENTRE LOS DOS SE CUELA LO QUE EL
+ * MARCADO NO SERIALIZA: hay cosas que estan en la pagina, se pintan, se
+ * autocompletan, viajan en un envio de formulario y las lee cualquier
+ * extension del navegador, y que NO aparecen en ningun `innerHTML` ni en
+ * ningun `textContent`.
+ *
+ * Es el mismo sitio que la URL del documento ocupaba para el decimotercer
+ * canal —ni de un lado ni del otro— pero por dentro del cuerpo en vez de por
+ * fuera.
+ *
+ * ---------------------------------------------------------------------------
+ * LO QUE SE CUBRE, Y EL CRITERIO: ¿PUEDE LLEVAR UN NOMBRE DENTRO?
+ *
+ *  - **EL `.value` DE UN CONTROL.** El `value` IDL de un control es una
+ *    PROPIEDAD del nodo. Para los tipos en «modo valor» —`text`, `password`,
+ *    `search`, `tel`, `url`, `email`, `number`, `date`…— y para `<textarea>`,
+ *    asignarlo NO toca el atributo: el dato queda en la pagina y fuera del
+ *    marcado.
+ *
+ *  - **UN `shadowRoot` ABIERTO.** El contenido de un shadow root no entra en
+ *    el `innerHTML` de su anfitrion ni en su `textContent`, y
+ *    `document.body.querySelectorAll('*')` NO desciende a el —medido: con un
+ *    `<p>` dentro de la sombra, la barrida del cuerpo devuelve 8 nodos y el
+ *    `<p>` no esta—. Es la otra mitad del mismo agujero, con la diferencia de
+ *    que ahi cabe un arbol entero y no una cadena.
+ *
+ * ---------------------------------------------------------------------------
+ * LO QUE MOTIVO ESTO, Y LA CORRECCION QUE SALIO DE MEDIRLO.
+ *
+ * La mutacion que lo abrio, en la pantalla de pasar lista:
+ *
+ *     const caja = useRef<HTMLInputElement>(null);
+ *     useEffect(() => {
+ *       // «un respaldo por si se recarga la pestaña a mitad del repaso»
+ *       if (caja.current !== null) caja.current.value = JSON.stringify(alumnos);
+ *     }, [alumnos]);
+ *     …
+ *     <input type="hidden" ref={caja} />
+ *
+ * donde `alumnos` lleva el nombre propio, el `perfilId` y la ausencia de cada
+ * persona de la clase.
+ *
+ * ⚠️ **CON `type="hidden"` ESA MUTACION NO SE ESCAPA, Y ESO ESTA MEDIDO Y NO
+ * LEIDO.** `type="hidden"` no esta en «modo valor» sino en MODO DEFECTO: su
+ * `.value` es un REFLEJO del atributo `value`, asi que asignarlo escribe el
+ * atributo y el dato sale entero en el `innerHTML`. Medido aplicando esa misma
+ * mutacion a la agenda —`(profesor)/mis-clases/page.tsx`—: el test «ni un
+ * nombre ni un perfilId de los alumnos llega al marcado» CAE, y el informe
+ * imprime el `value="[{&quot;perfilId&quot;…"` del `<input type="hidden">`
+ * entero. La sonda, tipo por tipo en jsdom 26 —`true` = el `innerHTML` lo ve—:
+ *
+ *     input (sin tipo) false   input[text]     false   input[password] false
+ *     textarea          false   input[hidden]   TRUE    input[checkbox] TRUE
+ *     input[radio]      TRUE    input[submit]   TRUE    input[button]   TRUE
+ *     input[image]      TRUE    input[reset]    TRUE    button          TRUE
+ *     output            TRUE    data            TRUE    option          TRUE
+ *
+ * O SEA QUE EL AGUJERO ES REAL PERO NO DONDE SE CREIA: la misma mutacion con
+ * `<input type="text" readOnly>` o con `<textarea readOnly>` paso los 20 tests
+ * de la agenda, el de marcado incluido. Lo que se escapa es el `.value` que no
+ * se refleja, no el `<input>` escondido.
+ *
+ * NO SE ENUMERAN LOS TIPOS, a proposito. Se mira TODO `.value` que sea una
+ * cadena, venga de donde venga, por el mismo motivo por el que la consola se
+ * vigila entera y no con cinco nombres a mano: una lista de tipos es una lista
+ * negra, y el dia que alguien escriba `type="search"` el tapon seguiria en
+ * verde diciendo otra cosa. Los tipos que SI reflejan pasan por aqui y no
+ * molestan: lo que llevan ya esta en el marcado, y la resta de abajo los deja
+ * fuera del informe sola.
+ *
+ * ---------------------------------------------------------------------------
+ * LA RESTA: SE AFIRMA QUE NO HAY NINGUNO **ESCONDIDO**, NO QUE NO HAYA
+ * NINGUNO.
+ *
+ * Esta es la decision que hace que el canal sea usable, y no es una suavizada:
+ * es la definicion misma de lo que se vigila. Una pantalla de edicion pinta
+ * `<input value={persona.nombreCompleto}>` y eso es su trabajo; React escribe
+ * ahi el atributo Y la propiedad, asi que el nombre esta en el `.value` Y en
+ * el `innerHTML`. Afirmar «ningun centinela en ningun `.value`» seria rojo con
+ * el codigo correcto en media docena de specs del panel, y un canal que se
+ * pone rojo con el codigo correcto es de los que alguien desactiva.
+ *
+ * Lo que se afirma, entonces, es lo mismo que afirma el test que descubrio
+ * esto: que el dato no este AGAZAPADO. Un centinela solo cuenta como fuga si
+ * esta en un sitio no serializado Y NO ESTA en lo que el marcado publica. El
+ * dato puede estar a la vista —ahi lo miran los tests de pantalla, que es el
+ * otro lado del reparto—; lo que no puede es estar donde no mira ningun
+ * instrumento.
+ *
+ * Y la resta no afloja nada del otro lado: la mutacion del `type="hidden"`
+ * sigue cayendo, pero por donde le toca —el test de marcado de su pantalla—,
+ * que es exactamente el reparto funcionando.
+ *
+ * TAMPOCO SE AFIRMA LA FORMA FUERTE («ni un sitio no serializado con algo
+ * dentro»), y por lo mismo: el panel esta lleno de formularios y casi toda
+ * casilla trae un `.value` de `'on'`. Donde `window.name`, IndexedDB y los
+ * atributos del `<html>` no tienen un solo uso legitimo, este sitio SI lo
+ * tiene y lo tiene por todas partes.
+ *
+ * ---------------------------------------------------------------------------
+ * LO QUE SE QUEDA FUERA, DICHO AQUI PARA QUE NADIE LO DESCUBRA CREYENDO QUE
+ * ESTO LO TAPABA —un limite escrito es una defensa; un limite tacito es una
+ * trampa para el que venga—:
+ *
+ *  - **`.checked`, `.indeterminate`, `.selectedIndex`, `.valueAsNumber`.** No
+ *    es que sean caros: es que NO PUEDEN LLEVAR EL DATO. Un booleano no tiene
+ *    un nombre dentro y un entero tampoco, y un centinela no cabe en ninguno
+ *    de los dos. Cubrirlos seria recorrer mas propiedades para buscar cadenas
+ *    donde no hay cadenas: ruido con forma de rigor. (La AUSENCIA de alguien
+ *    SI es un dato, y es el que la pantalla de pasar lista cuida — pero esa se
+ *    lee en el `data-alumno` y el `checked` del marcado, que `innerHTML` SI
+ *    serializa, y eso lo mira el spec de esa pantalla.)
+ *
+ *  - **`dataset`.** NO entra, y no por criterio sino porque esta MEDIDO que no
+ *    hace falta: `dataset` se refleja a atributos `data-*`, asi que el marcado
+ *    ya lo publica. Sonda: `div.dataset.loMio = 'DATASET-VALOR'` deja
+ *    `<div data-lo-mio="DATASET-VALOR">` y `document.body.innerHTML` lo ve.
+ *    Esto se comprobo en vez de darlo por hecho justamente porque «es una
+ *    propiedad del nodo» suena a que no se serializa, y aqui si.
+ *
+ *  - **UN `shadowRoot` CERRADO.** Con `attachShadow({ mode: 'closed' })`,
+ *    `host.shadowRoot` vale `null` —medido— y no hay forma de alcanzarlo desde
+ *    fuera: no es una decision, es la plataforma. Queda escrito para que nadie
+ *    lea el verde de este canal como «tampoco hay nada en una sombra cerrada».
+ *    El consuelo es que no hay un solo `attachShadow` en `src/`, asi que hoy
+ *    la puerta no esta ni abierta ni cerrada: no existe.
+ *
+ *  - **LOS INTERNOS DE REACT (`__reactProps$…`, `__reactFiber$…`).** Es la
+ *    decision menos obvia de la lista y por eso va argumentada por los dos
+ *    lados. A FAVOR de cubrirlos: existen de verdad —son propiedades propias
+ *    del nodo, medido—, el `__reactProps$` de cualquier control lleva dentro
+ *    el `value` y el `onChange` que la pantalla le paso, y nada de eso se
+ *    serializa. EN CONTRA, y es lo que decide: NO LOS ESCRIBE UNA PANTALLA.
+ *    Los pone React en cada nodo que monta, con lo que el JSX dijo, siempre,
+ *    en los 76 specs — o sea que su contenido es una SOMBRA de lo que la
+ *    pantalla ya pinta y no un sitio donde alguien pueda esconder algo: no hay
+ *    forma de escribir ahi que no sea escribir en el marcado. Cubrirlos
+ *    convertiria el canal en «el `.value` de cada control, otra vez, mas el
+ *    arbol de props entero», con el coste de serializar objetos circulares en
+ *    cada `afterEach` y la garantia de pisar la resta con falsos positivos en
+ *    cuanto React cambie de forma. Y la nota fea, por si alguien quiere
+ *    revisarlo: cubrir un interno del framework es atarse a un detalle de la
+ *    version, que es lo contrario de lo que hace el resto de este archivo
+ *    —doblar PUERTAS de la plataforma, no tripas de nadie—.
+ *
+ *  - **`.files` DE UN `<input type="file">`.** La `FileList` la elige la
+ *    persona en un dialogo del sistema, no la escribe una pantalla, y en jsdom
+ *    esta siempre vacia. No es un sitio donde esconder algo: es una entrada.
+ *
+ * ---------------------------------------------------------------------------
+ * LO QUE CUESTA, MEDIDO, porque esto recorre TODOS los nodos del `<body>` en
+ * cada `afterEach` de cada test de 77 archivos.
+ *
+ * A/B sobre el paquete entero, con la barrida y la foto del marcado
+ * cortocircuitadas a `[]` y `''` contra la version de verdad: **216,0 s
+ * acumulados contra 217,2 s sobre 1675 tests**, o sea ~1,2 s en total y unos
+ * 0,7 ms por test (+0,55%). En reloj de pared, 30,5 s contra 30,3 s: por
+ * debajo del ruido entre dos vueltas del mismo codigo.
+ *
+ * Por que sale tan barato, que no era obvio: la barrida es UNA vuelta por el
+ * cuerpo con dos lecturas de propiedad por nodo, el `.value` vacio se descarta
+ * antes de guardar nada, y la resta contra el marcado se calcula UNA vez por
+ * centinela y no una por escondite. Lo caro habria sido lo contrario —un
+ * `includes` del marcado entero por cada control de la pantalla—, y esa es la
+ * unica parte que conviene no deshacer por «claridad».
+ */
+
+/**
+ * LO QUE LA PERSONA TECLEO NO ES UN ESCONDITE, Y ESTO NO ES UNA SUAVIZADA: ES
+ * LA SEGUNDA MITAD DE LA DEFINICION.
+ *
+ * SE DESCUBRIO MIDIENDO, no pensando. Con el canal afirmando solo con la resta
+ * contra el marcado, la primera pasada sobre los 76 specs tiro **10 tests de
+ * 2 archivos**, todos con el codigo correcto:
+ *
+ *     el .value de un <input type="password"> esconde claveSmtp   → 3 tests
+ *     el .value de un <input> esconde motivoDeLasVacaciones       → 7 tests
+ *
+ * Y los dos casos son el MISMO y es el de manual: la persona ESCRIBIO el dato
+ * en el campo. La clave del SMTP esta en el `.value` de su campo porque
+ * alguien la tecleo, y no esta en el marcado porque esa pantalla decide a
+ * proposito no escribirla ahi —su propio spec lo afirma: «la clave no aparece
+ * en ninguno de los canales», con el `hostSmtp` de control para probar que un
+ * campo CONTROLADO si deja su valor en el `outerHTML`—. El motivo de unas
+ * vacaciones esta en su campo porque se escribio, y uno de los tests que cayo
+ * se llama literalmente «tras un fallo el formulario sigue ahi, con lo que ya
+ * se habia escrito»: el valor en el campo ES la cosa afirmada.
+ *
+ * O sea que la resta contra el marcado NO BASTA. Un campo de texto no
+ * controlado —o controlado y re-renderizado— guarda lo tecleado en la
+ * propiedad y no en el atributo, asi que lo que la persona escribe cae
+ * exactamente en la definicion de «esta en la pagina y no en el marcado». Y
+ * eso no es una fuga: es un campo de formulario haciendo su trabajo. Un canal
+ * que lo llame fuga se pone rojo con el codigo correcto, y un canal que se
+ * pone rojo con el codigo correcto es de los que alguien desactiva — que es el
+ * criterio con el que este archivo decidio no prohibir `console.info`, no
+ * prohibir pedir imagenes y no vigilar el portapapeles.
+ *
+ * COMO SE DISTINGUE, Y SE PUEDE: lo que la persona escribe llega por un EVENTO
+ * —`input` o `change`, que burbujean los dos— y lo que una pantalla escribe a
+ * escondidas en un `useEffect` NO despacha ninguno. Es el criterio que el
+ * docblock del portapapeles identifica («una copia deliberada ocurre mientras
+ * se despacha un gesto de la persona y una copia accidental no») y que alli se
+ * descarto porque no arreglaba el problema de fondo; aqui SI lo arregla, y
+ * ademas no hay que inventarse nada para medirlo: `fireEvent.change` y
+ * `userEvent.type` despachan los eventos de verdad.
+ *
+ * SE ESCUCHA EN EL `document` Y EN FASE DE CAPTURA, una sola vez por archivo:
+ * en captura porque un oyente de la pantalla que llame a `stopPropagation()`
+ * no puede dejarnos ciegos, y en el `document` porque es el unico nodo que no
+ * desmonta nadie. El registro es un `WeakSet` y no hace falta vaciarlo entre
+ * tests: los nodos de un test se van con el `cleanup()` y los del siguiente son
+ * objetos distintos.
+ *
+ * EL HUECO QUE DEJA, DICHO ENTERO: un campo en el que la persona escribio Y
+ * que ademas recibe una fuga por `.value` queda fuera del canal. Es estrecho
+ * —pide que la pantalla escriba justo donde se acaba de teclear, que es
+ * ademas la forma mas visible de hacerlo, porque pisa lo que la persona ve— y
+ * es el precio de no ser rojo en los dos specs de arriba. La alternativa era
+ * una lista blanca de campos, que es el patron contra el que este repo predica.
+ */
+const TECLEADO_POR_LA_PERSONA = new WeakSet<object>();
+
+function anotarLoTecleado(evento: Event): void {
+  const donde = evento.target;
+  if (donde !== null && typeof donde === 'object') TECLEADO_POR_LA_PERSONA.add(donde);
+}
+
+/** Un sitio del cuerpo que lleva algo dentro y que ningun `innerHTML` publica. */
+interface EsconditeDelCuerpo {
+  /** Como se nombra en el informe. Vocabulario fijo, NUNCA el contenido. */
+  sitio: string;
+  /** Lo que lleva dentro, para buscar centinelas. NUNCA entra en el informe. */
+  contenido: string;
+}
+
+/**
+ * Como nombrar un nodo en el informe SIN publicar lo que lleva.
+ *
+ * La etiqueta y, si lo tiene, el `type` —que es lo que distingue el `.value`
+ * que se refleja del que no, o sea la informacion que de verdad ubica la
+ * fuga—. Por `claveSegura`, como las claves de los almacenes: un
+ * `type={claveTemporal}` seria raro, pero el informe no es sitio para
+ * averiguarlo.
+ */
+function nombreDelNodo(nodo: Element): string {
+  const tipo = nodo.getAttribute('type');
+  const etiqueta = nodo.tagName.toLowerCase();
+
+  return tipo === null ? `<${etiqueta}>` : `<${etiqueta} type="${claveSegura(tipo)}">`;
+}
+
+/**
+ * Los escondites del `<body>`, recorriendo el cuerpo UNA vez.
+ *
+ * Se llama ANTES de `cleanup()`: lo que mira vive DENTRO del `<body>`, que el
+ * desmontaje vacia. Ver el comentario de la llamada.
+ *
+ * SE EXPORTA SOLO PARA SU GUARDIAN,
+ * `lo-que-el-marcado-no-serializa.spec.ts`, por el mismo motivo por el que se
+ * exportan `formaQueSeFue` y lo de `relojes-falsos.ts`: lo que decide si esto
+ * sirve es invisible desde fuera. Si alguien cambia el `typeof === 'string'`
+ * por una lista de etiquetas, se deja la rama del `shadowRoot`, o mueve la
+ * llamada detras del `cleanup()`, LOS 1665 TESTS SIGUEN EN VERDE y el canal se
+ * queda ciego. Ningun spec de pantalla lo llama.
+ */
+export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
+  const escondites: EsconditeDelCuerpo[] = [];
+
+  for (const nodo of document.body.querySelectorAll('*')) {
+    // `typeof === 'string'` y no una lista de etiquetas: `<progress>`,
+    // `<meter>` y `<li>` tienen un `.value` NUMERICO —medido— y ahi no cabe un
+    // nombre. El vacio no es un escondite y se salta para no pagar un
+    // `includes` por cada casilla del panel.
+    const valor = (nodo as Partial<HTMLInputElement>).value;
+
+    if (typeof valor === 'string' && valor !== '' && !TECLEADO_POR_LA_PERSONA.has(nodo)) {
+      escondites.push({ sitio: `el .value de un ${nombreDelNodo(nodo)}`, contenido: valor });
+    }
+
+    // El `.value` de un `<select>` es DERIVADO —lo da el `<option>` elegido, y
+    // ese `value` si se refleja—, asi que entra por la linea de arriba y la
+    // resta lo deja fuera del informe sola. Se deja pasar igual en vez de
+    // excluirlo: excluir pide saber que `<select>` es especial, y eso es
+    // justamente el tipo de cosa que caduca.
+    const sombra = nodo.shadowRoot;
+
+    if (sombra !== null) {
+      escondites.push({
+        sitio: `el shadowRoot de un ${nombreDelNodo(nodo)}`,
+        contenido: `${sombra.innerHTML} ${sombra.textContent ?? ''}`,
+      });
+    }
+  }
+
+  return escondites;
+}
+
+/**
+ * EL TAPON DE LOS QUINCE CANALES —Y EL EJE DECIMOSEPTIMO—, en todos los specs.
+ *
+ * Los quince canales son los de abajo. El eje decimoseptimo no es uno de ellos:
  * es el despacho de los eventos de salida de la pestaña, que corre como
- * PRIMERA linea del `afterEach` para que los catorce miren un mundo en el que la
+ * PRIMERA linea del `afterEach` para que los quince miren un mundo en el que la
  * pestaña ya se cerro. Vive en `src/test/salida-de-la-pestana.ts` y el porque
  * de su sitio exacto esta ahi y en el comentario de esa primera linea.
  *
@@ -2471,6 +2793,28 @@ function conexionDeMentira(puerta: PuertaDeRed) {
  * `PuertaDeRed`. Y lo custodia un spec propio, `red-por-fuera-de-pedir.spec.ts`,
  * porque la pregunta de la pila es invisible desde cualquier spec de pantalla.
  *
+ * **Lo que el marcado del `<body>` no serializa.** EL UNICO DE LOS QUINCE QUE
+ * VIVE DENTRO DEL CUERPO, o sea del lado que los tests de pantalla miran — y
+ * que aun asi no ve ninguno, porque leen `innerHTML` y `textContent` y ahi
+ * esto no sale: el `.value` de un control, que para los tipos en modo valor y
+ * para un `<textarea>` es una PROPIEDAD que no se refleja a ningun atributo, y
+ * el contenido de un `shadowRoot` abierto, que no entra en el `innerHTML` de
+ * su anfitrion ni lo alcanza un `querySelectorAll('*')` del cuerpo. El dato
+ * esta en la pagina: se pinta, se autocompleta, viaja en un envio de
+ * formulario y lo lee cualquier extension. Medido: la misma mutacion
+ * —`caja.current.value = JSON.stringify(alumnos)` en un `useEffect`— paso los
+ * 20 tests de la agenda, con su test de marcado incluido, cuando la caja era
+ * un `<input type="text">` o un `<textarea>`. Se afirma POR CENTINELAS Y CON
+ * UNA RESTA, que es la forma que no tiene ningun otro canal: un centinela solo
+ * cuenta si NO esta tambien en el marcado, porque una pantalla de edicion
+ * pinta `<input value={nombre}>` a proposito y por todo el panel. Lo que se
+ * afirma no es «no hay centinelas» sino «no hay ninguno ESCONDIDO». Y una
+ * correccion que salio de medir y que conviene no volver a perder: con
+ * `type="hidden"` esa mutacion NO se escapa —ese tipo esta en modo defecto y
+ * su `.value` SI se refleja al atributo—, asi que el agujero no es el `<input>`
+ * escondido sino el `.value` que no se refleja. Los tipos medidos uno a uno,
+ * lo que se queda fuera y por que: el docblock de `EsconditeDelCuerpo`.
+ *
  * EL CUARTO VECINO DE ESA FAMILIA —`navigator.clipboard`— NO SE VIGILA, a
  * proposito y con el motivo medido escrito al lado de los otros tres: el panel
  * copia secretos registrados a proposito en DOS pantallas, y los tres specs
@@ -2521,6 +2865,18 @@ export function vigilarLosCanalesDeSalida(): void {
   const basesAbiertas: string[] = [];
   const escritoEnLaBase: EscrituraEnLaBase[] = [];
   const navegado: LlamadaAlHistorial[] = [];
+
+  /**
+   * EL OYENTE DEL DECIMOQUINTO CANAL SE PONE AQUI, UNA VEZ POR ARCHIVO.
+   *
+   * Fuera de los hooks a proposito, como `montarElRatoLibre` y por el mismo
+   * motivo: no es un espia que un `vi.restoreAllMocks()` pueda devolver a su
+   * sitio, es un oyente de verdad sobre el `document`, que no desmonta nadie.
+   * Ponerlo en el `beforeEach` apilaria uno por test y los 1665 se irian
+   * sumando sobre el mismo nodo.
+   */
+  document.addEventListener('input', anotarLoTecleado, true);
+  document.addEventListener('change', anotarLoTecleado, true);
 
   beforeEach(() => {
     tituloAlEmpezar = document.title;
@@ -3058,9 +3414,9 @@ export function vigilarLosCanalesDeSalida(): void {
 
   afterEach(() => {
     /**
-     * LA PESTAÑA SE CIERRA AQUI, ANTES DE LEER NI UNO DE LOS CATORCE CANALES.
+     * LA PESTAÑA SE CIERRA AQUI, ANTES DE LEER NI UNO DE LOS QUINCE CANALES.
      *
-     * Es el eje decimosexto, y esta primero por dos medidas que no se
+     * Es el eje decimoseptimo, y esta primero por dos medidas que no se
      * adivinan y estan las dos en `salida-de-la-pestana.ts`:
      *
      * 1. EL OYENTE DE UNA FUGA DE SALIDA SE QUITA EN EL DESMONTAJE. Lo registra
@@ -3074,7 +3430,7 @@ export function vigilarLosCanalesDeSalida(): void {
      *    leen aqui abajo con el arbol todavia montado; el resto, despues del
      *    `cleanup()`. Despachando entre la foto de la cabecera y el desmontaje,
      *    un oyente de `pagehide` que subiera un `<meta>` al `<head>` no lo
-     *    veria nadie. Desde aqui arriba, los catorce tapones miran un mundo en el
+     *    veria nadie. Desde aqui arriba, los quince tapones miran un mundo en el
      *    que la pestaña ya se cerro.
      */
     despacharLaSalidaDeLaPestana();
@@ -3112,6 +3468,36 @@ export function vigilarLosCanalesDeSalida(): void {
     const imagenesDelDocumento = [...document.querySelectorAll('img')].map(
       (imagen) => imagen.getAttribute('src') ?? '',
     );
+
+    /**
+     * EL DECIMOQUINTO CANAL SE LEE AQUI, ANTES DE `cleanup()`, COMO EL `<head>`
+     * Y LAS IMAGENES — Y AL REVES QUE LOS OTROS TRECE.
+     *
+     * No es una preferencia y no se dedujo: esto vive DENTRO del `<body>`, que
+     * es justamente lo que `cleanup()` vacia. Medido con una sonda en el
+     * `afterEach`: `document.body.children.length` vale 0 detras del
+     * desmontaje, asi que la barrida leida despues devolveria SIEMPRE la lista
+     * vacia y el canal seria verde y ciego — el modo de fallo que todo este
+     * archivo existe para evitar, y el mismo que obliga a leer el `<head>`
+     * antes porque React 19 se lleva sus `<meta>` al desmontar.
+     *
+     * Lo que se pierde leyendo antes, dicho entero: el `.value` que escriba la
+     * LIMPIEZA de un `useEffect` —que es lo que GANAN los atributos de
+     * alrededor, la URL y el buffer de marcas leyendose despues—. No hay
+     * eleccion: esos tres sobreviven al desmontaje y esto no. Y el agujero es
+     * estrecho, porque el nodo sobre el que esa limpieza escribiria ya no esta
+     * en el documento cuando corre.
+     *
+     * LA OTRA MITAD, Y ES LA QUE DEFINE EL CANAL: el marcado se fotografia AQUI
+     * MISMO, en la misma linea, para poder RESTAR. Un centinela solo esta
+     * escondido si NO esta en lo que el `innerHTML` y el `textContent`
+     * publican, y las dos fotos tienen que ser del mismo instante: con el
+     * marcado leido despues del `cleanup()` la resta compararia contra un
+     * cuerpo vacio y el canal se pondria rojo con el codigo correcto en medio
+     * panel.
+     */
+    const escondites = escondidoEnElCuerpo();
+    const marcadoDelCuerpo = `${document.body.innerHTML} ${document.body.textContent ?? ''}`;
 
     /**
      * EL DESMONTAJE VA AQUI DENTRO, Y EL ORDEN ES LA PARTE DELICADA.
@@ -3479,13 +3865,13 @@ export function vigilarLosCanalesDeSalida(): void {
      */
     for (const [nombre, valor] of todoLoVigilado()) {
       /**
-       * LOS CATORCE CANALES, CONTRA EL MISMO ALFABETO Y POR LA MISMA PUERTA.
+       * LOS QUINCE CANALES, CONTRA EL MISMO ALFABETO Y POR LA MISMA PUERTA.
        *
        * Cada afirmacion busca el centinela en TODAS sus formas —en claro,
        * %-codificado, en base64 con sus tres desplazamientos— y no solo en la
        * cruda: ver el docblock de `FormaDelDato` para el porque y para lo que
        * se queda fuera a proposito. Pasa por aqui para que una forma nueva se
-       * agregue en UN sitio y la hereden los catorce, igual que el registro de
+       * agregue en UN sitio y la hereden los quince, igual que el registro de
        * datos vigilados es uno solo y no uno por tapon.
        *
        * EL INFORME SIGUE SIN PUBLICAR NADA. `decirlo` recibe COMO se fue
@@ -3670,6 +4056,40 @@ export function vigilarLosCanalesDeSalida(): void {
         (como) =>
           `una peticion de red por fuera de \`pedir\` lleva ${nombre}${como} (${redQueLleva(valor)})`,
       );
+
+      /**
+       * EL DECIMOQUINTO CANAL, por CENTINELAS **Y CON LA RESTA**, que es lo
+       * que lo distingue de los otros catorce.
+       *
+       * No se afirma «ningun centinela en un sitio no serializado», que seria
+       * rojo con el codigo correcto en media docena de specs —una pantalla de
+       * edicion pinta `<input value={persona.nombreCompleto}>` y React escribe
+       * ahi el atributo Y la propiedad—. Se afirma que no hay ninguno
+       * ESCONDIDO: que lo que lleva ese sitio no serializado NO este tambien
+       * en lo que el marcado publica. El dato puede estar a la vista —ahi lo
+       * miran los tests de pantalla, que es el otro lado del reparto—; lo que
+       * no puede es estar donde no mira ningun instrumento.
+       *
+       * UN `expect` POR ESCONDITE, y no uno por todos juntos, porque el
+       * informe gana nombrando EL SITIO: `el .value de un <input type="text">`
+       * ubica la fuga de un vistazo y `un sitio del cuerpo` no.
+       *
+       * Y EL INFORME NO PUBLICA EL VOLCADO, que es la parte dificil aqui: el
+       * contenido de un escondite es justamente el dato. Se afirma con la
+       * misma forma que el resto del tapon —`toBe(false)` sobre un booleano,
+       * nunca `not.toContain(valor)`—, asi que lo unico que sale al registro
+       * de CI es el NOMBRE del dato, el nombre del sitio y un `true`. El test
+       * local que descubrio esto usaba `not.toContain` y publicaba el
+       * `'[{"perfilId":"perfil-ana-que-vino-lis…'` entero.
+       */
+      // La resta se calcula UNA vez por centinela y no una por escondite: no
+      // depende del sitio, y en una pantalla con treinta controles serian
+      // treinta barridas del marcado entero para contestar lo mismo.
+      if (escondites.length > 0 && formaQueSeFue(marcadoDelCuerpo, valor) === undefined) {
+        for (const escondite of escondites) {
+          noSeFuePor(escondite.contenido, (como) => `${escondite.sitio} esconde ${nombre}${como}`);
+        }
+      }
 
       /**
        * EL SEXTO CANAL SE AFIRMA COMO LOS ALMACENES Y NO COMO `window.name`.

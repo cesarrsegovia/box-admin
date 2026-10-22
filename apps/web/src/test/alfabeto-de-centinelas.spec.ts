@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { formaQueSeFue } from './espia-de-consola';
 
 /**
- * EL GUARDIAN DEL ALFABETO, Y POR QUE ESTE SI TIENE SPEC Y LOS TRECE NO.
+ * EL GUARDIAN DEL ALFABETO, Y POR QUE ESTE SI TIENE SPEC Y LOS DEMAS NO.
  *
- * Los trece canales no tienen spec a proposito: lo que hay que comprobar de un
+ * Los demas canales no tienen spec a proposito: lo que hay que comprobar de un
  * tapon es que una mutacion lo hace caer, y eso se mide con la mutacion, no con
  * un test que repita el codigo del tapon en otro orden. Aqui la situacion es
  * otra, y es exactamente la de `relojes-falsos.spec.ts`: ESTO NO SE VE DESDE

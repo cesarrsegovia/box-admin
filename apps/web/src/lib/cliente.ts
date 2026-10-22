@@ -1,10 +1,26 @@
 /**
- * El unico fetch del navegador en toda la aplicacion.
+ * EL UNICO FETCH DEL NAVEGADOR QUE HABLA CON LA API.
  *
  * Siempre contra `/api/bx`, nunca contra la API directamente: el token vive en
  * una cookie httpOnly que este codigo no puede leer, y es el proxy del servidor
  * quien lo añade. Si alguna pantalla llamara a la API por su cuenta, tendria
  * que llevar el token consigo y todo el diseño se vendria abajo.
+ *
+ * ---------------------------------------------------------------------------
+ * ESTA FRASE DECIA «EL UNICO FETCH DEL NAVEGADOR», A SECAS, Y YA NO ERA CIERTA.
+ *
+ * Dejo de serlo cuatro fases despues de escribirse, sin que nadie lo notara,
+ * porque una medicion anotada en un comentario envejece en silencio: parece
+ * documentacion. Hoy hay CUATRO sitios del navegador que llaman al `fetch`
+ * global por fuera de aqui, los cuatro a proposito y ninguno contra la API —
+ * las tres pantallas que llaman a `/api/auth/…` para que el BFF escriba o
+ * borre la cookie httpOnly, y el `PUT` del comprobante a la URL firmada del
+ * almacen. (El servidor tiene los suyos, empezando por el proxy que hay al
+ * otro lado de este mismo archivo.)
+ *
+ * No hace falta creerle a este parrafo: estan CONTADOS, con su motivo y en los
+ * dos sentidos, en `lib/el-unico-fetch.spec.ts`. El quinto no entra sin que
+ * alguien lo decida y lo escriba en esa tabla.
  */
 
 export class ErrorDeApi extends Error {
