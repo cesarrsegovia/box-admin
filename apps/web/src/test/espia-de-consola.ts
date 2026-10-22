@@ -18,7 +18,10 @@ import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
  * que son los dos elementos que envuelven al cuerpo y que no desmonta nadie, y
  * LA URL DEL DOCUMENTO —`location` y las cinco puertas de la History API—, que
  * es el hueco ENTRE las dos defensas de este repo y el unico canal que se
- * copia solo. Ninguno lo mira un test de
+ * copia solo, y LA RED POR FUERA DE `pedir` —`fetch`, `XMLHttpRequest`,
+ * `WebSocket` y `EventSource`—, que es la defensa que los canales septimo y
+ * octavo daban por supuesta y que vivia, a mano, en tres specs de setenta y
+ * cuatro. Ninguno lo mira un test de
  * pantalla: los tests
  * miran el marcado DEL CUERPO, los cuerpos de las peticiones, las rutas y las
  * dos caches. Se vigilan todos juntos, GLOBAL —desde `vitest.setup.ts`— y
@@ -40,16 +43,16 @@ import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
  *    verde. Era una lista negra —el patron contra el que este repo predica—
  *    puesta en infraestructura que comparten cuarenta y nueve specs.
  *
- * TRECE CANALES Y DOS EJES. Los canales son PUERTAS: sitios por donde sale un
+ * CATORCE CANALES Y DOS EJES. Los canales son PUERTAS: sitios por donde sale un
  * dato. Los ejes no abren ninguna puerta nueva — mueven el MOMENTO en que la
- * pantalla habla a un hueco donde ninguno de los trece tapones esta mirando, y
+ * pantalla habla a un hueco donde ninguno de los catorce tapones esta mirando, y
  * por eso los apagan todos de una linea, incluidos los que se tapen mañana.
  * Van numerados detras de los canales y viven cada uno en su archivo:
  *
- *  - EL DECIMOCUARTO, `src/test/rato-libre.ts`: `requestIdleCallback`, que
+ *  - EL DECIMOQUINTO, `src/test/rato-libre.ts`: `requestIdleCallback`, que
  *    jsdom no implementa, asi que lo aplazado al rato libre no corre NUNCA
  *    dentro del test. Se tapa MONTANDO la API para que corra.
- *  - EL DECIMOQUINTO, `src/test/salida-de-la-pestana.ts`: los cinco eventos de
+ *  - EL DECIMOSEXTO, `src/test/salida-de-la-pestana.ts`: los cinco eventos de
  *    salida de la pestaña —`beforeunload`, `visibilitychange`, `freeze`,
  *    `pagehide` y `unload`—, que jsdom no dispara NUNCA, asi que un oyente
  *    registrado en un `useEffect` vive y muere sin que nadie le hable. Se tapa
@@ -105,6 +108,260 @@ export function vigilarEstosDatos(datos: Record<string, string>): void {
 
 function todoLoVigilado(): [string, string][] {
   return [...Object.entries(SECRETOS_DEL_PANEL), ...vigilados];
+}
+
+// ---------------------------------------------------------------------------
+// EL ALFABETO: no es un canal mas, es COMO se busca el centinela en los catorce
+// ---------------------------------------------------------------------------
+
+/**
+ * LOS CATORCE CANALES COMPARTEN UNA PROPIEDAD, Y UNA SOLA LINEA LOS DERROTA.
+ *
+ * Todos afirman igual: `volcado.includes(valor)`. Esa decision es correcta y
+ * esta razonada arriba canal por canal —un tapon que prohiba `console.info`,
+ * pedir una imagen o hablarle al worker se desactiva el dia que alguien lo
+ * necesite, y entonces no tapa nada—. Pero tiene un corolario que ningun test
+ * enunciaba: **buscar por subcadena del valor CRUDO deja pasar cualquier
+ * transformacion del dato, y la deja pasar por los catorce a la vez.** No es un
+ * agujero de un canal: es un agujero del alfabeto.
+ *
+ * LA MUTACION QUE LO DESCUBRIO, medida, en el `onSuccess` de un hook:
+ *
+ *     console.info('[mis-clases] diagnostico', btoa(encodeURIComponent(JSON.stringify(lista))));
+ *
+ * donde `lista` lleva el nombre propio y la ausencia de cada alumno de una
+ * clase. Sobrevivio los 1599 tests del paquete con los trece canales
+ * enchufados, Y POR EL CANAL MAS VIGILADO DE LOS CATORCE. El control que lo
+ * prueba: la MISMA linea sin el `btoa` hace caer 5 tests con «la consola dijo
+ * alumnaQueVino». El instrumento funcionaba; lo unico que cambiaba entre caer
+ * y no caer era la codificacion.
+ *
+ * Y ES LA BRECHA MAS BARATA DE EXPLOTAR DE TODO ESTE ARCHIVO. Los doce canales
+ * anteriores pedian ENCONTRAR una puerta —saber que jsdom no trae `caches`,
+ * que `sendBeacon` existe, que la History API tiene cinco bocas—. Esta se
+ * escribe sola, y ademas «lo codifico para que no se lea de un vistazo en la
+ * consola» SUENA A BUENA PRACTICA: es lo que escribe, de buena fe, quien no
+ * quiere ensuciar la consola del mostrador con un volcado.
+ *
+ * ASI QUE SE ARREGLA AQUI Y NO CANAL POR CANAL: lo que cambia no es QUE se
+ * prohibe —sigue sin prohibirse ninguna llamada— sino COMO se busca el
+ * centinela. Cada centinela se convierte en una LISTA DE AGUJAS —el valor y
+ * sus formas codificadas— y los catorce canales buscan la lista entera. Un canal
+ * que se tape mañana hereda el alfabeto sin escribir una linea, que es el
+ * mismo motivo por el que el registro de datos es uno solo y no uno por tapon.
+ *
+ * LAS FORMAS QUE SE CUBREN, y el criterio por el que entran. Se cubre una
+ * transformacion SOLO si es algo que alguien escribiria SIN MALA INTENCION:
+ * contra una fuga deliberada no hay defensa razonable —quien quiera sacar un
+ * dato puede partirlo en tres y mandarlo en tres lineas—, asi que el tapon que
+ * sirve es el que caza al que no esta atacando a nadie.
+ *
+ *  - EN CLARO. La de siempre, y va PRIMERA para que el informe de la fuga
+ *    normal siga diciendo exactamente lo que decia antes.
+ *  - `encodeURIComponent` / `encodeURI`. Es meter el dato en una URL, o en un
+ *    query, o en el `src` de una imagen: la cosa mas normal del mundo y la
+ *    primera mitad de la mutacion de arriba. Las dos funciones se piden porque
+ *    difieren en los caracteres reservados; cuando dan lo mismo —el caso
+ *    habitual, un nombre con espacios— la segunda no agrega ninguna aguja.
+ *  - `btoa`, EN SUS TRES DESPLAZAMIENTOS. Ver el detalle de abajo: sin los
+ *    tres, esto no sirve para la fuga de verdad.
+ *  - `btoa` DE LA FORMA %-CODIFICADA, tambien en tres desplazamientos. No es
+ *    una rebuscadura: `btoa` solo admite Latin-1 y revienta con un acento mal
+ *    colocado, asi que pasar por `encodeURIComponent` antes es LA FORMA
+ *    CORRECTA de meter un texto en base64 — es lo que dice la documentacion y
+ *    es, literalmente, lo que hacia la mutacion.
+ *
+ * LO QUE SE QUEDA FUERA, DICHO AQUI PARA QUE NADIE LO DESCUBRA CREYENDO QUE
+ * ESTO LO TAPABA —un limite escrito es una defensa; un limite tacito es una
+ * trampa para el que venga—:
+ *
+ *  - PARTIR EL DATO. `nombre.split('')`, mandar la mitad por un canal y la
+ *    mitad por otro, un carrusel de un caracter por linea. Es una fuga
+ *    DELIBERADA: nadie parte un nombre en letras por comodidad. Y cubrirla
+ *    exigiria buscar SUBSECUENCIAS en vez de subcadenas, lo que pondria rojo
+ *    cualquier volcado que por azar contenga las letras en orden. El remedio
+ *    seria peor que la enfermedad y ademas no cierra nada: el que parte en dos
+ *    parte en tres.
+ *  - COMPRIMIR (`CompressionStream`, gzip, LZ). Nadie comprime una traza de
+ *    consola sin intencion, no hay API sincrona que usar desde el `afterEach`,
+ *    y el resultado son bytes que no se comparan por subcadena.
+ *  - HASHEAR O CIFRAR (SHA-256, HMAC, AES). No es que sea caro: es que no se
+ *    puede. Un hash depende de la sal, del algoritmo y de la codificacion, y
+ *    el espacio de combinaciones no tiene fondo. Tampoco encaja en el
+ *    criterio: nadie hashea un dato para «no ensuciar la consola».
+ *  - BYTES SUELTOS (`TextEncoder`, `Array.from(…, c => c.charCodeAt(0))`,
+ *    hexadecimal, `Buffer.toString('hex')`). Un volcado de numeros no es algo
+ *    que nadie escriba sin querer, y donde SI pasa de verdad —el cuerpo de una
+ *    baliza— ya esta cubierto por el otro lado: `cuerpoDeUnaBaliza` decodifica
+ *    los `ArrayBuffer` y los `Blob` de vuelta a texto antes de comparar.
+ *  - DOS NIVELES DE LO MISMO (`encodeURIComponent` dos veces, `btoa(btoa(x))`).
+ *    Se cubre UN nivel de %-codificado y UN `btoa` encima de el, que es la
+ *    composicion que la gente escribe. Mas niveles son combinatoria sin final
+ *    y ya no son un descuido.
+ *
+ * Y UNA COSA QUE NO SE DUPLICA, A PROPOSITO: el decimotercer canal resuelve el
+ * %-codificado POR SU CUENTA, decodificando su propio volcado
+ * —`urlComoTexto` le pega al `href` su `decodeURIComponent`—. Eso es MAS fuerte
+ * que una aguja, porque atrapa tambien codificaciones que aqui no se generan
+ * (hexadecimal en minuscula, un `encodeURI` a mano). Se deja como esta y NO se
+ * lleva esa idea al sitio comun, que seria la forma obvia de generalizarlo y es
+ * la mala: `decodeURIComponent` REVIENTA con un `%` suelto —un `console.log`
+ * que diga «50% de asistencia» ya lo tiene— y el `catch` se comeria el volcado
+ * entero, dejando el canal ciego justo por haberlo querido reforzar. Codificar
+ * la AGUJA no tiene ese modo de fallo, y ademas se calcula UNA vez por
+ * centinela en vez de una vez por volcado y por test.
+ */
+interface FormaDelDato {
+  /** Lo que se busca por subcadena en el volcado de un canal. */
+  aguja: string;
+  /**
+   * Como nombrar la forma en el informe, y NUNCA el valor ni su codificacion.
+   *
+   * Vacio cuando el dato salio en claro, para que el mensaje de la fuga normal
+   * sea identico al de antes de que esto existiera.
+   */
+  comoSeDijo: string;
+}
+
+/**
+ * EL DETALLE QUE DECIDE SI ESTO SIRVE: BASE64 SE ALINEA EN BLOQUES DE 3 BYTES.
+ *
+ * `btoa` toma los bytes de tres en tres y escribe cuatro caracteres por grupo.
+ * O sea que la codificacion de un centinela aparece dentro de la codificacion
+ * del volcado entero SOLO SI el centinela empieza en una posicion multiplo de
+ * 3. En una fuga de verdad el centinela esta EN MEDIO —`btoa` del JSON entero,
+ * con el nombre detras de `[{"alumna":"`— y la posicion es la que toque.
+ *
+ * MEDIDO, con `'Sofia-Pereyra-Vino-Marcador'` dentro de un volcado grande y el
+ * relleno de delante variando de 0 a 6: la aguja alineada (k=0) empareja en
+ * los rellenos 0, 3 y 6 — o sea que UNA SOLA aguja falla DOS DE CADA TRES
+ * VECES. Con las tres, empareja siempre exactamente una: k=0 en los rellenos
+ * 0/3/6, k=1 en 1/4 y k=2 en 2/5. Si solo se probara el caso alineado, el test
+ * del tapon pasaria en verde y la defensa no serviria para la fuga real.
+ *
+ * COMO SE GENERAN LAS TRES. Se antepone al centinela `k` bytes de relleno
+ * (k = 0, 1, 2) y se codifica; eso coloca el primer byte del centinela en la
+ * posicion `k` del primer grupo, que es justo lo que le pasaria dentro del
+ * volcado. Despues se RECORTAN LOS BORDES, que es la otra mitad:
+ *
+ *  - por delante, el primer grupo entero cuando hubo relleno (4 caracteres),
+ *    porque sus bits llevan mezclado el relleno que nos inventamos;
+ *  - por detras, lo que no sea un grupo COMPLETO de tres bytes del centinela,
+ *    porque el ultimo grupo de `btoa` lleva relleno `=` y bits a cero que en
+ *    el volcado de verdad serian los bytes que vienen detras del centinela.
+ *
+ * Lo que queda son solo caracteres que dependen UNICAMENTE del centinela, y
+ * por eso aparecen literalmente dentro del volcado codificado.
+ *
+ * (Se recorta un grupo entero por delante aunque DOS de sus cuatro caracteres
+ * sean ya deducibles del centinela solo. Quedarselos alargaria la aguja dos
+ * caracteres y no cambia a quien caza: lo que decide es que la aguja sea
+ * EXACTA, no que sea larga.)
+ *
+ * SE EXIGEN DOS GRUPOS COMPLETOS —8 caracteres, 6 bytes del centinela— para
+ * emitir una aguja. Una aguja de 4 caracteres son 3 bytes y empieza a
+ * emparejar por casualidad; un centinela tan corto tampoco sobreviviria a la
+ * comparacion en claro, que ya lo encuentra en cualquier texto.
+ */
+const MINIMO_DE_GRUPOS = 2;
+
+/** Un byte cualquiera de Latin-1 para desplazar: se recorta despues. */
+const RELLENO_DE_BASE64 = '\u0000';
+
+function agujasDeBase64(texto: string): string[] {
+  const agujas: string[] = [];
+
+  for (let desplazamiento = 0; desplazamiento < 3; desplazamiento += 1) {
+    // Con `k` bytes de relleno delante, el primer grupo completo del centinela
+    // empieza en su byte `3 - k`; lo anterior se recorta.
+    const bytesCubiertos =
+      desplazamiento === 0 ? texto.length : texto.length - (3 - desplazamiento);
+    const grupos = Math.floor(bytesCubiertos / 3);
+    if (grupos < MINIMO_DE_GRUPOS) continue;
+
+    let codificado: string;
+
+    try {
+      codificado = btoa(RELLENO_DE_BASE64.repeat(desplazamiento) + texto);
+    } catch {
+      // `btoa` solo admite Latin-1 y revienta con cualquier cosa fuera de ese
+      // rango. No es una perdida: quien quiera codificar un texto asi TIENE
+      // que pasar antes por `encodeURIComponent`, y esa composicion es la otra
+      // familia de agujas de `formasDe`.
+      return agujas;
+    }
+
+    const desde = desplazamiento === 0 ? 0 : 4;
+    agujas.push(codificado.slice(desde, desde + grupos * 4));
+  }
+
+  return agujas;
+}
+
+/**
+ * Las agujas de cada centinela, calculadas UNA VEZ para todo el archivo de test.
+ *
+ * Es lo que hace que esto no cueste nada: el registro de datos vigilados no
+ * cambia dentro de un spec, asi que codificar se paga una vez por centinela y
+ * no catorce veces por test. Lo que queda por test son unos pocos `includes` mas
+ * sobre un volcado que casi siempre esta vacio.
+ */
+const AGUJAS_POR_CENTINELA = new Map<string, FormaDelDato[]>();
+
+function formasDe(valor: string): FormaDelDato[] {
+  const yaCalculadas = AGUJAS_POR_CENTINELA.get(valor);
+  if (yaCalculadas !== undefined) return yaCalculadas;
+
+  // EN CLARO PRIMERO, y el orden importa: si el dato salio sin codificar, el
+  // informe tiene que decir lo mismo que decia antes y no acusar a una forma.
+  const formas: FormaDelDato[] = [{ aguja: valor, comoSeDijo: '' }];
+  const yaPuestas = new Set<string>([valor]);
+
+  const agregar = (aguja: string, comoSeDijo: string): void => {
+    if (aguja === '' || yaPuestas.has(aguja)) return;
+    yaPuestas.add(aguja);
+    formas.push({ aguja, comoSeDijo });
+  };
+
+  for (const aguja of agujasDeBase64(valor)) agregar(aguja, ' (en base64)');
+
+  for (const codificar of [encodeURIComponent, encodeURI]) {
+    let codificado: string;
+
+    try {
+      codificado = codificar(valor);
+    } catch {
+      // Un sustituto suelto hace que `encodeURIComponent` lance `URIError`.
+      continue;
+    }
+
+    agregar(codificado, ' (%-codificado)');
+
+    for (const aguja of agujasDeBase64(codificado)) {
+      agregar(aguja, ' (en base64 de su forma %-codificada)');
+    }
+  }
+
+  AGUJAS_POR_CENTINELA.set(valor, formas);
+
+  return formas;
+}
+
+/**
+ * EN QUE FORMA lleva un volcado a un centinela, o `undefined` si no lo lleva.
+ *
+ * Es el unico sitio donde se compara un centinela con un volcado, y por eso es
+ * el unico sitio que hay que tocar para que los catorce canales aprendan una
+ * forma nueva.
+ *
+ * SE EXPORTA SOLO PARA SU GUARDIAN, `alfabeto-de-centinelas.spec.ts`, por el
+ * mismo motivo por el que `relojes-falsos.ts` expone lo suyo: la aritmetica de
+ * los desplazamientos es invisible desde fuera —si se rompe, los 71 specs
+ * siguen en verde y el tapon se queda ciego sin que nadie se entere—, asi que
+ * la unica forma de custodiarla es medirla. Ningun spec de pantalla la llama.
+ */
+export function formaQueSeFue(texto: string, valor: string): FormaDelDato | undefined {
+  return formasDe(valor).find((forma) => texto.includes(forma.aguja));
 }
 
 /**
@@ -359,8 +616,11 @@ function comoTextoLasEntradas(entradas: EntradaDeTiempo[], tipo: TipoDeEntrada):
  * `querySelectorAll` la ven—, no esta en el `<head>`, no dice nada por la
  * consola, no toca el titulo ni el nombre de la pestaña ni ninguno de los tres
  * almacenes, no deja marca de rendimiento, no entra en ninguna de las dos
- * caches y NO ES UN `fetch`, asi que el test de «no habla con la red por fuera
- * de `pedir`» —que dobla el `fetch` global— pasa en verde.
+ * caches y NO ES UN `fetch`, asi que el DECIMOCUARTO canal —el que dobla el
+ * `fetch` global— no lo ve. (Cuando se escribio esto ese canal no existia como
+ * tal: era un test a mano que vivia en tres specs de setenta y cuatro, asi que
+ * la frase «pasa en verde» era cierta en los otros setenta y uno sin que nadie
+ * hiciera nada. Ver el docblock de `PuertaDeRed`.)
  *
  * Y sale igual. El navegador pide esa URL de verdad, CON LA COOKIE de sesion
  * si el destino la comparte, y la URL entera —con lo que lleve en el query—
@@ -415,8 +675,9 @@ const SRC_DE_UNA_IMAGEN = Object.getOwnPropertyDescriptor(HTMLImageElement.proto
  * - `navigator.sendBeacon(url, cuerpo)`. SI es una peticion de red, y es la
  *   peor de las tres: el navegador la manda aunque la pestaña se este
  *   cerrando —ese es su proposito—, no pasa por `fetch`, no se puede cancelar
- *   y no devuelve nada que mirar. El test de «no habla con la red por fuera de
- *   `pedir`», que dobla el `fetch` global, la deja pasar entera.
+ *   y no devuelve nada que mirar. El DECIMOCUARTO canal, que dobla el `fetch`
+ *   global y las otras tres puertas de red, la deja pasar entera: por eso vive
+ *   aqui y no alli.
  *
  * SE AFIRMA POR CENTINELAS, no por «ninguna llamada», igual que el canal de
  * imagenes y por el mismo motivo: comunicarse es legitimo —sincronizar dos
@@ -1195,7 +1456,11 @@ function comoTextoLasEscrituras(escrituras: EscrituraEnLaBase[]): string {
  */
 function claveSegura(clave: string): string {
   for (const [nombre, valor] of todoLoVigilado()) {
-    if (valor !== '' && clave.includes(valor)) return `«${nombre}»`;
+    // Por el ALFABETO entero y no solo por el valor crudo: una clave de almacen
+    // llamada `borrador-${btoa(email)}` publica el dato igual, y si aqui se
+    // mirara solo la forma cruda el informe copiaria esa clave tal cual
+    // —codificada, pero copiada— al registro de CI.
+    if (valor !== '' && formaQueSeFue(clave, valor) !== undefined) return `«${nombre}»`;
   }
 
   return clave;
@@ -1535,12 +1800,476 @@ interface LlamadaAlHistorial {
   argumentos: string;
 }
 
+// ---------------------------------------------------------------------------
+// El decimocuarto canal: la red por fuera de `pedir`
+// ---------------------------------------------------------------------------
+
 /**
- * EL TAPON DE LOS TRECE CANALES —Y EL EJE DECIMOQUINTO—, en todos los specs.
+ * LA DEFENSA QUE ESTE ARCHIVO DABA POR SUPUESTA Y VIVIA EN 3 SPECS DE 74.
  *
- * Los trece canales son los de abajo. El eje decimoquinto no es uno de ellos:
+ * Los docblocks del septimo y del octavo canal dicen, los dos, que `new Image()`
+ * y `sendBeacon` son peligrosos porque «no son un `fetch`, asi que el test de no
+ * habla con la red por fuera de `pedir` pasa en verde». Esa frase supone que el
+ * test existe. MEDIDO: existia en TRES specs de setenta y cuatro —`analisis`,
+ * `ausencias` y la ficha de `usuarios/[id]`—, cada uno con su copia a mano. En
+ * los otros setenta y uno el `fetch` global no lo miraba nadie.
+ *
+ * Es la tercera vez que a este repo le pasa lo mismo: el espia de la consola
+ * empezo enganchado en 5 specs de 49 y los tres almacenes tenian once copias a
+ * mano y faltaban en el duodecimo. LA MUTACION QUE LO MIDIO ESTA VEZ, en la
+ * pantalla de las clases de una profesora:
+ *
+ *     void fetch('https://…/clases', { method: 'POST', body: JSON.stringify(alumnos.data) })
+ *
+ * o sea LA LISTA ENTERA de una clase, con el nombre propio y la ausencia de cada
+ * persona. Paso los 19 tests de ese spec y el `tsc`, porque ese spec no era uno
+ * de los tres.
+ *
+ * ---------------------------------------------------------------------------
+ * EL CRITERIO: NO «SE LLAMO A `fetch`» SINO «SE LLAMO A `fetch` SIN PASAR POR
+ * `pedir`», Y SE DECIDE POR LA PILA DE LLAMADAS.
+ *
+ * `pedir` usa `fetch` por dentro (`lib/cliente.ts`), asi que el trafico
+ * legitimo del panel pasa por esta misma puerta: un «no se llamo a `fetch`» a
+ * secas seria ROJO CON EL CODIGO CORRECTO en los 23 specs que doblan el `fetch`
+ * global y dejan correr el `pedir` de verdad. Hay que distinguir.
+ *
+ * SE DESCARTO DISTINGUIR POR LA URL —`/api/bx…` contra cualquier otra cosa—, y
+ * no por gusto: el agujero que esa forma deja es EXACTAMENTE la mutacion que
+ * `ausencias/page.spec.tsx` midio y escribio, un `void fetch('/api/bx/stats/caja')`
+ * en un `useEffect`. Va al proxy CON LA COOKIE de sesion, trae la caja del
+ * gimnasio a una pantalla que no tiene nada que ver con el dinero, y por la URL
+ * es indistinguible de una peticion de `pedir`. La forma que se puede burlar
+ * escribiendo la mutacion que ya esta documentada no sirve.
+ *
+ * SE MIRA LA PILA. `pedir` llama a `fetch` SINCRONAMENTE desde su propio cuerpo
+ * —`respuesta = await fetch(...)`, el `await` es sobre el resultado, no sobre la
+ * llamada—, asi que un `new Error().stack` leido dentro del envoltorio trae
+ * `at pedir (…/src/lib/cliente.ts:56)` como SEGUNDO marco. Medido en este
+ * entorno, con el camino entero: `sonda → pedir → queryFn → @tanstack/query`.
+ * Lo que no sale de ahi dentro no es `pedir`, diga lo que diga su URL.
+ *
+ * Y NO SE PUEDE BURLAR SIN QUERER porque para parecer legitima una peticion
+ * tiene que estar ESCRITA DENTRO DE `lib/cliente.ts`, que son ochenta lineas que
+ * se revisan de un vistazo y cuyo docblock es justamente la regla. No hay forma
+ * de escribir por descuido una linea en otro archivo que aparezca con ese marco
+ * en la pila. Lo contrario —una peticion legitima que la pila NO reconozca— es
+ * el modo de fallo barato: seria roja y se ve.
+ *
+ * (Las barras se normalizan antes de buscar: en Windows la pila dice
+ * `D:\…\src\lib\cliente.ts` y en CI `/…/src/lib/cliente.ts`. Buscar la forma de
+ * una sola plataforma es la manera de que esto quede verde y ciego en la otra, y
+ * asi empezo esta medida: la primera sonda dio «ninguna peticion paso por
+ * `pedir`» en las 467 del paquete, y la culpa era de la barra.)
+ *
+ * ---------------------------------------------------------------------------
+ * LA FORMA ES POR CENTINELAS Y NO LA FUERTE, Y ESO SE MIDIO EN LOS 74 SPECS.
+ *
+ * La pregunta de la forma fuerte —«ni una peticion por fuera de `pedir`», que es
+ * lo que afirman las tres copias a mano— se contesto con una sonda sobre el
+ * paquete entero, no leyendo. De las 467 peticiones que los 74 specs hacen,
+ * 371 salen de `pedir` y **96 NO**, y vienen de CINCO SITIOS DE PRODUCCION que
+ * estan ahi a proposito y con su motivo escrito:
+ *
+ *  - `[slug]/page.tsx` (74) habla con la API PUBLICA directamente, desde el
+ *    servidor y con `credentials: 'omit'`: el proxy existe para poner la cookie
+ *    y aqui no hay cookie que poner. Su propio spec lo fija.
+ *  - `formulario-de-login.tsx` (9) y `formulario-de-registro.tsx` (4) llaman a
+ *    `/api/auth/…`, que son las rutas del BFF que ESCRIBEN la cookie httpOnly.
+ *    No pueden pasar por `pedir`, que va a `/api/bx`.
+ *  - `boton-de-salir.tsx` (3) llama a `/api/auth/logout`, por lo mismo.
+ *  - `use-comprobantes.ts` (6) hace un `PUT` del archivo crudo a la URL firmada
+ *    del almacen. Mandar un archivo por el proxy seria absurdo.
+ *
+ * O sea que la frase con la que se abre `lib/cliente.ts` —«el unico fetch del
+ * navegador en toda la aplicacion»— YA NO ES CIERTA, y no por una fuga: por
+ * cuatro decisiones de diseño tomadas despues. Una forma fuerte global seria
+ * roja con el codigo correcto en cinco specs, y la unica manera de sostenerla
+ * seria una LISTA BLANCA DE DESTINOS —`/api/auth`, el almacen, la API publica—,
+ * que es el patron contra el que este repo predica puesto en infraestructura
+ * que comparten 74 specs: se queda vieja sola y el dia que alguien agregue un
+ * destino legitimo lo que se agranda es el agujero.
+ *
+ * Asi que se afirma POR CENTINELAS, como el `src` de una imagen, las tres
+ * salidas laterales y el service worker, y por el mismo motivo que ahi: hablar
+ * con la red es legitimo y este producto ya lo hace por cinco sitios. Lo que no
+ * es legitimo es que la peticion lleve un dato del mostrador dentro.
+ *
+ * LO QUE ESO DEJA FUERA, dicho sin adornar: un `fetch` a otro origen que NO
+ * lleve ningun centinela —una traza de uso con la forma de la pantalla, sin
+ * nombres— pasa en verde. Es el precio exacto de la medida de arriba, es el
+ * mismo precio que pagan los canales 7, 8 y 10, y es la razon por la que LAS
+ * TRES COPIAS A MANO SE QUEDAN donde estan: en esos tres specs `pedir` esta
+ * doblado, no hay ni una peticion legitima, y ahi la forma fuerte sale gratis y
+ * caza ademas el dato que nadie registro. Lo global y lo local no se tapan: lo
+ * global cubre los 74 con centinelas, lo local cubre tres con la forma fuerte.
+ *
+ * ---------------------------------------------------------------------------
+ * SE MIRAN LAS DOS MITADES DE CADA PETICION: EL DESTINO Y LA CARGA.
+ *
+ * No es lo mismo que pasen por el mismo sitio, igual que en la baliza: un dato
+ * en el query sale al REGISTRO DE ACCESO del servidor del otro lado —que no es
+ * nuestro y que se guarda por defecto— y uno en el cuerpo sale en la peticion.
+ * La carga incluye LAS CABECERAS, que es donde acaba un dato que alguien mete
+ * en un `x-contexto` «para depurar», y el cuerpo se desmenuza con
+ * `cuerpoDeUnaBaliza`, que ya sabe leer un `URLSearchParams`, un `FormData`, un
+ * `ArrayBuffer` y un `Blob`.
+ *
+ * LO QUE LA CARGA NO VE: el cuerpo de un `new Request(url, { body })` pasado
+ * como primer argumento. `Request.body` es un flujo y solo se lee con una
+ * promesa; mirarlo obligaria a volver asincrono el `afterEach` entero, que
+ * tiene un orden delicado con `cleanup()`. El DESTINO de ese `Request` si se
+ * mira, y nadie en `src/` construye uno.
+ *
+ * ---------------------------------------------------------------------------
+ * LAS CUATRO PUERTAS, Y POR QUE ESTAS CUATRO. MEDIDO EN JSDOM 26:
+ *
+ *   fetch          function      XMLHttpRequest  function
+ *   WebSocket      function      EventSource     undefined
+ *   Worker         undefined     SharedWorker    undefined
+ *   RTCPeerConnection undefined
+ *
+ * - `fetch`. La puerta del canal.
+ * - `XMLHttpRequest`. EXISTE ENTERO en jsdom, asi que no hay ningun `?.` que
+ *   delate la fuga: la linea corre igual en el test y en el navegador, como los
+ *   atributos del `<html>`. Y es literalmente lo primero que escribe quien se
+ *   encuentra con que `fetch` esta vigilado. Cubrir `fetch` y no esto seria
+ *   reabrir el canal entero cambiando una palabra, que es el argumento de
+ *   `mark` sin `measure`.
+ * - `WebSocket`. Existe en jsdom y MARCA DE VERDAD: `new WebSocket(url)` abre un
+ *   socket contra el destino. La URL y cada `send` llevan dato, y «avisos en
+ *   vivo» o «el chat de soporte» son features que alguien escribe de buena fe.
+ * - `EventSource`. NO existe en jsdom, que es justo el caso de `sendBeacon`, de
+ *   `caches`, de `serviceWorker` y de IndexedDB: a pelo revienta y el test cae
+ *   solo, pero la forma prudente —`if ('EventSource' in window)`— NO HACE NADA y
+ *   pasa en verde mientras en el mostrador abre el flujo. Se DEFINE, como las
+ *   otras cuatro, y el precio es el de siempre: la deteccion de capacidades ve
+ *   una puerta que jsdom no tiene. Hoy no la pregunta nadie —cero
+ *   `EventSource`, cero `WebSocket` y cero `XMLHttpRequest` en `src/`— y el
+ *   cambio acerca el entorno al navegador en vez de alejarlo.
+ *
+ * LAS TRES ULTIMAS SE AFIRMAN POR LA FORMA FUERTE —ni una peticion— y no por
+ * centinelas, al reves que `fetch`, y por la misma medida que IndexedDB y los
+ * atributos del `<html>`: el producto no tiene NINGUN uso legitimo de esas tres
+ * puertas, y nada del arbol de dependencias las toca durante un test. Donde no
+ * hay uso legitimo que proteger, la forma fuerte es gratis y caza ademas el dato
+ * que nadie registro.
+ *
+ * LO QUE SE QUEDA FUERA, ESCRITO AQUI PARA QUE NADIE LO DESCUBRA CREYENDO QUE
+ * ESTO LO TAPABA —un limite escrito es una defensa; un limite tacito es una
+ * trampa para el que venga—:
+ *
+ *  - `navigator.sendBeacon`. No falta: es la tercera puerta del OCTAVO canal,
+ *    que la define y la mira entera. Se nombra aqui para que nadie la agregue
+ *    dos veces.
+ *  - EL `src` DE UNA IMAGEN. Tampoco falta: es el SEPTIMO canal.
+ *  - LAS PETICIONES QUE NACEN DEL DOM: `<link rel="prefetch">`, `<script src>`,
+ *    `<iframe src>`, `<video src>`. No pasan por ninguna funcion que se pueda
+ *    doblar —las dispara el parser al insertar el nodo— y jsdom no las pide. Un
+ *    `<link>` cae de refilon por el CUARTO canal, que afirma que la pantalla no
+ *    metio NI UN nodo nuevo en el `<head>`; un `<iframe>` o un `<script>` en el
+ *    `<body>` no los ve nadie. Para cerrarlo habria que barrer el documento
+ *    entero por atributos de URL al terminar, que es un canal propio y no este.
+ *  - WEBRTC (`RTCPeerConnection` y sus canales de datos), `Worker` y
+ *    `SharedWorker`. Los tres son `undefined` en jsdom, o sea que valdria el
+ *    argumento de `EventSource`. No entran por el OTRO criterio, el que este
+ *    archivo ya usa para el alfabeto: se cubre lo que alguien escribiria SIN
+ *    MALA INTENCION. Nadie abre una conexion WebRTC para mandar una metrica.
+ *    Contra una fuga deliberada no hay defensa razonable, y el que quiera sacar
+ *    un dato tiene caminos mas baratos que montar un par de ICE.
+ */
+type PuertaDeRed = 'fetch' | 'XMLHttpRequest' | 'WebSocket' | 'EventSource';
+
+/** Una peticion de red vista por el espia. */
+interface PeticionDeRed {
+  puerta: PuertaDeRed;
+  /** `GET`, `POST`, `send`… o vacio cuando la puerta no tiene metodo. */
+  metodo: string;
+  destino: string;
+  /** Cabeceras y cuerpo, en texto, para buscar centinelas dentro. */
+  carga: string;
+  /** Si la llamada salio de DENTRO de `pedir`. Ver el docblock de arriba. */
+  dePedir: boolean;
+}
+
+/** El archivo donde vive el unico `fetch` legitimo del navegador. */
+const PEDIR_VIVE_EN = '/src/lib/cliente.ts';
+
+/**
+ * Si quien esta llamando a `fetch` es `pedir`, leyendo la pila.
+ *
+ * SE EXPORTA SOLO PARA SU GUARDIAN, `red-por-fuera-de-pedir.spec.ts`, por el
+ * mismo motivo por el que se exporta `formaQueSeFue`: si esto empezara a
+ * devolver `true` siempre, los 74 specs seguirian en verde y el canal se
+ * quedaria ciego sin que nadie se entere. La unica forma de custodiarlo es
+ * medirlo. Ningun spec de pantalla lo llama.
+ */
+export function vinoDePedir(pila: string): boolean {
+  // Las barras al derecho: en Windows la pila dice `D:\…\src\lib\cliente.ts` y
+  // en CI `/…/src/lib/cliente.ts`. Buscar una sola forma deja el canal verde y
+  // ciego en la otra plataforma, que es como empezo esta medida.
+  return pila.replace(/\\/g, '/').includes(PEDIR_VIVE_EN);
+}
+
+/**
+ * LAS CUATRO PUERTAS DE VERDAD, cogidas UNA VEZ al cargar.
+ *
+ * Por la leccion de las galletas, del `src` de una imagen y de la History API:
+ * leerlas desde dentro del `beforeEach`, despues del primer enganche,
+ * envolveria el envoltorio de ayer y contaria cada peticion tantas veces como
+ * tests lleve el archivo.
+ */
+const RED_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
+const WEBSOCKET_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
+const EVENT_SOURCE_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'EventSource');
+const ABRIR_UN_XHR = XMLHttpRequest.prototype.open;
+
+/** Lo que un `open()` dejo dicho, hasta que llegue su `send()`. */
+const XHR_ABIERTO = new WeakMap<XMLHttpRequest, { metodo: string; destino: string }>();
+
+/**
+ * LAS PETICIONES DEL TEST EN CURSO, Y VIVEN EN EL MODULO Y NO EN EL TAPON.
+ *
+ * Es la unica lista de este archivo que no esta dentro de
+ * `vigilarLosCanalesDeSalida`, y tiene que estarlo: el envoltorio de `fetch` se
+ * fabrica UNA VEZ al cargar el modulo —lo necesita el enganche de
+ * `vi.stubGlobal` de aqui abajo, que corre antes que cualquier hook— y escribe
+ * aqui. El tapon la vacia en cada `beforeEach`, como vacia las suyas.
+ */
+const PETICIONES_DE_RED: PeticionDeRed[] = [];
+
+type Red = (...partes: unknown[]) => unknown;
+
+/** El doble que instalo el spec, si lo instalo. Ver el enganche de abajo. */
+let elDobleDeLaRed: Red | undefined;
+
+/** El metodo de una peticion, mire donde mire quien la escribio. */
+function metodoDeUnFetch(que: unknown, opciones: unknown): string {
+  if (typeof opciones === 'object' && opciones !== null) {
+    const pedido = (opciones as { method?: unknown }).method;
+    if (typeof pedido === 'string' && pedido !== '') return pedido.toUpperCase();
+  }
+
+  if (typeof que === 'object' && que !== null && 'method' in que) {
+    return String((que as { method: unknown }).method).toUpperCase();
+  }
+
+  return 'GET';
+}
+
+/** Las cabeceras en texto: ahi acaba el dato que alguien mete en un `x-contexto`. */
+function textoDeLasCabeceras(cabeceras: unknown): string {
+  if (cabeceras === undefined || cabeceras === null) return '';
+
+  if (typeof Headers === 'function' && cabeceras instanceof Headers) {
+    return [...cabeceras.entries()].map(([nombre, valor]) => `${nombre}=${valor}`).join(' ');
+  }
+
+  if (Array.isArray(cabeceras)) {
+    return cabeceras.map((par) => (Array.isArray(par) ? par.join('=') : String(par))).join(' ');
+  }
+
+  if (typeof cabeceras === 'object') {
+    return Object.entries(cabeceras as Record<string, unknown>)
+      .map(([nombre, valor]) => `${nombre}=${String(valor)}`)
+      .join(' ');
+  }
+
+  return String(cabeceras);
+}
+
+/** Lo que una peticion lleva ademas del destino: cabeceras y cuerpo. */
+function cargaDeUnFetch(que: unknown, opciones: unknown): string {
+  const partes: string[] = [];
+
+  if (typeof Request === 'function' && que instanceof Request) {
+    partes.push(textoDeLasCabeceras(que.headers));
+  }
+
+  if (typeof opciones === 'object' && opciones !== null) {
+    const init = opciones as { headers?: unknown; body?: unknown };
+    partes.push(textoDeLasCabeceras(init.headers));
+    // El mismo desmenuzador que la baliza: sabe leer `URLSearchParams`,
+    // `FormData`, `ArrayBuffer` y `Blob`, que es por donde se va un cuerpo que
+    // un `JSON.stringify` dejaria en `{}`.
+    partes.push(cuerpoDeUnaBaliza(init.body));
+  }
+
+  return partes.join(' ');
+}
+
+/**
+ * COMO NOMBRAR EL DESTINO DE UNA PETICION SIN PUBLICARLO.
+ *
+ * Es la decision de informe de este canal, y la regla de todo el archivo
+ * llevada a su caso mas dificil: EL DESTINO ES DONDE VIVE LA FUGA. Un
+ * `…/uso.gif?d=${JSON.stringify(datos)}` lleva el reporte entero en el query, y
+ * un mensaje de fallo que copiara la URL mandaria el dato al registro de CI
+ * —que lo guarda mas tiempo y lo lee mas gente que la consola del mostrador—,
+ * que es exactamente el modo de fallo que este archivo evita desde la primera
+ * linea.
+ *
+ * SE NOMBRA EL ORIGEN Y NUNCA LA RUTA NI EL QUERY. El origen ubica la fuga
+ * —`https://analitica.ejemplo.com` dice todo lo que hace falta para ir a
+ * buscarla con un `git diff`— y es la parte de la URL que NO puede llevar un
+ * volcado dentro: lo que se mete en una URL de fuga va en el query o en la
+ * ruta. Y pasa igualmente por `claveSegura`, como las claves de los almacenes y
+ * los nombres de las bases, por si alguien escondio el dato en un subdominio.
+ *
+ * Y para el mismo origen no se dice ni el origen: `el proxy del panel` cuando
+ * va a `/api/bx…` —una peticion escrita a mano contra el proxy, que es la
+ * mutacion que `ausencias` midio— y `el mismo origen` para el resto. Vocabulario
+ * fijo, como `hash`, `replaceState` o `<meta>`.
+ */
+function haciaDondeVa(destino: string): string {
+  let url: URL;
+
+  try {
+    url = new URL(destino, window.location.href);
+  } catch {
+    return 'una URL que no se puede leer';
+  }
+
+  if (url.origin !== window.location.origin) return claveSegura(url.origin);
+  if (url.pathname.startsWith('/api/bx')) return 'el proxy del panel';
+
+  return 'el mismo origen';
+}
+
+/** Como se nombra una peticion en el informe: la puerta, el metodo y el origen. */
+function laPuertaDe(peticion: PeticionDeRed): string {
+  const metodo = peticion.metodo === '' ? '' : ` ${peticion.metodo}`;
+
+  return `${peticion.puerta}${metodo} hacia ${haciaDondeVa(peticion.destino)}`;
+}
+
+/**
+ * EL ENVOLTORIO DE `fetch`: UNO SOLO, DE MODULO, Y REGISTRA Y DEJA PASAR.
+ *
+ * Reenvia al doble que instalo el spec cuando lo hay, para que todas las
+ * afirmaciones que los specs hacen sobre SU doble —`llamada(doble, 0)`,
+ * `expect(doble).toHaveBeenCalled()`— sigan viendo exactamente lo que veian.
+ *
+ * Y CUANDO NO HAY DOBLE, CONTESTA UN 200 CON JSON en vez de reenviar al `fetch`
+ * de verdad o devolver `undefined`. Las dos cosas importan y las dos vienen
+ * medidas de las copias a mano, que ya se las habian ganado a los golpes:
+ * reenviar al de verdad abriria una conexion de red desde un test, y devolver
+ * `undefined` haria que una peticion clandestina muriera en un `TypeError` al
+ * encadenarle un `.catch` —un fallo que apunta al sitio equivocado— en vez de
+ * caer por la afirmacion de abajo, que dice QUE se fue y POR DONDE.
+ */
+const LA_RED: Red = function (this: unknown, ...partes: unknown[]) {
+  const [que, opciones] = partes;
+
+  PETICIONES_DE_RED.push({
+    puerta: 'fetch',
+    metodo: metodoDeUnFetch(que, opciones),
+    destino: claveDeUnaPeticion(que),
+    carga: cargaDeUnFetch(que, opciones),
+    dePedir: vinoDePedir(new Error().stack ?? ''),
+  });
+
+  if (elDobleDeLaRed !== undefined) return elDobleDeLaRed.apply(this, partes);
+
+  return Promise.resolve(
+    new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+  );
+};
+
+/**
+ * LA PUERTA TIENE DOS ENTRADAS, Y LA SEGUNDA ES `vi.stubGlobal('fetch', …)`.
+ *
+ * Esto no es un adorno: es lo que decide si el canal sirve. MEDIDO sobre el
+ * paquete entero: las 467 peticiones de los 74 specs pasan por un doble que el
+ * spec instalo con `vi.stubGlobal`, NI UNA por el `fetch` del entorno. O sea
+ * que el enganche del `beforeEach`, solo, estaria ciego en los 23 specs donde
+ * de verdad corre el `pedir` de produccion — que son los unicos donde hay
+ * trafico que vigilar.
+ *
+ * Y NO SE PUEDE SOBREVIVIR DE OTRA FORMA, tambien medido en la fuente de Vitest
+ * 3.2.7: `stubGlobal` hace `Object.defineProperty(globalThis, nombre, { value })`,
+ * que SUSTITUYE el descriptor entero. Un accesor con `get`/`set` —la forma con
+ * la que este archivo engancha las galletas y el `src` de una imagen— no
+ * sobrevive. Y no hay ningun hook que corra DESPUES del `beforeEach` del spec:
+ * Vitest corre los `beforeEach` en orden de registro, asi que el de este archivo
+ * va siempre primero. O se engancha la funcion que instala el doble, o el canal
+ * vive apagado justo donde hace falta.
+ *
+ * SE ENGANCHA UNA VEZ, AL CARGAR EL MODULO, y no desde el tapon: el modulo se
+ * carga una sola vez por archivo de test, antes de cualquier hook y antes del
+ * cuerpo del spec, que es donde algunos instalan su doble.
+ *
+ * NO LE CAMBIA NADA AL SPEC. El doble que el spec guarda en su variable sigue
+ * recibiendo cada llamada, con los mismos argumentos y devolviendo lo suyo; lo
+ * unico que cambia es que `globalThis.fetch` pasa a ser el envoltorio, que
+ * registra y reenvia. Medido: los 1645 tests siguen en verde con esto puesto.
+ *
+ * EL LIMITE, ESCRITO: un spec que instalara su doble con una ASIGNACION a pelo
+ * —`globalThis.fetch = doble`— en vez de con `vi.stubGlobal` le pasaria por
+ * encima al envoltorio dentro de ese test. Medido: no lo hace ninguno de los
+ * 74. Y no es el modo de fallo que importa, porque lo que este canal persigue
+ * es codigo de PRODUCCION, que no instala dobles.
+ */
+const PONER_UN_GLOBAL = vi.stubGlobal.bind(vi) as (nombre: unknown, valor: unknown) => unknown;
+
+(vi as unknown as { stubGlobal: (nombre: unknown, valor: unknown) => unknown }).stubGlobal = (
+  nombre: unknown,
+  valor: unknown,
+) => {
+  if (nombre !== 'fetch' || typeof valor !== 'function') return PONER_UN_GLOBAL(nombre, valor);
+
+  elDobleDeLaRed = valor as Red;
+
+  return PONER_UN_GLOBAL('fetch', LA_RED);
+};
+
+/**
+ * Un `WebSocket` o un `EventSource` de mentira: anota y no conecta.
+ *
+ * No reenvia a nada, como la baliza y como `caches`, y por un motivo ademas del
+ * de ellos: el `WebSocket` de jsdom MARCA DE VERDAD contra el destino. Dejarlo
+ * pasar seria abrir un socket desde un test.
+ */
+function conexionDeMentira(puerta: PuertaDeRed) {
+  return class {
+    readonly url: string;
+    readonly readyState = 0;
+
+    constructor(destino: unknown) {
+      this.url = String(destino);
+
+      PETICIONES_DE_RED.push({
+        puerta,
+        metodo: '',
+        destino: this.url,
+        carga: '',
+        dePedir: false,
+      });
+    }
+
+    /** `EventSource` no lo tiene; se deja igual, que cuesta una linea. */
+    send(datos: unknown): void {
+      PETICIONES_DE_RED.push({
+        puerta,
+        metodo: 'send',
+        destino: this.url,
+        carga: cuerpoDeUnaBaliza(datos),
+        dePedir: false,
+      });
+    }
+
+    close(): void {}
+    addEventListener(): void {}
+    removeEventListener(): void {}
+  };
+}
+
+/**
+ * EL TAPON DE LOS CATORCE CANALES —Y EL EJE DECIMOSEXTO—, en todos los specs.
+ *
+ * Los catorce canales son los de abajo. El eje decimosexto no es uno de ellos:
  * es el despacho de los eventos de salida de la pestaña, que corre como
- * PRIMERA linea del `afterEach` para que los trece miren un mundo en el que la
+ * PRIMERA linea del `afterEach` para que los catorce miren un mundo en el que la
  * pestaña ya se cerro. Vive en `src/test/salida-de-la-pestana.ts` y el porque
  * de su sitio exacto esta ahi y en el comentario de esa primera linea.
  *
@@ -1719,6 +2448,29 @@ interface LlamadaAlHistorial {
  * con un `Proxy`— esta medido y escrito entero en el docblock de
  * `PUERTAS_DEL_HISTORIAL`.
  *
+ * **La red por fuera de `pedir`.** `fetch`, `XMLHttpRequest`, `WebSocket` y
+ * `EventSource`. Es LA DEFENSA QUE ESTE MISMO DOCBLOCK DABA POR SUPUESTA: los
+ * parrafos del `src` de una imagen y de las salidas laterales dicen los dos que
+ * aquello se escapa porque «no es un `fetch`, asi que el test de no habla con la
+ * red por fuera de `pedir` pasa en verde». MEDIDO: ese test existia a mano en
+ * TRES specs de setenta y cuatro, asi que en los otros setenta y uno el `fetch`
+ * global no lo doblaba nadie. En la pantalla de las clases de una profesora, un
+ * `void fetch('https://…/clases', { method: 'POST', body: JSON.stringify(alumnos.data) })`
+ * —la lista entera de una clase, con el nombre propio y la ausencia de cada
+ * persona— paso los 19 tests de ese spec y el `tsc`. Es la tercera vez que a
+ * este repo le pasa lo mismo: el espia de la consola empezo en 5 specs de 49 y
+ * los tres almacenes tenian once copias a mano. Lo que se distingue no es
+ * «hubo un `fetch`» —`pedir` usa `fetch` por dentro y seria rojo con el codigo
+ * correcto en 23 specs— sino SI LA LLAMADA SALIO DE DENTRO DE `pedir`, que se
+ * contesta leyendo la pila. `fetch` se afirma POR CENTINELAS, no por la forma
+ * fuerte, y eso tambien se midio: de las 467 peticiones del paquete, 96 no son
+ * de `pedir` y vienen de cinco sitios de produccion que estan ahi a proposito.
+ * Las otras tres puertas se afirman por LA FORMA FUERTE —ni una peticion—,
+ * porque de esas no hay un solo uso en `src/`. El criterio, las medidas, las
+ * puertas que se quedan fuera y lo que esta forma deja pasar: el docblock de
+ * `PuertaDeRed`. Y lo custodia un spec propio, `red-por-fuera-de-pedir.spec.ts`,
+ * porque la pregunta de la pila es invisible desde cualquier spec de pantalla.
+ *
  * EL CUARTO VECINO DE ESA FAMILIA —`navigator.clipboard`— NO SE VIGILA, a
  * proposito y con el motivo medido escrito al lado de los otros tres: el panel
  * copia secretos registrados a proposito en DOS pantallas, y los tres specs
@@ -1786,6 +2538,8 @@ export function vigilarLosCanalesDeSalida(): void {
     basesAbiertas.length = 0;
     escritoEnLaBase.length = 0;
     navegado.length = 0;
+    PETICIONES_DE_RED.length = 0;
+    elDobleDeLaRed = undefined;
 
     const consola = console as unknown as Record<string, (...partes: unknown[]) => void>;
 
@@ -2229,13 +2983,84 @@ export function vigilarLosCanalesDeSalida(): void {
         return original.apply(this, partes);
       } as never);
     }
+
+    /**
+     * EL DECIMOCUARTO CANAL: LAS CUATRO PUERTAS DE LA RED.
+     *
+     * SE ENGANCHAN EN CADA TEST, como todo lo de arriba y por los dos motivos
+     * de siempre: los specs llaman a `vi.restoreAllMocks()` y a
+     * `vi.unstubAllGlobals()` en su propio `afterEach`, que con el orden de
+     * hooks de Vitest corre ANTES que este tapon; y el `afterEach` de abajo
+     * devuelve las cuatro a como estaban. Sin volver a ponerlas aqui, el canal
+     * estaria apagado a partir del segundo test de cada archivo: verde y ciego.
+     *
+     * `fetch` se pone como propiedad de DATOS y no como accesor: `vi.stubGlobal`
+     * sustituye el descriptor entero, asi que un accesor no sobreviviria al
+     * primer doble. Quien mantiene al espia en el camino cuando el spec instala
+     * el suyo es el enganche de `vi.stubGlobal` de arriba.
+     */
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: LA_RED,
+    });
+
+    /**
+     * `XMLHttpRequest` SON DOS METODOS Y HAY QUE MIRAR LOS DOS.
+     *
+     * El destino llega en `open(metodo, url)` y el cuerpo en `send(datos)`, con
+     * cualquier cosa en medio: se guarda lo del `open` hasta que llegue su
+     * `send`, que es el momento en que la peticion sale de verdad. El `open` se
+     * reenvia —no pide nada todavia y deja el objeto coherente— y el `send` NO:
+     * en jsdom abre una conexion de verdad, y aqui no hay nada legitimo que
+     * preservar (cero `XMLHttpRequest` en `src/`).
+     */
+    vi.spyOn(XMLHttpRequest.prototype, 'open').mockImplementation(function (
+      this: XMLHttpRequest,
+      ...partes: unknown[]
+    ) {
+      XHR_ABIERTO.set(this, {
+        metodo: String(partes[0] ?? 'GET').toUpperCase(),
+        destino: String(partes[1] ?? ''),
+      });
+
+      return (ABRIR_UN_XHR as (...a: unknown[]) => void).apply(this, partes);
+    } as never);
+
+    vi.spyOn(XMLHttpRequest.prototype, 'send').mockImplementation(function (
+      this: XMLHttpRequest,
+      cuerpo?: unknown,
+    ) {
+      const abierto = XHR_ABIERTO.get(this);
+
+      PETICIONES_DE_RED.push({
+        puerta: 'XMLHttpRequest',
+        metodo: abierto?.metodo ?? '',
+        destino: abierto?.destino ?? '',
+        carga: cuerpoDeUnaBaliza(cuerpo),
+        dePedir: false,
+      });
+    });
+
+    for (const [puerta, donde] of [
+      ['WebSocket', 'WebSocket'],
+      ['EventSource', 'EventSource'],
+    ] as const) {
+      Object.defineProperty(globalThis, donde, {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: conexionDeMentira(puerta),
+      });
+    }
   });
 
   afterEach(() => {
     /**
-     * LA PESTAÑA SE CIERRA AQUI, ANTES DE LEER NI UNO DE LOS TRECE CANALES.
+     * LA PESTAÑA SE CIERRA AQUI, ANTES DE LEER NI UNO DE LOS CATORCE CANALES.
      *
-     * Es el eje decimoquinto, y esta primero por dos medidas que no se
+     * Es el eje decimosexto, y esta primero por dos medidas que no se
      * adivinan y estan las dos en `salida-de-la-pestana.ts`:
      *
      * 1. EL OYENTE DE UNA FUGA DE SALIDA SE QUITA EN EL DESMONTAJE. Lo registra
@@ -2249,7 +3074,7 @@ export function vigilarLosCanalesDeSalida(): void {
      *    leen aqui abajo con el arbol todavia montado; el resto, despues del
      *    `cleanup()`. Despachando entre la foto de la cabecera y el desmontaje,
      *    un oyente de `pagehide` que subiera un `<meta>` al `<head>` no lo
-     *    veria nadie. Desde aqui arriba, los trece tapones miran un mundo en el
+     *    veria nadie. Desde aqui arriba, los catorce tapones miran un mundo en el
      *    que la pestaña ya se cerro.
      */
     despacharLaSalidaDeLaPestana();
@@ -2505,6 +3330,52 @@ export function vigilarLosCanalesDeSalida(): void {
     }
 
     /**
+     * EL DECIMOCUARTO CANAL: lo que se pidio a la red por fuera de `pedir`.
+     *
+     * Se lee, se vacia la lista y se devuelven las cuatro puertas a como
+     * estaban ANTES de afirmar, exactamente como `caches`, el service worker e
+     * IndexedDB: si una afirmacion lanza, el test siguiente no hereda lo del
+     * que fallo y el informe no acusa al inocente.
+     *
+     * LAS PETICIONES DE `pedir` SE DESCUENTAN AQUI Y NO AL ANOTARLAS, para que
+     * el conteo y la pila se midan en el momento de la llamada —que es el unico
+     * en que la pila existe— y la decision de que hacer con ellas viva junto a
+     * la afirmacion.
+     */
+    const peticionesSueltas = PETICIONES_DE_RED.filter((una) => !una.dePedir);
+    const loPedidoPorRed = peticionesSueltas.map((una) => `${una.destino} ${una.carga}`).join(' ');
+    // Las tres puertas que no son `fetch`, para la forma fuerte: el producto no
+    // tiene un solo uso legitimo de ninguna de las tres.
+    const puertasDeOtraRed = [
+      ...new Set(PETICIONES_DE_RED.filter((una) => una.puerta !== 'fetch').map(laPuertaDe)),
+    ];
+
+    /** Por que puerta se fue un dato concreto, para el mensaje del fallo. */
+    const redQueLleva = (valor: string): string => {
+      const puertas = [
+        ...new Set(
+          peticionesSueltas
+            .filter((una) => formaQueSeFue(`${una.destino} ${una.carga}`, valor) !== undefined)
+            .map(laPuertaDe),
+        ),
+      ];
+
+      return puertas.length === 0 ? 'una peticion que ya no esta' : puertas.join(', ');
+    };
+
+    PETICIONES_DE_RED.length = 0;
+    elDobleDeLaRed = undefined;
+
+    for (const [donde, original] of [
+      ['fetch', RED_ORIGINAL],
+      ['WebSocket', WEBSOCKET_ORIGINAL],
+      ['EventSource', EVENT_SOURCE_ORIGINAL],
+    ] as const) {
+      if (original === undefined) delete (globalThis as unknown as Record<string, unknown>)[donde];
+      else Object.defineProperty(globalThis, donde, original);
+    }
+
+    /**
      * EL DUODECIMO CANAL SE LIMPIA AQUI, Y ES LO QUE EVITA ACUSAR AL INOCENTE.
      *
      * Es la unica parte de este canal que no es una lectura, y hace falta
@@ -2583,7 +3454,9 @@ export function vigilarLosCanalesDeSalida(): void {
     const puertasQueLlevan = (valor: string): string => {
       const puertas = [
         ...new Set(
-          llamadasAlHistorial.filter((una) => una.argumentos.includes(valor)).map((u) => u.puerta),
+          llamadasAlHistorial
+            .filter((una) => formaQueSeFue(una.argumentos, valor) !== undefined)
+            .map((u) => u.puerta),
         ),
       ];
 
@@ -2605,10 +3478,32 @@ export function vigilarLosCanalesDeSalida(): void {
      * y un `true`.
      */
     for (const [nombre, valor] of todoLoVigilado()) {
-      expect(titulo.includes(valor), `el titulo de la pagina lleva ${nombre}`).toBe(false);
-      expect(loDicho.includes(valor), `la consola dijo ${nombre}`).toBe(false);
-      expect(laCabecera.includes(valor), `la cabecera del documento lleva ${nombre}`).toBe(false);
-      expect(loGuardado.includes(valor), `un almacen del navegador lleva ${nombre}`).toBe(false);
+      /**
+       * LOS CATORCE CANALES, CONTRA EL MISMO ALFABETO Y POR LA MISMA PUERTA.
+       *
+       * Cada afirmacion busca el centinela en TODAS sus formas —en claro,
+       * %-codificado, en base64 con sus tres desplazamientos— y no solo en la
+       * cruda: ver el docblock de `FormaDelDato` para el porque y para lo que
+       * se queda fuera a proposito. Pasa por aqui para que una forma nueva se
+       * agregue en UN sitio y la hereden los catorce, igual que el registro de
+       * datos vigilados es uno solo y no uno por tapon.
+       *
+       * EL INFORME SIGUE SIN PUBLICAR NADA. `decirlo` recibe COMO se fue
+       * —`' (en base64)'`, vocabulario fijo— y nunca el valor ni su
+       * codificacion: publicar la codificacion seria publicar el dato, que es
+       * el mismo modo de fallo que este archivo evita desde la primera linea.
+       * Y cuando el dato sale en claro, que es el caso de siempre, `decirlo`
+       * recibe la cadena vacia y el mensaje es IDENTICO al de antes.
+       */
+      const noSeFuePor = (texto: string, decirlo: (comoSeDijo: string) => string): void => {
+        const forma = formaQueSeFue(texto, valor);
+        expect(forma !== undefined, decirlo(forma?.comoSeDijo ?? '')).toBe(false);
+      };
+
+      noSeFuePor(titulo, (como) => `el titulo de la pagina lleva ${nombre}${como}`);
+      noSeFuePor(loDicho, (como) => `la consola dijo ${nombre}${como}`);
+      noSeFuePor(laCabecera, (como) => `la cabecera del documento lleva ${nombre}${como}`);
+      noSeFuePor(loGuardado, (como) => `un almacen del navegador lleva ${nombre}${como}`);
 
       /**
        * EL SEPTIMO CANAL SE AFIRMA COMO EL BUFFER DE MARCAS, no como
@@ -2618,7 +3513,7 @@ export function vigilarLosCanalesDeSalida(): void {
        * necesite una. Lo que no es legitimo es meter un dato del mostrador en
        * la URL que se pide.
        */
-      expect(loPedidoPorImagen.includes(valor), `la URL de una imagen lleva ${nombre}`).toBe(false);
+      noSeFuePor(loPedidoPorImagen, (como) => `la URL de una imagen lleva ${nombre}${como}`);
 
       /**
        * EL OCTAVO CANAL, UN `expect` POR PUERTA.
@@ -2639,14 +3534,14 @@ export function vigilarLosCanalesDeSalida(): void {
        * se mira es el CUERPO de la respuesta: ver el docblock de
        * `CACHES_ORIGINAL`.
        */
-      expect(
-        loCacheado.join(' ').includes(valor),
-        `el almacen de respuestas del navegador lleva ${nombre}`,
-      ).toBe(false);
+      noSeFuePor(
+        loCacheado.join(' '),
+        (como) => `el almacen de respuestas del navegador lleva ${nombre}${como}`,
+      );
 
-      expect(loMensajeado.includes(valor), `un window.postMessage lleva ${nombre}`).toBe(false);
-      expect(loDifundido.includes(valor), `un BroadcastChannel lleva ${nombre}`).toBe(false);
-      expect(loBalizado.includes(valor), `un navigator.sendBeacon lleva ${nombre}`).toBe(false);
+      noSeFuePor(loMensajeado, (como) => `un window.postMessage lleva ${nombre}${como}`);
+      noSeFuePor(loDifundido, (como) => `un BroadcastChannel lleva ${nombre}${como}`);
+      noSeFuePor(loBalizado, (como) => `un navigator.sendBeacon lleva ${nombre}${como}`);
 
       /**
        * EL DECIMO CANAL, por CENTINELAS y no por «ningun mensaje».
@@ -2661,10 +3556,10 @@ export function vigilarLosCanalesDeSalida(): void {
        *
        * El mensaje nombra la PUERTA y la CLAVE del dato, nunca su valor.
        */
-      expect(
-        loMandadoAlTrabajador.includes(valor),
-        `un postMessage al service worker lleva ${nombre}`,
-      ).toBe(false);
+      noSeFuePor(
+        loMandadoAlTrabajador,
+        (como) => `un postMessage al service worker lleva ${nombre}${como}`,
+      );
 
       /**
        * EL UNDECIMO CANAL, por centinelas PRIMERO y por «ninguna base» abajo.
@@ -2683,13 +3578,11 @@ export function vigilarLosCanalesDeSalida(): void {
        * El valor NUNCA entra en el mensaje, como en el resto del tapon: lo
        * unico que se publica es el NOMBRE del dato y un `true`.
        */
-      expect(
-        lasBasesAbiertas.includes(valor),
-        `el nombre de una base de IndexedDB lleva ${nombre}`,
-      ).toBe(false);
-      expect(loEscritoEnLaBase.includes(valor), `una escritura en IndexedDB lleva ${nombre}`).toBe(
-        false,
+      noSeFuePor(
+        lasBasesAbiertas,
+        (como) => `el nombre de una base de IndexedDB lleva ${nombre}${como}`,
       );
+      noSeFuePor(loEscritoEnLaBase, (como) => `una escritura en IndexedDB lleva ${nombre}${como}`);
 
       /**
        * EL DUODECIMO CANAL, por centinelas PRIMERO y por «ni un atributo»
@@ -2709,10 +3602,10 @@ export function vigilarLosCanalesDeSalida(): void {
        * NOMBRE del dato y un `true`.
        */
       for (const cual of ALREDEDOR_DEL_CUERPO) {
-        expect(
-          loPuestoAlrededor[cual].includes(valor),
-          `un atributo del ${cual} lleva ${nombre}`,
-        ).toBe(false);
+        noSeFuePor(
+          loPuestoAlrededor[cual],
+          (como) => `un atributo del ${cual} lleva ${nombre}${como}`,
+        );
       }
 
       /**
@@ -2738,15 +3631,45 @@ export function vigilarLosCanalesDeSalida(): void {
        * `not.toContain(url)` aqui seria exactamente la fuga otra vez, hacia el
        * registro de CI.
        */
-      expect(
-        laUrl.includes(valor),
-        `la URL del documento lleva ${nombre} (cambio: ${partesCambiadas.join(', ')}; por: ${puertasQueLlevan(valor)})`,
-      ).toBe(false);
+      noSeFuePor(
+        laUrl,
+        (como) =>
+          `la URL del documento lleva ${nombre}${como} (cambio: ${partesCambiadas.join(', ')}; por: ${puertasQueLlevan(valor)})`,
+      );
 
-      expect(
-        loNavegado.includes(valor),
-        `una llamada a ${puertasQueLlevan(valor)} lleva ${nombre}`,
-      ).toBe(false);
+      noSeFuePor(
+        loNavegado,
+        (como) => `una llamada a ${puertasQueLlevan(valor)} lleva ${nombre}${como}`,
+      );
+
+      /**
+       * EL DECIMOCUARTO CANAL, por CENTINELAS y no por «ninguna peticion».
+       *
+       * Es la forma del `src` de una imagen, de las salidas laterales y del
+       * service worker, y aqui esta MEDIDA sobre los 74 specs: de las 467
+       * peticiones del paquete, 96 no salen de `pedir` y vienen de cinco
+       * sitios de produccion que estan ahi a proposito —el login y el registro
+       * hablan con las rutas del BFF que escriben la cookie, la landing habla
+       * con la API publica desde el servidor, el comprobante se sube firmado al
+       * almacen—. La forma fuerte seria roja con el codigo correcto en cinco
+       * specs y la unica manera de sostenerla seria una lista blanca de
+       * destinos. El razonamiento entero y lo que esto deja pasar estan en el
+       * docblock de `PuertaDeRed`.
+       *
+       * SE MIRAN EL DESTINO Y LA CARGA JUNTOS porque son dos sitios del mismo
+       * agujero —el query sale al registro de acceso del otro lado y el cuerpo
+       * en la peticion— y el informe no gana nada separandolos: el mensaje
+       * nombra la PUERTA, que ya dice cual de los dos fue.
+       *
+       * Y EL MENSAJE NO PUBLICA LA URL, que en este canal es la parte dificil:
+       * el destino es justamente donde vive la fuga. Se nombra el ORIGEN, por
+       * `claveSegura`, y nunca la ruta ni el query. Ver `haciaDondeVa`.
+       */
+      noSeFuePor(
+        loPedidoPorRed,
+        (como) =>
+          `una peticion de red por fuera de \`pedir\` lleva ${nombre}${como} (${redQueLleva(valor)})`,
+      );
 
       /**
        * EL SEXTO CANAL SE AFIRMA COMO LOS ALMACENES Y NO COMO `window.name`.
@@ -2780,10 +3703,10 @@ export function vigilarLosCanalesDeSalida(): void {
        * que se publica sigue siendo el NOMBRE del dato.
        */
       for (const tipo of TIPOS_DE_ENTRADA) {
-        expect(
-          loCronometrado[tipo].includes(valor),
-          `una entrada de performance.${tipo} lleva ${nombre}`,
-        ).toBe(false);
+        noSeFuePor(
+          loCronometrado[tipo],
+          (como) => `una entrada de performance.${tipo} lleva ${nombre}${como}`,
+        );
       }
     }
 
@@ -2918,6 +3841,25 @@ export function vigilarLosCanalesDeSalida(): void {
     expect(
       puertasDelHistorial.length,
       `la pantalla movio el historial a mano: ${puertasDelHistorial.join(', ')}`,
+    ).toBe(0);
+
+    /**
+     * LAS OTRAS TRES PUERTAS DE RED: NI UNA PETICION.
+     *
+     * La forma de `window.name`, de IndexedDB y de los atributos del `<html>`,
+     * y NO la de `fetch`, que es el unico de los cuatro que tiene uso legitimo
+     * en este producto. El motivo esta medido: cero `XMLHttpRequest`, cero
+     * `WebSocket` y cero `EventSource` en `apps/web/src`, y nada del arbol de
+     * dependencias abre ninguna de las tres durante un test. Donde no hay uso
+     * legitimo que proteger, la forma fuerte es gratis y caza ademas el dato
+     * que nadie registro —que es justo lo que `fetch` no puede cazar—.
+     *
+     * El informe nombra la PUERTA, el metodo y el ORIGEN por `claveSegura`:
+     * nunca la ruta, nunca el query, nunca el cuerpo.
+     */
+    expect(
+      puertasDeOtraRed.length,
+      `la pantalla pidio red por una puerta que no es fetch: ${puertasDeOtraRed.join(', ')}`,
     ).toBe(0);
   });
 }

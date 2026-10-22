@@ -27,8 +27,8 @@ afterEach(() => {
 });
 
 /**
- * EL TAPON DE LOS TRECE CANALES QUE NO SON EL `<body>`, EN TODOS LOS SPECS —Y
- * EL EJE DECIMOQUINTO, QUE VIAJA DENTRO DE EL.
+ * EL TAPON DE LOS CATORCE CANALES QUE NO SON EL `<body>`, EN TODOS LOS SPECS —Y
+ * EL EJE DECIMOSEXTO, QUE VIAJA DENTRO DE EL.
  *
  * `console.*`, `document.title`, `window.name`, el `<head>`, los tres
  * almacenes del navegador, el buffer de User Timing, el `src` de una imagen y
@@ -52,7 +52,14 @@ afterEach(() => {
  * de los dos lados—. Es el unico canal que SE COPIA SOLO: entra en el
  * historial en disco, se pega entero cuando alguien comparte el enlace y viaja
  * como `Referer` a terceros, sin dejar rastro en la pestaña de red ni en el
- * marcado. `cleanup()` tampoco lo toca.
+ * marcado. `cleanup()` tampoco lo toca. Y LA RED POR FUERA DE `pedir`:
+ * `fetch`, `XMLHttpRequest`, `WebSocket` y `EventSource`. Es la defensa que los
+ * otros canales daban por supuesta —«no es un `fetch`, asi que el test de no
+ * habla con la red por fuera de `pedir` pasa en verde»— y que vivia A MANO en
+ * tres specs de setenta y cuatro: en los otros setenta y uno un `fetch` a pelo
+ * con la lista entera de una clase dentro no lo veia nadie. Lo que se
+ * distingue no es que haya habido un `fetch` —`pedir` usa `fetch` por dentro—
+ * sino si la llamada salio de dentro de `pedir`, leyendo la pila.
  * La lista entera, con que se midio en cada caso, esta en el docblock de
  * `vigilarLosCanalesDeSalida`. Va aqui y no en cada spec
  * porque es una DIMENSION, no un caso: ninguna pantalla deberia tener que
@@ -62,7 +69,7 @@ afterEach(() => {
  * Vigila los secretos del panel siempre, y lo que cada spec agregue con
  * `vigilarEstosDatos`. Ver el comentario de `vigilarLosCanalesDeSalida`.
  *
- * Y DENTRO DE EL VIAJA EL EJE DECIMOQUINTO, que no se llama desde aqui a
+ * Y DENTRO DE EL VIAJA EL EJE DECIMOSEXTO, que no se llama desde aqui a
  * proposito. jsdom no dispara NUNCA `beforeunload`, `visibilitychange`,
  * `pagehide`, `unload` ni `freeze`: un oyente que una pantalla registre en un
  * `useEffect` para guardar algo al salir —«que no se pierda lo tecleado si se
@@ -78,22 +85,22 @@ afterEach(() => {
 vigilarLosCanalesDeSalida();
 
 /**
- * Y EL EJE DECIMOCUARTO, QUE NO ES UN CANAL SINO UN RELOJ.
+ * Y EL EJE DECIMOQUINTO, QUE NO ES UN CANAL SINO UN RELOJ.
  *
- * (El decimoquinto —los eventos de salida de la pestaña— es el otro eje, y se
+ * (El decimosexto —los eventos de salida de la pestaña— es el otro eje, y se
  * engancha dentro del tapon de arriba porque su sitio exacto depende del
  * `cleanup()`. Ver el comentario de ahi.)
  *
  * jsdom no implementa `requestIdleCallback`, asi que un
  * `window.requestIdleCallback?.(() => …)` es un no-op silencioso en los tests
  * y una ejecucion de verdad en el navegador: todo lo que se esconda detras
- * ocurre DESPUES de que corran los trece tapones de arriba, o sea nunca. No
+ * ocurre DESPUES de que corran los catorce tapones de arriba, o sea nunca. No
  * abre una puerta nueva — las apaga TODAS, incluidas las que se tapen mañana.
  * Medido en la pantalla de quien no pago: el mismo `console.info` tira 28
  * tests de 28 desnudo y pasa los 28 envuelto.
  *
  * Se monta la API en vez de prohibirla —aplazar trabajo caro es legitimo— para
- * que lo aplazado CORRA dentro del test y los trece tapones lo vean solos. El
+ * que lo aplazado CORRA dentro del test y los catorce tapones lo vean solos. El
  * razonamiento entero y las tres decisiones pequeñas: `src/test/rato-libre.ts`.
  */
 montarElRatoLibre();
