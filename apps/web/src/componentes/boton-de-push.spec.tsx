@@ -98,7 +98,9 @@ describe('BotonDePush: cuando no puede funcionar, no se pinta', () => {
   });
 
   it('en un navegador sin Notification tampoco', async () => {
-    // Sin `conSoporte`: jsdom no trae ni Notification ni PushManager.
+    // Sin `conSoporte`. Ojo: el tapon global MONTA `Notification` desde la
+    // Fase 14 (es el canal 17), asi que lo que sostiene este test ya no es su
+    // ausencia sino la de `PushManager`, que sigue sin montarse a proposito.
     render(<BotonDePush />);
 
     await waitFor(() => expect(screen.queryByRole('button')).not.toBeInTheDocument());

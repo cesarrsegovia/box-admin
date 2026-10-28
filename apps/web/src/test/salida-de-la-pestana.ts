@@ -1,9 +1,9 @@
 /**
- * EL EJE DECIMOSEPTIMO: LOS EVENTOS DE SALIDA DE LA PESTAÑA — QUE NO SON UN
- * CANAL NUEVO SINO EL MOMENTO EN QUE LOS QUINCE DE SIEMPRE SE QUEDAN CIEGOS.
+ * EL EJE DECIMONOVENO: LOS EVENTOS DE SALIDA DE LA PESTAÑA — QUE NO SON UN
+ * CANAL NUEVO SINO EL MOMENTO EN QUE LOS DIECIOCHO DE SIEMPRE SE QUEDAN CIEGOS.
  *
- * `espia-de-consola.ts` tapa quince puertas y las audita TODAS en su
- * `afterEach`. El eje decimosexto —`rato-libre.ts`— cerro una forma de
+ * `espia-de-consola.ts` tapa dieciocho puertas y las audita TODAS en su
+ * `afterEach`. El eje decimoctavo —`rato-libre.ts`— cerro una forma de
  * esquivarlas: aplazar la fuga a un hueco que jsdom no ejecuta nunca. Este
  * cierra LA OTRA, que no se parece en el mecanismo y que sobrevivio los 1561
  * tests del paquete con los canales de entonces puestos:
@@ -23,7 +23,7 @@
  * ceja, y que escribe la clave del servidor de correo EN CLARO en el disco de
  * una maquina que usan cuatro personas por turno.
  *
- * LO QUE HACE A ESTE EJE DISTINTO DE LOS QUINCE CANALES: EL CANAL NO ESTA SIN
+ * LO QUE HACE A ESTE EJE DISTINTO DE LOS DIECIOCHO CANALES: EL CANAL NO ESTA SIN
  * VIGILAR. `localStorage` es el quinto tapon y funciona. Esta MEDIDO con una
  * sonda: despachando `pagehide` a mano dentro de un test, el tapon de los
  * almacenes agarra la fuga al instante y nombra el dato. El instrumento estaba
@@ -34,8 +34,8 @@
  * nadie le hable.
  *
  * Es el mismo modo de fallo que el `?.` sobre una API que el entorno no tiene
- * —`sendBeacon`, `caches`, `serviceWorker`, `indexedDB`, `requestIdleCallback`
- * dejaron cinco fugas por ahi— pero por el otro extremo: aqui la API existe
+ * —`sendBeacon`, `caches`, `serviceWorker`, `indexedDB`, `navigator.storage`, `Notification` y
+ * `requestIdleCallback` dejaron siete fugas por ahi— pero por el otro extremo: aqui la API existe
  * entera (`addEventListener` funciona, el oyente se registra de verdad) y lo
  * que no ocurre nunca es EL DISPARO. El codigo de la fuga corre en el
  * navegador del mostrador y no corre en el test, sin un solo `?.` que lo
@@ -97,7 +97,7 @@
  * 19 se lleva sus `<meta>` al desmontar— y el resto DESPUES. Si esto se
  * despachara entre medias, lo que un oyente de salida escribiera en el
  * `<head>` no lo veria nadie. Por eso va como PRIMERA linea del `afterEach`
- * del tapon, antes de la foto del titulo: asi los quince canales miran un mundo
+ * del tapon, antes de la foto del titulo: asi los dieciocho canales miran un mundo
  * en el que la pestaña ya se cerro.
  *
  * EL LIMITE, DICHO ENTERO Y MEDIDO. Cuando esto corre, el `afterEach` propio
@@ -111,7 +111,8 @@
  * tenia algo escrito—.
  *
  * Y los canales que se leen por ESTADO y no por espia —los almacenes, el
- * titulo, `window.name`, el `<head>`, los atributos de alrededor, la URL, el
+ * titulo, `window.name`, el `<head>`, los atributos de alrededor y lo que
+ * cuelgue del `<html>`, la URL, el
  * buffer de marcas— lo ven igual en los 69, porque no dependen de ningun
  * doble: son justamente los que la forma de esta fuga usa, porque lo que un
  * oyente de `pagehide` hace es GUARDAR algo, no contarlo. Taparlo del todo
@@ -129,7 +130,7 @@
  * `requestIdleCallback` en vez de prohibirlo, y con el que
  * `espia-de-consola.ts` decidio NO vigilar el portapapeles. Despachando, el
  * que lo use bien no nota nada y el que esconda una fuga detras la paga: lo
- * que el oyente escriba lo ven los quince tapones solos, sin que ninguno tenga
+ * que el oyente escriba lo ven los dieciocho tapones solos, sin que ninguno tenga
  * que saber que esto existe.
  */
 

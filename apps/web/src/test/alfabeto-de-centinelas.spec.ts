@@ -107,6 +107,123 @@ describe('las formas que el alfabeto cubre', () => {
       ' (en base64 de su forma %-codificada)',
     );
   });
+
+  /**
+   * LA CAJA DE LAS LETRAS, QUE ERA LA INSTANCIA MAS BARATA QUE QUEDABA ABIERTA.
+   *
+   * MEDIDA en la cola de comprobantes de la Fase 14, por el canal mas vigilado
+   * de los diecisiete: el mismo `console.info` con el nombre del archivo tiraba
+   * 7 tests de 1809 en claro y pasaba los 1809 con un `.toLowerCase()` pegado.
+   * Lo unico que cambiaba entre caer y no caer era esa llamada, que ademas
+   * suena a buena practica —«normalizo el nombre antes de registrarlo»—.
+   *
+   * Se mide aqui y no solo con una mutacion porque la mutacion se revierte y
+   * esto se queda: sin este guardian, simplificar `enTodasLasCajas` a una sola
+   * caja deja la rendija abierta otra vez con los 1809 en verde.
+   */
+  it('el mismo dato en minusculas sigue siendo el mismo dato', () => {
+    expect(formaQueSeFue(`[cola] ${NOMBRE.toLowerCase()}`, NOMBRE)?.comoSeDijo).toBe(
+      ' (con otra caja de letras)',
+    );
+  });
+
+  it('y en mayusculas tambien', () => {
+    expect(formaQueSeFue(`[cola] ${NOMBRE.toUpperCase()}`, NOMBRE)?.comoSeDijo).toBe(
+      ' (con otra caja de letras)',
+    );
+  });
+
+  /**
+   * LA FORMA LOCALIZADA DEL IMPORTE, Y POR QUE SE MIDE AQUI ADEMAS DE CON LA
+   * MUTACION.
+   *
+   * MEDIDA en el catalogo de packs de la Fase 14, por el canal mas vigilado de
+   * los diecisiete: el mismo `console.info` con los precios pasaba los 1841
+   * tests envuelto en `toLocaleString('es-AR')` y tiraba 25 de 28 con el
+   * precio crudo. Lo unico que cambiaba entre caer y no caer era esa llamada.
+   *
+   * La mutacion se revierte y esto se queda: sin este guardian, recortar
+   * `REGIONES_DEL_IMPORTE` a la region de la maquina —que es la forma obvia y
+   * la que parece correcta— deja la rendija abierta otra vez en CI con los
+   * 1841 en verde, que es exactamente lo que le paso a la pila de `pedir` con
+   * las barras de Windows.
+   */
+  it('un importe con el formato de la region, que es lo que se hace con el dinero', () => {
+    const importe = '25000.10';
+
+    expect(
+      formaQueSeFue(`[packs] lista de precios ${(25000.1).toLocaleString('es-AR')}`, importe)
+        ?.comoSeDijo,
+    ).toBe(' (con el numero formateado)');
+  });
+
+  /**
+   * LA REGION NO LA ELIGE EL CENTINELA: LA ELIGE LA MAQUINA QUE CORRE EL TEST.
+   *
+   * Es la leccion de las barras de `vinoDePedir` en otra forma. Un
+   * `monto.toLocaleString()` a secas da `25.000,1` en esta maquina y
+   * `25,000.1` en un CI con el entorno en ingles, y buscar una sola de las dos
+   * es la manera de que el canal quede verde y ciego en la otra.
+   */
+  it('y en la region de un CI en ingles tambien', () => {
+    const importe = '25000.10';
+
+    expect(
+      formaQueSeFue(`[packs] lista de precios ${(25000.1).toLocaleString('en-US')}`, importe)
+        ?.comoSeDijo,
+    ).toBe(' (con el numero formateado)');
+  });
+
+  /**
+   * ⚠️ EL CERO QUE SE PIERDE, QUE ES LA PARTE QUE NO SE PUEDE DEDUCIR.
+   *
+   * `25000.10` localizado es `25.000,1`: el cero final NO esta, asi que la
+   * forma localizada de un centinela no contiene los mismos caracteres NI LOS
+   * MISMOS DIGITOS que el centinela. A esta aguja no le rompe nada —se la pide
+   * a la plataforma en vez de deducirla—, y por eso el test de arriba pasa.
+   *
+   * Lo que SI rompe es la forma general «la secuencia de digitos», y se mide
+   * aqui para que quede escrito por que no esta puesta: sobre este mismo caso
+   * da `250001` contra los `2500010` del centinela y no empareja.
+   */
+  it('el cero final que pierde el formato no deja fuera a la aguja', () => {
+    const importe = '25000.10';
+    const formateado = (25000.1).toLocaleString('es-AR');
+
+    const digitosDelCentinela = importe.replace(/[^0-9]/g, '');
+    const digitosDelVolcado = formateado.replace(/[^0-9]/g, '');
+
+    expect(digitosDelVolcado.includes(digitosDelCentinela), 'la forma general lo cazaria').toBe(
+      false,
+    );
+    expect(formaQueSeFue(formateado, importe) !== undefined, 'la aguja exacta lo caza').toBe(true);
+  });
+
+  /**
+   * LOS DOS DECIMALES CUBREN LA MONEDA DE REGALO, y conviene no deshacerlo.
+   *
+   * `{ style: 'currency' }` pone el simbolo DELANTE del numero, no en medio,
+   * asi que la aguja de dos decimales aparece literal dentro de `$ 25.000,10`.
+   * Si alguien quitara ese formato de `FORMATOS_DEL_IMPORTE` creyendo que es
+   * redundante con el de por defecto, esto se pondria rojo.
+   */
+  it('y la forma con la moneda delante cae por la aguja de dos decimales', () => {
+    const importe = '25000.10';
+    const conMoneda = (25000.1).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+
+    expect(formaQueSeFue(`[caja] cobrado ${conMoneda}`, importe)?.comoSeDijo).toBe(
+      ' (con el numero formateado)',
+    );
+  });
+
+  it('y las dos formas se componen con las otras: base64 de la minuscula', () => {
+    // Es la composicion que hace cara de cerrar esto a medias: quien normaliza
+    // para el registro es, a menudo, el mismo que lo codifica «para que no se
+    // lea de un vistazo».
+    expect(formaQueSeFue(btoa(volcadoDe(1).toLowerCase()), NOMBRE)?.comoSeDijo).toBe(
+      ' (en base64 con otra caja de letras)',
+    );
+  });
 });
 
 describe('lo que el alfabeto NO hace', () => {
@@ -130,6 +247,34 @@ describe('lo que el alfabeto NO hace', () => {
 
     expect(formaQueSeFue(btoa(`una frase cualquiera con ${corto} dentro`), corto)).toBeUndefined();
   });
+
+  /**
+   * UN IMPORTE CORTO NO GENERA FORMA LOCALIZADA, y el motivo tiene nombre: LA
+   * COMA.
+   *
+   * `(9.5).toLocaleString('es-AR')` es `'9,5'`, y esos tres caracteres estan
+   * dentro de CUALQUIER volcado de JSON que lleve la lista `[9,5]`. Es el
+   * mismo razonamiento que `MINIMO_DE_GRUPOS` en base64: una aguja corta
+   * empareja por casualidad, y un falso positivo en infraestructura que
+   * comparten 84 specs es peor que el agujero que taparia.
+   */
+  it('un importe de un digito y medio no genera aguja localizada', () => {
+    expect(formaQueSeFue('las notas fueron [9,5] y [8,5]', '9.5')).toBeUndefined();
+  });
+
+  /**
+   * Y UN CENTINELA QUE NO ES UN NUMERO NO PASA POR AHI.
+   *
+   * `Number('Abono Centinela Bronce')` es `NaN` y su `toLocaleString` seria
+   * `'NaN'`: una aguja de tres caracteres que emparejaria con cualquier
+   * volcado que lleve un numero roto dentro. El filtro de «un numero y nada
+   * mas» es lo que lo impide, y si alguien lo quitara esto se pondria rojo.
+   */
+  it('un centinela que no es un numero no se intenta formatear', () => {
+    expect(formaQueSeFue('[packs] el precio salio NaN, revisar', 'Abono Centinela Bronce')).toBe(
+      undefined,
+    );
+  });
 });
 
 /**
@@ -150,8 +295,9 @@ describe('el informe', () => {
       `en claro: ${NOMBRE}`,
       btoa(volcadoDe(1)),
       `/uso.gif?d=${encodeURIComponent('Sofia Pereyra Vino')}`,
+      `[packs] ${(25000.1).toLocaleString('es-AR')}`,
     ];
-    const valores = [NOMBRE, NOMBRE, 'Sofia Pereyra Vino'];
+    const valores = [NOMBRE, NOMBRE, 'Sofia Pereyra Vino', '25000.10'];
 
     for (const [indice, volcado] of volcados.entries()) {
       const valor = valores[indice] ?? '';
@@ -164,9 +310,13 @@ describe('el informe', () => {
         'el informe copia la codificacion',
       ).toBe(false);
       expect(
-        ['', ' (en base64)', ' (%-codificado)', ' (en base64 de su forma %-codificada)'].includes(
-          forma?.comoSeDijo ?? 'otra cosa',
-        ),
+        [
+          '',
+          ' (en base64)',
+          ' (%-codificado)',
+          ' (en base64 de su forma %-codificada)',
+          ' (con el numero formateado)',
+        ].includes(forma?.comoSeDijo ?? 'otra cosa'),
         'el informe usa vocabulario fijo',
       ).toBe(true);
     }

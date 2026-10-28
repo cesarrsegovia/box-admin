@@ -19,6 +19,14 @@ import { useRolDeQuienMira } from '../rol-del-panel';
  * aqui no hay nada que un operativo pueda hacer, asi que la puerta esta
  * delante de todo y esta pantalla no se dibuja para el.
  *
+ * LOS PACKS, QUE LLEGARON DESPUES, NO AFLOJAN ESA PUERTA. `GET /packs` no
+ * lleva `@Roles` —es el catalogo que consume media docena de pantallas— pero
+ * las CUATRO escrituras de `@Controller('packs')` piden `ADMIN_SALON`, y la
+ * pantalla de packs es un editor: lo unico que un operativo podria hacer alli
+ * es mirar, y ya mira el mismo catalogo en el selector de la ficha de cada
+ * alumno. Ofrecerle un editor entero para que cada boton conteste 403 es
+ * exactamente lo que esta puerta existe para no hacer.
+ *
  * SON DOS MITADES Y HACEN FALTA LAS DOS:
  *
  *  1. La ENTRADA no existe en el marcado de la navegacion —`ENLACES_DEL_PANEL`
@@ -50,13 +58,15 @@ import { useRolDeQuienMira } from '../rol-del-panel';
  * 403 igual—: es no ofrecer lo que no se puede hacer.
  *
  * ---------------------------------------------------------------------------
- * TRES ENLACES A RUTAS QUE TODAVIA NO TIENEN ARCHIVO.
+ * LOS CUATRO ENLACES YA TIENEN ARCHIVO, Y AUN ASI NADIE LOS VALIDA.
  *
- * Las pantallas de `web`, `email` y `checkin` las traen las tareas 3 a 6. Los
- * enlaces se dibujan igual: `next build` no valida los destinos de un `<Link>`
- * —no hay `typedRoutes` en `next.config.mjs`, asi que un `href` es una cadena—
- * y se comprobo corriendo el build. Lo que pasa hoy al pulsarlos es un 404 de
- * Next, no un error de compilacion.
+ * Cuando esto se escribio, las tres rutas de la Fase 12 no existian todavia y
+ * los enlaces se dibujaban igual: `next build` NO valida los destinos de un
+ * `<Link>` —no hay `typedRoutes` en `next.config.mjs`, asi que un `href` es
+ * una cadena—, comprobado corriendo el build. Hoy las cuatro existen
+ * (`web/`, `email/`, `checkin/` y `packs/`), pero la nota se queda: lo que
+ * sostiene que un `href` de aqui llegue a algun sitio es el test de abajo con
+ * las rutas escritas a mano, y no el compilador.
  *
  * ---------------------------------------------------------------------------
  * ESTE ARCHIVO NO EXPORTA NADA MAS QUE EL `default`.
@@ -69,8 +79,18 @@ import { useRolDeQuienMira } from '../rol-del-panel';
  * compararla contra si misma dejaria pasar en verde un «todo funciona».
  */
 
-/** Las tres pantallas del area. El orden es el del contrato: web, email, QR. */
-const LAS_TRES_SECCIONES = [
+/**
+ * Las pantallas del area.
+ *
+ * Las tres primeras van en el orden del contrato de configuracion: web, email,
+ * QR. LOS PACKS VAN DETRAS Y NO INTERCALADOS porque no son configuracion del
+ * gimnasio: son un RECURSO con su propio controller (`@Controller('packs')`),
+ * su propia tabla y su propia clave de cache. Cuelgan de aqui por la misma
+ * razon por la que cuelgan las otras tres —es lo que el gimnasio decide una
+ * vez y casi no vuelve a tocar, y las cuatro escrituras piden `ADMIN_SALON`,
+ * que es justo la puerta de este area— y no por ser parte de `/config`.
+ */
+const LAS_SECCIONES = [
   {
     ruta: 'web',
     titulo: 'La web publica',
@@ -91,6 +111,13 @@ const LAS_TRES_SECCIONES = [
     descripcion:
       'La ventana de tiempo alrededor del inicio del turno y el cartel con el codigo QR de la ' +
       'pared.',
+  },
+  {
+    ruta: 'packs',
+    titulo: 'Los packs',
+    descripcion:
+      'El catalogo de lo que el gimnasio vende: cuantas clases da cada pack y cuanto cuesta. Dar ' +
+      'de baja uno no le quita el pack a quien ya lo tiene.',
   },
 ] as const;
 
@@ -205,7 +232,7 @@ function IndiceDeConfiguracion() {
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {LAS_TRES_SECCIONES.map((seccion) => (
+        {LAS_SECCIONES.map((seccion) => (
           <div
             key={seccion.ruta}
             className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"

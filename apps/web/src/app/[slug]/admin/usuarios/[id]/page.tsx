@@ -11,6 +11,7 @@ import { BloqueDeAcciones } from './bloque-acciones';
 import { BloqueDeDatos } from './bloque-datos';
 import { BloqueDeDiasFijos } from './bloque-dias-fijos';
 import { BloqueDeEstadoDePago } from './bloque-estado-pago';
+import { BloqueDePagos } from './bloque-pagos';
 import { BloqueDeSalas } from './bloque-salas';
 import { BloqueDeTurnosLibres } from './bloque-turnos-libres';
 import { BloqueDeVacaciones } from './bloque-vacaciones';
@@ -80,6 +81,16 @@ export default function PaginaDeFicha() {
       <BloqueDeDatos usuario={usuario} />
       <BloqueDeSalas usuario={usuario} />
       <BloqueDeEstadoDePago usuario={usuario} />
+      {/* PEGADO AL ESTADO DE PAGO Y NO EN UNA PANTALLA PROPIA: un pago es DE
+          ALGUIEN, igual que las vacaciones en la Fase 10. Y va JUSTO DEBAJO
+          porque `pagoAlDia` —el «hoy: al dia / debe» del bloque de arriba— es
+          DERIVADO de estas filas desde la Fase 5A: leer el estado sin ver los
+          pagos que lo producen es leer una conclusion sin sus premisas. El
+          orden tambien importa para la seña: el bloque de arriba dice «debe» y
+          este explica por que, cuando lo ultimo que se cobro fue una seña.
+          El motivo entero de que no haya un listado global, en el docblock de
+          `bloque-pagos.tsx`. */}
+      <BloqueDePagos usuario={usuario} />
       <BloqueDeDiasFijos usuario={usuario} />
       {/* Las vacaciones van PEGADAS a los dias fijos: «que dias viene» y
           «cuando no viene» son la misma pregunta por los dos lados, y leerlas

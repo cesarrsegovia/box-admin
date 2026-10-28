@@ -32,7 +32,7 @@ import { escondidoEnElCuerpo } from './espia-de-consola';
  *
  * NADA DE LO QUE HAY AQUI ES UN CENTINELA REGISTRADO: este spec no llama a
  * `vigilarEstosDatos` y las cadenas de abajo son inventadas para la medicion,
- * asi que los quince tapones globales siguen mirando lo suyo mientras corre.
+ * asi que los dieciocho tapones globales siguen mirando lo suyo mientras corre.
  * Y lo que este spec siembra en el `<body>` lo limpia el `cleanup()` del tapon
  * global, igual que en cualquier otro archivo.
  */

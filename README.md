@@ -2403,6 +2403,81 @@ ponerse al día»_.
   —`perfilId`, `nombreCompleto`, `asistio`— con el motivo escrito en el contrato: ni teléfono ni ficha
   médica.
 
+## Dinero — Fase 14
+
+Los **nueve endpoints de dinero** que seguían sin pantalla: cobrar y anular un pago, el catálogo de
+packs, la cola de comprobantes y la liquidación de cada profesora. **No toca ni un endpoint** y **no
+agrega ni una entrada a la navegación**: cada cosa va donde ya estaba lo suyo.
+
+| Dónde                                  | Qué hace                                                  | Rol                                      |
+| -------------------------------------- | --------------------------------------------------------- | ---------------------------------------- |
+| Ficha de la persona → **Pagos**        | Registrar un cobro, ver los suyos, anular uno             | `ADMIN_OPERATIVO`; anular, `ADMIN_SALON` |
+| Portada → **Comprobantes por revisar** | Aprobar (que es cobrar) o rechazar lo que subió un alumno | `ADMIN_OPERATIVO`                        |
+| Configuración → **Packs**              | Crear, editar, dar de baja y reactivar un pack            | `ADMIN_SALON`                            |
+| Análisis → **Liquidación**             | Lo que cobra una profesora en un mes, franja a franja     | `ADMIN_SALON`                            |
+
+### Una seña no pone al alumno al día, y anular no es borrar
+
+`esSena` es una bandera cuyo efecto **no está en su nombre** —«una seña reserva un lugar; no pone al
+alumno al día», dice el contrato—, así que se dibuja **con la consecuencia al lado**, en el formulario
+y en la fila. Y viaja **siempre**, también en `false`.
+
+Un pago **no se borra: se anula**. `anuladoEn` y `anuladoPor` son columnas y la fila se queda, así
+que un pago anulado **sigue en la lista**, marcado, con cuándo y con si lo anuló la misma persona que
+lo cobró. Anular pide `ADMIN_SALON` y registrar `ADMIN_OPERATIVO` —«registrar un cobro es
+operativo, deshacerlo es contable»—, y para un operativo **el botón no está en el marcado y la
+petición no sale**.
+
+### Aprobar un comprobante es registrar un cobro
+
+`ComprobantesService.aprobar` crea un `Pago` **dentro de la misma transacción**, y el DTO exige
+`monto` y `cubreHasta`. Así que la cola no tiene un botón de «Aprobar»: tiene **un formulario de
+cobro**. El enlace al archivo es una URL firmada **de vida corta** y se lee de la respuesta en cada
+pintado, sin guardarla en ningún sitio.
+
+### Dar de baja un pack no le hace nada a quien lo tiene
+
+Medido en el service: `darDeBaja` es un `update({ activo: false })` y nada más. Quien lo tiene **lo
+conserva, lo sigue viendo y su precio sigue contando en la caja**; lo que cambia es que deja de verse
+en el catálogo del alumno y de poder elegirse en una invitación. **Cuántos alumnos lo tienen no lo
+dice la API**, y la pantalla no lo inventa. El precio es **una cadena de punta a punta** y no pasa
+nunca por un `Number`.
+
+### La liquidación: cuatro situaciones, y ninguna cuenta
+
+Cada franja lleva tres banderas —`contratada`, `dictada`, `cerrada`— y son **cuatro situaciones**,
+no dos: **se dio**, **nadie se anotó**, **salón cerrado** (un feriado, que no suma a contratadas) y
+**suplencia sin contrato**.
+
+**La pantalla no calcula nada.** `aPagar` lo manda el servidor —hoy es exactamente lo dictado, y aun
+así no se copia ni se suma: el día que la regla cambie, una pantalla que sume sigue pagando lo de
+antes con cara de exactitud—, y las horas tampoco se derivan de los minutos. **Los minutos sin
+tarifa van dentro de la cifra de lo que se paga**, con palabras y con un enlace a Horarios, que es
+donde se arregla.
+
+La profesora se elige **por su `perfilId`** —el id del usuario contra este endpoint es un 404— y
+**vive en la URL** (`?profesora=`), como el mes. **No hay una por defecto**: sin elegir no se pide el
+sueldo de nadie. Las de baja también se ofrecen, porque una que se fue en febrero sigue cobrando
+enero.
+
+### ⚠️ Dos formas del dinero conviven
+
+`LiquidacionProfesor` y la caja usan `Importe` —`{ centavos, texto }`— y `PagoPublico.monto` y
+`PackPublico.precio` son **una cadena pelada**. Las dos son correctas y ninguna usa un float, pero no
+son la misma forma. **Es deuda de `packages/shared`** y queda anotada.
+
+### Lo que esta fase NO trae
+
+- **Que la profesora vea su propia liquidación.** Sigue pidiendo `ADMIN_SALON`, y abrirlo es una
+  decisión de negocio.
+- **Un listado global de pagos.** La caja de Análisis ya contesta esa pregunta sumando en
+  `centavos` del lado del servidor, y `GET /pagos` no tiene tope.
+- **Exportar la liquidación** a nada.
+- **Tres endpoints de negocio siguen sin pantalla**, medidos en el cruce del cierre de esta fase:
+  `POST /turnos` (fuera a propósito desde la Fase 9), `PATCH /rutinas/:id` (las rutinas se crean y
+  se dan de baja, pero no se editan) y `GET /packs/:id` (tiene hook y ninguna pantalla lo usa). Ver
+  `docs/superpowers/plans/PROGRESO.md`.
+
 ## Tests
 
 Unitarios:

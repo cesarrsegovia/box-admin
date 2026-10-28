@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
   PackPublico,
+  PagoPublico,
   RolUsuario,
   RutinaPublica,
   SalaPublica,
@@ -13,6 +14,7 @@ import type {
 import { ErrorDeApi } from '@/lib/cliente';
 import { clavesDeUsuarios } from '@/hooks/use-usuarios';
 import { clavesDeCatalogos } from '@/hooks/use-catalogos';
+import { clavesDeDinero } from '@/hooks/use-dinero';
 import { clavesDeRutinas } from '@/hooks/use-rutinas';
 import { clavesDeVacaciones } from '@/hooks/use-vacaciones';
 import { SECRETOS_DEL_PANEL, vigilarEstosDatos } from '@/test/espia-de-consola';
@@ -47,6 +49,17 @@ const CLAVE_DEL_RESET = SECRETOS_DEL_PANEL.claveDelReset;
 const CENTINELAS = {
   tenantIdDelGimnasio: 'tnt-centinela',
   motivoDeLasVacaciones: 'Viaje-Marcador-Brasil',
+  /**
+   * Y LO QUE AGREGA LA TAREA 2 DE LA FASE 14: el dinero de esta persona.
+   *
+   * El monto termina en `.10` a proposito —es el importe que un float binario
+   * no representa, asi que ademas de centinela delata a quien convierta por el
+   * camino— y la nota es texto libre que el mostrador escribe al lado de lo que
+   * alguien pago. De los datos de esta ficha, el que mas se parece a un
+   * `console.info` de depuracion.
+   */
+  montoDelPago: '25000.10',
+  notaDelPago: 'Nota-Marcador-pago-en-mano',
 };
 
 vigilarEstosDatos(CENTINELAS);
@@ -180,6 +193,34 @@ function unaVacacion(cambios: Partial<VacacionPublica> = {}): VacacionPublica {
   };
 }
 
+/**
+ * Un pago tal como vuelve de `GET /pagos?perfilId=…`.
+ *
+ * `perfilId: 'p1'` y no `'u1'`, por lo mismo que las vacaciones: el alumno de
+ * prueba tiene los dos ids distintos a proposito, que es lo unico que hace
+ * visible confundirlos. Y `monto` es una CADENA con dos decimales, que es como
+ * `aPagoPublico` lo serializa (`fila.monto.toFixed(2)`).
+ */
+function unPago(cambios: Partial<PagoPublico> = {}): PagoPublico {
+  return {
+    id: 'pg-1',
+    tenantId: CENTINELAS.tenantIdDelGimnasio,
+    perfilId: 'p1',
+    monto: CENTINELAS.montoDelPago,
+    metodo: 'EFECTIVO',
+    esSena: false,
+    cubreDesde: '2026-10-01',
+    cubreHasta: '2026-10-31',
+    comprobanteId: null,
+    registradoPor: 'u-admin-operativo',
+    nota: CENTINELAS.notaDelPago,
+    anuladoEn: null,
+    anuladoPor: null,
+    createdAt: '2026-10-01T09:15:00.000Z',
+    ...cambios,
+  };
+}
+
 const SALAS = [unaSala('sala-a', 'Pilates'), unaSala('sala-b', 'Funcional')];
 const PACKS = [unPack('pack-8', '8 clases'), unPack('pack-12', '12 clases')];
 
@@ -193,6 +234,7 @@ interface Respuestas {
   packs: PackPublico[];
   rutinas: RutinaPublica[];
   vacaciones: VacacionPublica[];
+  pagos: PagoPublico[];
 }
 
 let respuestas: Respuestas;
@@ -235,6 +277,7 @@ interface OpcionesDeMontaje {
   packs?: PackPublico[];
   rutinas?: RutinaPublica[];
   vacaciones?: VacacionPublica[];
+  pagos?: PagoPublico[];
   /** Lo que falla al LEER la lista de vacaciones. Las demas lecturas siguen. */
   errorDeVacaciones?: unknown;
   /** El rol de QUIEN MIRA, no el de la persona de la ficha. */
@@ -248,6 +291,7 @@ function prepararServidor(opciones: OpcionesDeMontaje): QueryClient {
     packs: opciones.packs ?? PACKS,
     rutinas: opciones.rutinas ?? [],
     vacaciones: opciones.vacaciones ?? [],
+    pagos: opciones.pagos ?? [],
   };
 
   rolDeQuienMira = opciones.rol ?? 'ADMIN_OPERATIVO';
@@ -260,6 +304,14 @@ function prepararServidor(opciones: OpcionesDeMontaje): QueryClient {
     if (ruta.startsWith('/rutinas')) return Promise.resolve(respuestas.rutinas);
     if (ruta.startsWith('/salas')) return Promise.resolve(respuestas.salas);
     if (ruta.startsWith('/packs')) return Promise.resolve(respuestas.packs);
+    // ANTES del `/usuarios`: `/pagos` es su propio controller y una escritura
+    // devuelve `PagoPublico`, no un 204. Si este doble no lo reconociera,
+    // caeria en el `return` de abajo y contestaria el usuario a un POST de
+    // pagos, que es un verde mentiroso.
+    if (ruta.startsWith('/pagos')) {
+      if (esEscritura(opcionesDePeticion)) return Promise.resolve(unPago());
+      return Promise.resolve(respuestas.pagos);
+    }
     // ANTES del `/usuarios`, y con su ruta REAL: el `@Controller` se llama
     // `vacaciones-alumnos` aunque el modulo y el contrato se llamen solo
     // «vacaciones». Si la pantalla pidiera `/vacaciones`, este doble no la
@@ -316,6 +368,7 @@ async function montar(opciones: OpcionesDeMontaje = {}): Promise<QueryClient> {
   cliente.setQueryData(clavesDeCatalogos.salas(), respuestas.salas);
   cliente.setQueryData(clavesDeCatalogos.packs(), respuestas.packs);
   cliente.setQueryData(clavesDeRutinas.dePersona(usuario.perfilId), respuestas.rutinas);
+  cliente.setQueryData(clavesDeDinero.pagos({ perfilId: usuario.perfilId }), respuestas.pagos);
   if (opciones.errorDeVacaciones === undefined) {
     cliente.setQueryData(
       clavesDeVacaciones.lista({ perfilId: usuario.perfilId }),
@@ -443,6 +496,13 @@ describe('la ficha de una persona', () => {
    * lectura repetida tambien lo rompe. El orden se normaliza con `sort()`
    * porque lo fija el orden de montaje de los bloques, que no es lo que este
    * test mide; el conteo, si.
+   *
+   * Y VUELVE A CRECER CON LA TAREA 2 DE LA FASE 14: el bloque de pagos suma
+   * `/pagos?perfilId=p1`. Otra peticion mas, nombrada, y por el mismo criterio:
+   * se actualiza a proposito y no se afloja. Lo que NO se agrega —y es la mitad
+   * que importa— es ninguna peticion al padron (`/usuarios`) para ponerle
+   * nombre a `registradoPor`: el motivo esta en el docblock de
+   * `bloque-pagos.tsx` y es que el padron no tiene administradores.
    */
   it('abrir la ficha pide ESTO y nada mas', async () => {
     await montarPidiendo({ usuario: unAlumno({ perfilId: 'p1' }) });
@@ -451,6 +511,7 @@ describe('la ficha de una persona', () => {
     expect([...rutasPedidas()].sort()).toEqual(
       [
         '/packs',
+        '/pagos?perfilId=p1',
         '/rutinas?perfilId=p1',
         '/salas',
         '/usuarios/u1',
@@ -1690,6 +1751,11 @@ describe('a quien se le dibujan las vacaciones', () => {
  */
 const PETICIONES_AL_ABRIR_LA_FICHA = [
   '/packs',
+  // LA TAREA 2 DE LA FASE 14. `GET /pagos` lleva `@Roles('ADMIN_OPERATIVO')`
+  // igual que las tres rutas de vacaciones, asi que la igualdad entre los tres
+  // roles que pueden llegar a esta ficha SIGUE SIENDO CIERTA con esta linea
+  // dentro: no se partio la lista en una por rol.
+  '/pagos?perfilId=p1',
   '/rutinas?perfilId=p1',
   '/salas',
   '/usuarios/u1',
@@ -1719,7 +1785,7 @@ describe('lo que la ficha pide al montar', () => {
    * La ficha en si se sigue pidiendo: `GET /usuarios/:id` NO lleva `@Roles`
    * —el service decide, porque un alumno puede pedir su propio detalle—.
    */
-  it('sin proveedor de rol, las vacaciones NO se piden; el resto si', async () => {
+  it('sin proveedor de rol, ni las vacaciones ni los pagos se piden; el resto si', async () => {
     const cliente = prepararServidor({ usuario: unAlumno({ perfilId: 'p1' }) });
 
     // A proposito SIN `ProveedorDeRol`, que es lo que `pintar` si envuelve.
@@ -1735,6 +1801,14 @@ describe('lo que la ficha pide al montar', () => {
     );
     expect(
       screen.getByText('Para esto hace falta ser administrador operativo. Tu rol no alcanza.'),
+    ).toBeInTheDocument();
+    // Y EL BLOQUE DE PAGOS DICE LO SUYO, con su propia frase y no con la de
+    // arriba: dos carteles identicos en la misma pantalla no dejarian saber
+    // cual de los dos bloques esta cortado.
+    expect(
+      screen.getByText(
+        'Para ver los pagos hace falta ser administrador operativo. Tu rol no alcanza.',
+      ),
     ).toBeInTheDocument();
   });
 

@@ -1,8 +1,8 @@
 /**
- * EL EJE DECIMOSEXTO: `requestIdleCallback`, QUE NO ES UN CANAL SINO UN
- * RELOJ — Y QUE APAGA LOS QUINCE DE UNA SOLA LINEA.
+ * EL EJE DECIMOCTAVO: `requestIdleCallback`, QUE NO ES UN CANAL SINO UN
+ * RELOJ — Y QUE APAGA LOS DIECIOCHO DE UNA SOLA LINEA.
  *
- * Es EL PRIMERO DE LOS DOS EJES, no el unico: el decimoseptimo
+ * Es EL PRIMERO DE LOS DOS EJES, no el unico: el decimonoveno
  * —`src/test/salida-de-la-pestana.ts`— cierra la otra forma de aplazar una
  * fuga a despues de los tapones, los eventos de salida de la pestaña, que
  * jsdom tampoco dispara nunca. Son parientes en la FORMA —los dos mueven la
@@ -10,13 +10,18 @@
  * respuesta fue MONTAR una API que falta, aqui DESPACHAR unos eventos que
  * nunca llegan. Montar el rato libre no cubre aquello, ni al reves.
  *
- * `espia-de-consola.ts` tapa quince puertas por las que una pantalla puede
+ * `espia-de-consola.ts` tapa dieciocho puertas por las que una pantalla puede
  * decir algo que no mira nadie: la consola, el titulo, `window.name`, el
  * `<head>`, los tres almacenes, el buffer de User Timing, el `src` de una
  * imagen, las tres salidas laterales, el almacen de respuestas, el service
- * worker, IndexedDB, los atributos del `<html>` y del `<body>`, la URL del
- * documento, la red por fuera de `pedir` y lo que el marcado del `<body>` no
- * serializa —el `.value` de un control y el contenido de un `shadowRoot`—.
+ * worker, IndexedDB, el `<html>` y el `<body>` —sus atributos y lo que cuelga
+ * del `<html>` fuera del `<head>` y del `<body>`—, la URL del
+ * documento, la red por fuera de `pedir`, lo que el marcado del `<body>` no
+ * serializa —el `.value` de un control y el contenido de un `shadowRoot`—, el
+ * disco privado del origen (OPFS), que es el sexto almacen, y el CENTRO DE
+ * NOTIFICACIONES DEL SISTEMA OPERATIVO —`new Notification` y
+ * `showNotification`—, que es el unico de los dieciocho que no acaba dentro
+ * del navegador.
  * Todas se
  * comprueban en un `afterEach`, o sea DESPUES de que el test haya corrido.
  *
@@ -47,7 +52,7 @@
  * para decidir que NO vigilar el portapapeles.
  *
  * Montandolo, en cambio, lo que se aplace CORRE —con los relojes de verdad
- * dentro del test— y entonces los quince tapones lo ven, sin que ninguno tenga
+ * dentro del test— y entonces los dieciocho tapones lo ven, sin que ninguno tenga
  * que saber que esto existe. El que lo use legitimamente no nota nada; el que
  * esconda una fuga detras, la paga.
  *
@@ -98,8 +103,8 @@ const MILISEGUNDOS_DE_SOBRA = 50;
 /**
  * Monta `requestIdleCallback` y `cancelIdleCallback` para todo el paquete.
  *
- * Se llama desde `vitest.setup.ts`, al lado del tapon de los quince canales —que
- * lleva dentro el otro eje, el decimoseptimo— y
+ * Se llama desde `vitest.setup.ts`, al lado del tapon de los dieciocho canales
+ * —que lleva dentro el otro eje, el decimonoveno— y
  * por el mismo motivo: un agujero de canal no es de una pantalla, y la que no
  * se acuerde de pedirlo es justamente la que lo va a necesitar.
  */

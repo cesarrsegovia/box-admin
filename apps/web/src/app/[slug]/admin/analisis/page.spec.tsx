@@ -463,6 +463,12 @@ function montar({
 
     if (ruta.startsWith('/stats/operativo')) return Promise.resolve(operativo);
     if (ruta.startsWith('/stats/composicion-alumnos')) return Promise.resolve(laComposicion);
+    // La lista del selector de la liquidacion. Lo que la liquidacion hace con
+    // ella lo fija `liquidacion.spec`; aqui solo importa QUIEN la pide.
+    if (ruta === '/usuarios?tipo=profesor') return Promise.resolve([]);
+    if (ruta.startsWith('/liquidacion/')) {
+      return Promise.reject(new ErrorDeApi('No hay ninguna profesora con ese id', 404));
+    }
 
     throw new Error(`La pantalla pidio una ruta que nadie espera: ${ruta}`);
   });
@@ -1045,9 +1051,11 @@ describe('lo que la pantalla pide', () => {
     ]);
   });
 
-  it('y un ADMIN_SALON pide ESTO, que es lo mismo mas la caja', async () => {
-    // La otra mitad de la lista blanca. Las tres y una vez cada una: la caja no
-    // se pide dos veces por estar en un bloque aparte.
+  it('y un ADMIN_SALON pide ESTO, que es lo mismo mas la caja y las profesoras', async () => {
+    // La otra mitad de la lista blanca. Una vez cada una: la caja no se pide
+    // dos veces por estar en un bloque aparte. Y la liquidacion NO esta: sin
+    // `?profesora=` no hay una por defecto, y pedir la primera seria pedir el
+    // sueldo de alguien que nadie busco.
     montar({ rol: 'ADMIN_SALON' });
     await esperar();
 
@@ -1055,6 +1063,7 @@ describe('lo que la pantalla pide', () => {
       '/stats/caja?anio=2026&mes=1',
       '/stats/composicion-alumnos?anio=2026&mes=1',
       '/stats/operativo?anio=2026&mes=1',
+      '/usuarios?tipo=profesor',
     ]);
 
     // Y la caja NO lleva `salaId`: `ConsultaMensualDto` no lo tiene y el
@@ -1177,6 +1186,8 @@ describe('la caja es de ADMIN_SALON y nadie mas', () => {
     await esperar();
 
     expect(bloque('caja')).toBeNull();
+    // Ni la liquidacion, que pasa por la misma puerta.
+    expect(bloque('liquidacion')).toBeNull();
 
     // Y NO esta escondida: se mira el HTML crudo, que es donde se veria un
     // bloque con `hidden` o con `display:none`. Los tres numeros del dinero,
@@ -1211,7 +1222,11 @@ describe('la caja es de ADMIN_SALON y nadie mas', () => {
     await esperar();
 
     expect(bloque('caja')).toBeNull();
-    expect(rutasPedidas().filter((ruta) => ruta.startsWith('/stats/caja'))).toEqual([]);
+    expect(bloque('liquidacion')).toBeNull();
+    expect(rutasPedidas()).toEqual([
+      '/stats/composicion-alumnos?anio=2026&mes=1',
+      '/stats/operativo?anio=2026&mes=1',
+    ]);
 
     // Y lo demas sigue funcionando: la puerta cierra la caja, no la pantalla.
     expect(metricasDelMes()).toHaveLength(5);
@@ -1250,6 +1265,20 @@ describe('la caja es de ADMIN_SALON y nadie mas', () => {
 
     expect(bloque('caja')).not.toBeNull();
     expect(importeDe('margen')).toBe('555.55');
+    expect(bloque('liquidacion')).not.toBeNull();
+  });
+
+  it('la liquidacion de la URL viaja con el MISMO mes que la caja', async () => {
+    // Un selector de mes para todo el dinero: la liquidacion no lee la URL por
+    // su cuenta, recibe el mes ya resuelto. Si lo leyera aparte, un dia uno
+    // de los dos se queda atras y la caja y el sueldo hablan de meses distintos.
+    montar({ rol: 'ADMIN_SALON', consulta: 'anio=2025&mes=11&profesora=pf-1' });
+    await esperar();
+
+    expect(rutasPedidas().filter((ruta) => /^\/(stats\/caja|liquidacion)/.test(ruta))).toEqual([
+      '/liquidacion/pf-1?anio=2025&mes=11',
+      '/stats/caja?anio=2025&mes=11',
+    ]);
   });
 
   it('una sesion caducada con la caja montada sigue avisando UNA sola vez', async () => {

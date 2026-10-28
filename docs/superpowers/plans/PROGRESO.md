@@ -4066,3 +4066,176 @@ entorno.
       guardar le borra un check-in real.
 - [ ] **Pasar lista** y comprobar en el **reporte de asistencia de Análisis** que **aparecen ausentes**.
       ⚠️ Es la comprobación que cierra la fase: **hasta hoy ese número sólo podía ser cero.**
+
+# Progreso Fase 14 — Dinero
+
+**Spec:** `docs/superpowers/specs/2026-10-23-fase14-dinero.md`
+**Plan:** `docs/superpowers/plans/2026-10-23-fase14-dinero.md` (6 tareas)
+
+Los **9 endpoints de dinero** que quedaban sin pantalla: pagos 3, packs 3, comprobantes 2 y la
+liquidación. **No se tocó un endpoint ni se agregó una entrada a la navegación**: el pago va en la ficha
+de la persona, la cola de comprobantes en la portada, los packs en Configuración y la liquidación en
+Análisis. ⚠️ **Y el cruce de cierre dice que NO quedan cero endpoints sin pantalla: quedan tres** —ver
+abajo—, y el inventario del 19/10 no los veía.
+
+- [x] T1 — Los nueve hooks (`use-dinero.ts`)
+- [x] T2 — El pago, en la ficha de la persona (`bloque-pagos.tsx`)
+- [x] T3 — La cola de comprobantes, en la portada (`comprobantes-pendientes.tsx`)
+- [x] T4 — Los packs, en Configuración · cierra en **1847 / 84**
+- [x] T5 — La liquidación, en Análisis · 1847 → **1882 / 86**
+- [x] T6 — Verificación, cruce, README y tracker
+
+⚠️ **El historial de la sesión que hizo T1 a T4 se perdió**, y las casillas del plan no se marcaron. El
+avance se reconstruyó **de los archivos y de una corrida de la suite**, no de un registro: por eso no
+hay recuento por tarea entre 1689 y 1847. La sesión se cortó **con la mutación abierta de la T4 todavía
+plantada** —25 rojos en el spec de packs, que parecían un bug y eran la mutación funcionando—; se quitó
+al retomar.
+
+## Lo que la fase dibuja y no aplana
+
+- **Una seña no pone al día.** `esSena` lleva la consecuencia al lado, en el formulario y en la fila, y
+  **viaja siempre**, también en `false`: es la lección de `mostrarPrecios` de la Fase 12.
+- **Anular no es borrar.** La fila se queda con `anuladoEn` y `anuladoPor`, sigue en la lista marcada, y
+  la pantalla dice si la anuló la misma persona que la cobró —dos ids que se comparan sin nombre: el
+  padrón **no tiene a los administradores**, medido—. Anular pide `ADMIN_SALON`: para un operativo el
+  botón **no está en el marcado y no se pide**.
+- **Aprobar un comprobante es cobrar.** `aprobar` acuña un `Pago` en la misma transacción y el DTO exige
+  `monto` y `cubreHasta`: la cola tiene **un formulario de cobro**, no un botón. La URL de descarga es de
+  vida corta y no se guarda en ningún sitio.
+- **Dar de baja un pack no le hace nada a quien lo tiene**, medido en el service, y **cuántos lo tienen
+  no lo dice la API**: la pantalla no lo inventa.
+- **La liquidación distingue las cuatro situaciones de una franja** —se dio, nadie se anotó, salón
+  cerrado, suplencia sin contrato— y **no calcula nada**: `aPagar`, los importes y las horas se pintan
+  como vienen, con el fijo desalineado en los tres sitios derivados para que una cuenta se note. **Los
+  minutos sin tarifa van dentro de la cifra de lo que se paga**, con palabras y un enlace a Horarios.
+- **La profesora se elige por `perfilId` y vive en la URL** (`?profesora=`). Sin elegir **no se pide el
+  sueldo de nadie**, y las de baja se ofrecen porque siguen cobrando sus meses.
+- ⚠️ **`Importe` contra la cadena pelada.** `LiquidacionProfesor` y la caja traen `{ centavos, texto }`;
+  `PagoPublico.monto` y `PackPublico.precio` son una cadena. Dos formas correctas del mismo dinero
+  conviviendo: **deuda de `packages/shared`**.
+
+## Un arreglo que no estaba en el plan
+
+**`useLiquidacion` mandaba el id sin codificar**, y es el único id de `use-dinero.ts` que no sale de una
+respuesta de la API sino del `?profesora=` de la URL. Con `../usuarios`, `fetch` resolvía el segmento y
+la petición salía **contra el endpoint de al lado con la sesión del admin**. Test primero —rojo con
+`'/api/bx/liquidacion/../usuarios?…'`— y `encodeURIComponent` después.
+
+## Las mutaciones
+
+**T5: las cinco del plan caen**, cada una en el test que la fija: «nadie se anotó» pintado como cerrado
+(2 rojos), `aPagar` sumado de las franjas (2), los minutos sin tarifa en un `title` (2), las horas
+recalculadas de los minutos (1) y el id del usuario en vez del `perfilId` (3).
+
+**Las abiertas que esta fase encontró y CERRÓ**, según lo que quedó en el código —las de T1 a T3 no se
+pueden reconstruir con su número y su medida—:
+
+| Qué se agregó                                                                    | El hueco                                                        | Cómo se cerró                                    |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------ |
+| `console.info('[packs]', precios.map((p) => Number(p).toLocaleString('es-AR')))` | **la forma localizada**: `25000.10` sale `25.000,1` — 1841/1841 | una aguja más del alfabeto (`agujasLocalizadas`) |
+| un `<div>` con el catálogo colgado del `<html>`                                  | **el hueco entre tres defensas** — 1841/1841                    | segunda mitad del canal doce                     |
+| `href={URL.createObjectURL(new Blob([csv]))}` con la liquidación, sin revocar    | **el almacén de blobs del documento** — **1874/1874**           | **canal veinte**, con guardián propio            |
+
+### ⚠️ El canal veinte, y por qué el veinte
+
+`URL.createObjectURL` **no existe en jsdom**, así que el `typeof` prudente lo vuelve un silencio. En el
+navegador el objeto queda vivo hasta que alguien lo revoque, y **en una aplicación de una sola página el
+documento no se cierra al salir de la sesión**: el sueldo de la profesora sigue en memoria para el
+turno siguiente, y `chrome://blob-internals` lo enseña entero.
+
+Se afirma **por centinelas y por la forma fuerte —nada publicado sin revocar—, leyendo DESPUÉS del
+`cleanup()`**, y eso se midió en las dos direcciones: la fuga tira **16 de 25** de `liquidacion.spec`, y
+**la misma línea revocada en la limpieza de un `useEffect` pasa los 25**. Lo único que distingue caer de
+no caer es revocar. El guardián, `objetos-con-url.spec.ts`, caza que `revocar` vacíe el almacén entero
+(2 rojos) y que el contenido se lea con `JSON.stringify` en vez de abrir el `Blob` (4 rojos).
+
+**Es el veinte y no el dieciocho** porque el 18 y el 19 ya eran ejes (`rato-libre.ts` y
+`salida-de-la-pestana.ts`). Los recuentos de la infraestructura pasaron a **dieciocho canales**; las
+menciones de los specs que cuentan una medida de su momento se dejaron como estaban.
+
+## El cruce de endpoints, rehecho y MEDIDO — y no da cero
+
+El script del 19/10 no estaba guardado en el repo, así que se rehízo: **un recorrido de los
+`*.controller.ts` en orden** —cada `@Controller` cambia la base de lo que sigue, que es la trampa de los
+archivos con dos— contra **todos los `pedir` de `apps/web/src` fuera de los specs** y los `fetch` del
+BFF. Y una comprobación nueva que el inventario viejo no hacía: **que el hook que pide la ruta lo use
+alguna pantalla**.
+
+**103 rutas** —el recorrido da 104 porque cuenta un `@Patch(':id')` que vive dentro de un comentario de
+`turnos.controller.ts:50`—. **94 tienen pantalla y 9 no.** De las 9:
+
+| Ruta                                         | Por qué                                                                                                                                       |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET` y `PUT /archivos-locales/:clave`       | URLs firmadas que genera la API y abre el navegador — **por diseño**                                                                          |
+| `GET /calendario/…/conflictos`               | ya viene dentro de `plan.conflictos` — **por diseño**, escrito en el hook                                                                     |
+| `POST /auth/tenants` y `POST /auth/register` | alta de un gimnasio con `BootstrapKeyGuard`: **del operador, no de nadie del gimnasio**                                                       |
+| `GET /auth/admin-only`                       | **endpoint de prueba** del checklist de la Fase 0                                                                                             |
+| ⚠️ **`POST /turnos`**                        | **crear un turno a mano** — fuera a propósito desde la spec de la Fase 9                                                                      |
+| ⚠️ **`PATCH /rutinas/:id`**                  | **una rutina se crea y se da de baja, pero NO SE EDITA**: el hook existe y `bloque-dias-fijos.tsx` no lo usa. No está escrito en ningún sitio |
+| ⚠️ **`GET /packs/:id`**                      | `usePack` existe —es de la T1— y **ninguna pantalla lo usa**; el plan lo daba por «ya usado»                                                  |
+
+⚠️ **El inventario del 19/10 no veía las tres de abajo**, y la causa es de método: contaba una ruta como
+consumida si su literal aparecía en `apps/web`, y **un hook que nadie monta no es una pantalla**.
+`POST /turnos` además no figuraba en ninguna de sus tres áreas. Y el «auth no pasa por `pedir`» de
+aquel bloque explicaba cinco de las ocho de `auth`, no las ocho: las otras tres no tienen pantalla por
+otro motivo.
+
+## Trampas nuevas
+
+**Una sesión cortada a mitad de una mutación deja el árbol en rojo con cara de bug.** Las mutaciones
+llevan el marcador `MUTACION TEMPORAL`: al retomar, **un `grep` de eso va antes que cualquier
+diagnóstico**.
+
+**`prettier` vive en la raíz del repo**: desde `apps/web`, `pnpm exec prettier` no existe.
+
+## Estado final
+
+|                   |                                                    |
+| ----------------- | -------------------------------------------------- |
+| `apps/web`        | **1882 tests / 86 suites**, tsc limpio, `build` OK |
+| `apps/api`        | **1339 / 67**, eslint en cero — sin tocar          |
+| E2E de la API     | **218 / 13 — MEDIDO** en este cierre               |
+| `packages/shared` | 103 / 4 — sin tocar, arrastrado                    |
+
+De 1689 en web al empezar la fase: **+193**. T1–T4 y su infraestructura, **+158** (sin desglose: ver
+arriba); T5, **+35** —la liquidación 25, el guardián del canal veinte 8, el id codificado 1 y la
+liquidación en la lista blanca de Análisis 1—.
+
+## Deuda anotada
+
+**Nueva de esta fase:**
+
+- ⚠️ **`PATCH /rutinas/:id` sin pantalla**: una rutina mal cargada sólo se arregla dándola de baja y
+  creándola otra vez.
+- **`GET /packs/:id` sin pantalla, con hook**: hoy no hace falta —el catálogo trae todo— y `usePack` es
+  código que nadie monta.
+- **`POST /turnos` sin pantalla**: la spec de la Fase 9 lo dejó para «cuando exista la configuración
+  operativa», que ya existe. **La decisión sigue pendiente.**
+- ⚠️ **`Importe` contra la cadena pelada**, en `packages/shared`.
+- **Una revocación aplazada con `setTimeout`** cuenta como no revocada para el canal veinte si el test
+  termina antes. Falsa alarma, no agujero, y está escrito en su docblock.
+
+**Vieja, y sigue en pie:** la lista de la Fase 13 entera, con `navigator.clipboard`, el contexto de
+navegación anidado, los atributos de los descendientes del `<body>`, partir el dato en trozos y el
+`.value` que escriba la limpieza de un `useEffect` todavía abiertos; y ⚠️ **que la profesora no pueda ver
+su propia liquidación**, que ahora que la pantalla existe es una decisión de una línea de rol y no de
+una fase.
+
+## Siguiente paso
+
+Con esta fase **se acabaron las áreas sin pantalla**. Lo que queda son **tres endpoints sueltos y tres
+decisiones de producto**: si se crea un turno a mano, si una rutina se edita, y si la profesora ve lo
+que cobra.
+
+## El checklist a mano (para Cesar)
+
+Siete comprobaciones que **ningún test puede hacer**: no hay navegador en el entorno.
+
+- [ ] **Registrar un pago** y comprobar que **el estado de pago de la ficha cambia**.
+- [ ] **Registrar una seña** y comprobar que **NO pone al alumno al día**.
+- [ ] **Entrar como `ADMIN_OPERATIVO`** y comprobar que **anular no está en el marcado** y no se pide.
+- [ ] **Anular un pago** y comprobar que **sigue en la lista**, marcado, con cuándo y por quién.
+- [ ] **Aprobar un comprobante** y comprobar que **sale de la cola** y que el cobro aparece en la ficha.
+- [ ] **Dar de baja un pack** y comprobar **qué les pasa a los alumnos que lo tenían**: nada.
+- [ ] **Mirar la liquidación de una profesora con una franja sin tarifa** y comprobar que **el aviso está
+      al lado del importe** — y que arreglar la tarifa en `admin/horarios` lo hace desaparecer.

@@ -225,21 +225,33 @@ describe('la puerta de rol del area de configuracion', () => {
    *
    * Un enlace de mas —a una pantalla que todavia no existe, o a una que exista
    * y no deba colgar de aqui— es la familia de error que ningun
-   * `getByText(...)` ve. Las tres rutas estan escritas a mano y no derivadas de
-   * la constante de la pagina: derivarlas moveria los dos lados a la vez.
+   * `getByText(...)` ve. Las cuatro rutas estan escritas a mano y no derivadas
+   * de la constante de la pagina: derivarlas moveria los dos lados a la vez.
    *
-   * ⚠️ LAS TRES RUTAS TODAVIA NO TIENEN ARCHIVO —las traen las tareas 3 a 6— y
-   * los enlaces se dibujan igual: `next build` no valida el destino de un
-   * `<Link>`, comprobado corriendo el build.
+   * ⚠️ EL CUARTO ENLACE LO AGREGO LA FASE 14 Y ESTE TEST SE ACTUALIZO A
+   * PROPOSITO, no se aflojo. Lo que NO se hizo es cambiar la igualdad por un
+   * `expect.arrayContaining([...])` ni por un `toHaveLength(4)`, que es la
+   * forma barata de dejar de tocar un test cada vez que crece la lista: las
+   * dos dejarian pasar en verde un quinto enlace que nadie puso a proposito,
+   * que es justo la familia de error por la que este test es una igualdad.
+   * Comprobado que sigue teniendo dientes: con el enlace de packs quitado de
+   * la pagina, este test y el del SUPERADMIN caen los dos.
+   *
+   * ⚠️ `next build` SIGUE SIN VALIDAR EL DESTINO de un `<Link>` —no hay
+   * `typedRoutes`—, asi que que las cuatro rutas existan hoy no lo sostiene el
+   * compilador: lo sostienen estas ocho cadenas escritas a mano.
    */
-  it('un ADMIN_SALON ve las tres secciones', () => {
+  const LOS_CUATRO_ENLACES: [string, string][] = [
+    ['La web publica', '/mi-gym/admin/configuracion/web'],
+    ['El email', '/mi-gym/admin/configuracion/email'],
+    ['El check-in por QR', '/mi-gym/admin/configuracion/checkin'],
+    ['Los packs', '/mi-gym/admin/configuracion/packs'],
+  ];
+
+  it('un ADMIN_SALON ve las cuatro secciones', () => {
     montar({ rol: 'ADMIN_SALON' });
 
-    expect(enlacesDelDocumento()).toEqual([
-      ['La web publica', '/mi-gym/admin/configuracion/web'],
-      ['El email', '/mi-gym/admin/configuracion/email'],
-      ['El check-in por QR', '/mi-gym/admin/configuracion/checkin'],
-    ]);
+    expect(enlacesDelDocumento()).toEqual(LOS_CUATRO_ENLACES);
   });
 
   /**
@@ -251,11 +263,29 @@ describe('la puerta de rol del area de configuracion', () => {
   it('y un SUPERADMIN tambien, porque la puerta es una jerarquia', () => {
     montar({ rol: 'SUPERADMIN' });
 
-    expect(enlacesDelDocumento()).toEqual([
-      ['La web publica', '/mi-gym/admin/configuracion/web'],
-      ['El email', '/mi-gym/admin/configuracion/email'],
-      ['El check-in por QR', '/mi-gym/admin/configuracion/checkin'],
-    ]);
+    expect(enlacesDelDocumento()).toEqual(LOS_CUATRO_ENLACES);
+  });
+
+  /**
+   * EL ENLACE DE PACKS NO SE LE OFRECE A UN OPERATIVO, Y HACE FALTA DECIRLO
+   * APARTE.
+   *
+   * Los otros tres cuelgan de endpoints que piden `ADMIN_SALON` ENTEROS, asi
+   * que esconderlos es obvio. `GET /packs` NO lleva `@Roles`: un operativo
+   * puede leer el catalogo, y de hecho ya lo lee en el selector de la ficha de
+   * cada alumno. O sea que el enlace de packs es el unico de los cuatro que
+   * alguien podria defender como «dejaselo, al menos mira» — y no se deja,
+   * porque la pantalla de packs es un editor y sus cuatro escrituras piden
+   * `ADMIN_SALON`.
+   *
+   * Por IGUALDAD EXACTA sobre el cuerpo entero y no con un `not.toContain`:
+   * una subcadena suelta es la casualidad ortografica que ya mordio tres veces.
+   */
+  it('y el de packs tampoco, aunque GET /packs no lleve rol', () => {
+    montar({ rol: 'ADMIN_OPERATIVO' });
+
+    expect(document.body.textContent).toBe('');
+    expect(enlacesDelDocumento()).toEqual([]);
   });
 });
 

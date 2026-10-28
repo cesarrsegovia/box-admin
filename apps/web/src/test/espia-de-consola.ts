@@ -14,20 +14,25 @@ import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
  * navegador (`CacheStorage`), el SERVICE WORKER
  * (`navigator.serviceWorker.controller.postMessage`), que en este producto
  * esta instalado de verdad, INDEXEDDB, que es el QUINTO almacen en disco y
- * el unico sin tope de tamaño, LOS ATRIBUTOS DEL `<html>` Y DEL `<body>`,
+ * el unico sin tope de tamaño, EL `<html>` Y EL `<body>` —sus ATRIBUTOS Y LO
+ * QUE CUELGA DEL `<html>` fuera del `<head>` y del `<body>`—,
  * que son los dos elementos que envuelven al cuerpo y que no desmonta nadie, y
  * LA URL DEL DOCUMENTO —`location` y las cinco puertas de la History API—, que
  * es el hueco ENTRE las dos defensas de este repo y el unico canal que se
  * copia solo, y LA RED POR FUERA DE `pedir` —`fetch`, `XMLHttpRequest`,
- * `WebSocket` y `EventSource`—, que es la defensa que los canales septimo y
- * octavo daban por supuesta y que vivia, a mano, en tres specs de setenta y
- * cuatro. Ninguno de esos QUINCE lo mira un test de
- * pantalla: los tests
+ * `WebSocket`, `EventSource`, `Worker` y `SharedWorker`—, que es la defensa
+ * que los canales septimo y octavo daban por supuesta y que vivia, a mano, en
+ * tres specs de setenta y cuatro, y EL DISCO PRIVADO DEL ORIGEN —OPFS,
+ * `navigator.storage.getDirectory()`—, que es el SEXTO almacen y un SISTEMA DE
+ * ARCHIVOS entero: sobrevive al logout y al reinicio como `localStorage`, no
+ * tiene el tope de 5 MB, guarda bytes sin que nadie serialice y NO SALE en la
+ * pestaña «Application» donde si salen los otros cinco. Ninguno de esos
+ * DIECIOCHO lo mira un test de pantalla: los tests
  * miran el marcado DEL CUERPO, los cuerpos de las peticiones, las rutas y las
  * dos caches.
  *
  * Y EL DECIMOQUINTO ESTA DEL OTRO LADO DE ESA FRASE, que es lo que lo hace
- * distinto de los catorce: LO QUE EL MARCADO DEL `<body>` **NO SERIALIZA** —el
+ * distinto de los otros quince: LO QUE EL MARCADO DEL `<body>` **NO SERIALIZA** —el
  * `.value` de un control, que para los tipos en modo valor y para un
  * `<textarea>` no se refleja a ningun atributo, y el contenido de un
  * `shadowRoot` abierto—. Esta DENTRO del cuerpo, o sea del lado que miran los
@@ -54,16 +59,16 @@ import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
  *    verde. Era una lista negra —el patron contra el que este repo predica—
  *    puesta en infraestructura que comparten cuarenta y nueve specs.
  *
- * QUINCE CANALES Y DOS EJES. Los canales son PUERTAS: sitios por donde sale un
- * dato. Los ejes no abren ninguna puerta nueva — mueven el MOMENTO en que la
- * pantalla habla a un hueco donde ninguno de los quince tapones esta mirando, y
- * por eso los apagan todos de una linea, incluidos los que se tapen mañana.
- * Van numerados detras de los canales y viven cada uno en su archivo:
+ * DIECIOCHO CANALES Y DOS EJES. Los canales son PUERTAS: sitios por donde sale
+ * un dato. Los ejes no abren ninguna puerta nueva — mueven el MOMENTO en que la
+ * pantalla habla a un hueco donde ninguno de los dieciocho tapones esta
+ * mirando, y por eso los apagan todos de una linea, incluidos los que se tapen
+ * mañana. Van numerados detras de los canales y viven cada uno en su archivo:
  *
- *  - EL DECIMOSEXTO, `src/test/rato-libre.ts`: `requestIdleCallback`, que
+ *  - EL DECIMOCTAVO, `src/test/rato-libre.ts`: `requestIdleCallback`, que
  *    jsdom no implementa, asi que lo aplazado al rato libre no corre NUNCA
  *    dentro del test. Se tapa MONTANDO la API para que corra.
- *  - EL DECIMOSEPTIMO, `src/test/salida-de-la-pestana.ts`: los cinco eventos de
+ *  - EL DECIMONOVENO, `src/test/salida-de-la-pestana.ts`: los cinco eventos de
  *    salida de la pestaña —`beforeunload`, `visibilitychange`, `freeze`,
  *    `pagehide` y `unload`—, que jsdom no dispara NUNCA, asi que un oyente
  *    registrado en un `useEffect` vive y muere sin que nadie le hable. Se tapa
@@ -122,18 +127,18 @@ function todoLoVigilado(): [string, string][] {
 }
 
 // ---------------------------------------------------------------------------
-// EL ALFABETO: no es un canal mas, es COMO se busca el centinela en los quince
+// EL ALFABETO: no es un canal mas, es COMO se busca el centinela en los dieciocho
 // ---------------------------------------------------------------------------
 
 /**
- * LOS QUINCE CANALES COMPARTEN UNA PROPIEDAD, Y UNA SOLA LINEA LOS DERROTA.
+ * LOS DIECIOCHO CANALES COMPARTEN UNA PROPIEDAD, Y UNA SOLA LINEA LOS DERROTA.
  *
  * Todos afirman igual: `volcado.includes(valor)`. Esa decision es correcta y
  * esta razonada arriba canal por canal —un tapon que prohiba `console.info`,
  * pedir una imagen o hablarle al worker se desactiva el dia que alguien lo
  * necesite, y entonces no tapa nada—. Pero tiene un corolario que ningun test
  * enunciaba: **buscar por subcadena del valor CRUDO deja pasar cualquier
- * transformacion del dato, y la deja pasar por los quince a la vez.** No es un
+ * transformacion del dato, y la deja pasar por los dieciocho a la vez.** No es un
  * agujero de un canal: es un agujero del alfabeto.
  *
  * LA MUTACION QUE LO DESCUBRIO, medida, en el `onSuccess` de un hook:
@@ -142,7 +147,7 @@ function todoLoVigilado(): [string, string][] {
  *
  * donde `lista` lleva el nombre propio y la ausencia de cada alumno de una
  * clase. Sobrevivio los 1599 tests del paquete con los trece canales
- * enchufados, Y POR EL CANAL MAS VIGILADO DE LOS QUINCE. El control que lo
+ * enchufados, Y POR EL CANAL MAS VIGILADO DE LOS DIECIOCHO. El control que lo
  * prueba: la MISMA linea sin el `btoa` hace caer 5 tests con «la consola dijo
  * alumnaQueVino». El instrumento funcionaba; lo unico que cambiaba entre caer
  * y no caer era la codificacion.
@@ -157,7 +162,7 @@ function todoLoVigilado(): [string, string][] {
  * ASI QUE SE ARREGLA AQUI Y NO CANAL POR CANAL: lo que cambia no es QUE se
  * prohibe —sigue sin prohibirse ninguna llamada— sino COMO se busca el
  * centinela. Cada centinela se convierte en una LISTA DE AGUJAS —el valor y
- * sus formas codificadas— y los quince canales buscan la lista entera. Un canal
+ * sus formas codificadas— y los dieciocho canales buscan la lista entera. Un canal
  * que se tape mañana hereda el alfabeto sin escribir una linea, que es el
  * mismo motivo por el que el registro de datos es uno solo y no uno por tapon.
  *
@@ -181,6 +186,12 @@ function todoLoVigilado(): [string, string][] {
  *    colocado, asi que pasar por `encodeURIComponent` antes es LA FORMA
  *    CORRECTA de meter un texto en base64 — es lo que dice la documentacion y
  *    es, literalmente, lo que hacia la mutacion.
+ *  - LAS TRES CAJAS DE LETRAS. Ver el comentario dentro de `formasDe`: un
+ *    `.toLowerCase()` derrotaba los dieciocho canales a la vez.
+ *  - LA FORMA LOCALIZADA DE UN IMPORTE —`toLocaleString`—, que es la unica del
+ *    alfabeto que depende de parametros y por eso se argumenta aparte, entera,
+ *    en el docblock de `agujasLocalizadas`: `25000.10` sale `25.000,1` y el
+ *    centinela deja de estar en el volcado en ninguna de las formas de arriba.
  *
  * LO QUE SE QUEDA FUERA, DICHO AQUI PARA QUE NADIE LO DESCUBRA CREYENDO QUE
  * ESTO LO TAPABA —un limite escrito es una defensa; un limite tacito es una
@@ -209,6 +220,34 @@ function todoLoVigilado(): [string, string][] {
  *    Se cubre UN nivel de %-codificado y UN `btoa` encima de el, que es la
  *    composicion que la gente escribe. Mas niveles son combinatoria sin final
  *    y ya no son un descuido.
+ *
+ *  - ⚠️ **LA FORMA GENERAL «LA SECUENCIA DE DIGITOS DEL CENTINELA»**, que es la
+ *    que parece cubrir de un golpe la forma localizada y todas sus primas
+ *    —cambiar los separadores sin cambiar las cifras: `25.000,10`,
+ *    `25,000.10`, `25 000,10`, `25-000-10`—. SE PROBO Y SE MIDIO SOBRE EL
+ *    PAQUETE ENTERO antes de descartarla, con la mutacion de los packs puesta
+ *    y la comparacion hecha sobre el volcado SIN sus caracteres no numericos,
+ *    con el mismo minimo de seis:
+ *
+ *        falsos positivos en los otros 83 archivos  →  0 de 1817 tests
+ *        coste en reloj de pared                    →  31,8 s contra 31,8 s
+ *        de los dos precios del catalogo, caza      →  UNO
+ *
+ *    **Y EL QUE NO CAZA ES JUSTO EL DE LA MUTACION.** `9900.25` conserva sus
+ *    digitos al localizarse (`9.900,25` → `990025`) y cae; `25000.10` PIERDE EL
+ *    CERO FINAL (`25.000,1` → `250001` contra `2500010` del centinela) y pasa
+ *    en verde. O sea que la forma general no es mas general: cubre un conjunto
+ *    DISTINTO que no incluye el caso que abrio esta tarea, y habria que poner
+ *    las agujas concretas igualmente.
+ *
+ *    Y aunque cazara, no iria al sitio comun, por la razon que este archivo ya
+ *    escribio para `decodeURIComponent` tres parrafos mas abajo: lo que se
+ *    transforma es LA AGUJA, nunca el volcado. Proyectar el volcado a sus
+ *    digitos SUELDA cifras que estaban separadas —un
+ *    `{"clases":12,"cupo":20,"precio":500}` se vuelve `1220500` y empareja con
+ *    un centinela `220500` que nadie publico—, y el cero de hoy es suerte de
+ *    los centinelas que hay, no una propiedad de la defensa. Una aguja exacta
+ *    no tiene ese modo de fallo.
  *
  * Y UNA COSA QUE NO SE DUPLICA, A PROPOSITO: el decimotercer canal resuelve el
  * %-codificado POR SU CUENTA, decodificando su propio volcado
@@ -310,11 +349,169 @@ function agujasDeBase64(texto: string): string[] {
 }
 
 /**
+ * LA FORMA LOCALIZADA DE UN IMPORTE, QUE ES LA UNICA DEL ALFABETO QUE NO ES
+ * DETERMINISTA — Y LA QUE FALTABA EN LA FASE DEL DINERO.
+ *
+ * MEDIDO en el catalogo de packs de la Fase 14, por el canal MAS vigilado de
+ * los dieciocho:
+ *
+ *     console.info('[packs] lista de precios', packs.data.map((p) =>
+ *       Number(p.precio).toLocaleString('es-AR')))
+ *       → pasan los 1841 tests del paquete.
+ *     console.info('[packs] lista de precios', packs.data.map((p) => p.precio))
+ *       → caen 25 de los 28 de ese archivo.
+ *
+ * Lo unico que cambia entre caer y no caer es la llamada a `toLocaleString`.
+ * `25000.10` sale `25.000,1` y `9900.25` sale `9.900,25`: el punto se vuelve
+ * coma y aparecen los separadores de miles, asi que el centinela no esta en el
+ * volcado NI en claro, NI en base64, NI %-codificado, NI en otra caja de
+ * letras. Es la familia del `.toLowerCase()` —una transformacion que suena a
+ * buena practica y que derrota los dieciocho canales a la vez— y no es una
+ * rebuscadura: FORMATEAR UN IMPORTE PARA LEERLO ES *LA* COSA QUE SE HACE CON EL
+ * DINERO.
+ *
+ * ---------------------------------------------------------------------------
+ * POR QUE ESTA FORMA NO ES COMO LAS OTRAS, Y QUE SE DECIDIO POR ESO.
+ *
+ * `btoa`, `encodeURIComponent` y las dos cajas de letras son funciones SIN
+ * PARAMETROS: dado el centinela, la aguja es una y esta. `toLocaleString`
+ * depende de UNA REGION Y DE UNAS OPCIONES, y ese espacio no tiene fondo —cada
+ * locale del mundo cruzado con `minimumFractionDigits`, `style`, `notation`,
+ * `useGrouping`…—. No se puede cubrir entero, asi que se elige, y la eleccion
+ * se escribe aqui con el mismo criterio que el resto del alfabeto: SE CUBRE LO
+ * QUE ALGUIEN ESCRIBIRIA SIN MALA INTENCION.
+ *
+ * LAS REGIONES QUE ENTRAN, Y SON TRES:
+ *
+ *  - `'es-AR'`, la del producto. Es un gimnasio argentino y es la region que
+ *    esta escrita en la mutacion de arriba, porque es la que escribe quien
+ *    formatea un peso.
+ *  - `'en-US'`, que NO es «ser mas ancho por si acaso» sino la leccion de las
+ *    barras de `vinoDePedir`: el formato por defecto depende de la MAQUINA.
+ *    MEDIDO aqui: `Intl.NumberFormat().resolvedOptions().locale` es `'es-AR'`
+ *    en esta maquina y seria `'en-US'` en un CI con el entorno en ingles.
+ *    Cubrir solo la region de quien corre el test es la manera de que esto
+ *    quede verde y ciego en la otra maquina, que es exactamente como empezo la
+ *    medida de la pila.
+ *  - LA REGION POR DEFECTO (`undefined`), que es lo que de verdad se escribe
+ *    —`monto.toLocaleString()` a secas— y que en una maquina u otra coincide
+ *    con una de las dos de arriba. Cuando coincide, `agregar` la descarta sola:
+ *    no cuesta nada donde no hace falta.
+ *
+ * LAS OPCIONES QUE ENTRAN, Y SON DOS:
+ *
+ *  - NINGUNA. `(25000.1).toLocaleString('es-AR')` → `25.000,1`.
+ *  - DOS DECIMALES FIJOS, que es como se escribe un importe:
+ *    `{ minimumFractionDigits: 2, maximumFractionDigits: 2 }` → `25.000,10`.
+ *
+ * Y ESA SEGUNDA CUBRE GRATIS LA MONEDA, que era la opcion obvia que falta en la
+ * lista. MEDIDO: `(25000.1).toLocaleString('es-AR', { style: 'currency',
+ * currency: 'ARS' })` es `'$ 25.000,10'`, y ahi dentro esta LITERALMENTE la
+ * aguja de dos decimales. El simbolo va delante del numero, no en medio, asi
+ * que la subcadena empareja. Agregar `style: 'currency'` no sumaria ni una
+ * aguja nueva y obligaria a elegir una moneda.
+ *
+ * LO QUE SE QUEDA FUERA, DICHO AQUI PARA QUE NADIE LO DESCUBRA CREYENDO QUE
+ * ESTO LO TAPABA —un limite escrito es una defensa; un limite tacito es una
+ * trampa para el que venga—:
+ *
+ *  - LAS DEMAS REGIONES. `'de-DE'`, `'fr-FR'`, `'pt-BR'`… Nadie en el mostrador
+ *    de un gimnasio argentino formatea un peso en frances, y ademas `'fr-FR'`
+ *    separa los miles con un espacio fino (U+202F) que no se parece a nada de
+ *    lo que este producto escribe. (`'es-ES'` NO es gratis y conviene no
+ *    creerlo: MEDIDO, `(9900.25).toLocaleString('es-ES')` es `'9900,25'` SIN
+ *    punto de miles, porque esa region no agrupa los numeros de cuatro cifras.
+ *    Queda fuera igual, por el mismo criterio.)
+ *  - `notation: 'compact'` (`25 mil`), `style: 'percent'`, `useGrouping: false`.
+ *    Son formatos que cambian el NUMERO y no solo sus separadores: `'25 mil'`
+ *    ya no identifica el importe, asi que ni siquiera seria una fuga del mismo
+ *    dato.
+ *  - UN CENTINELA QUE NO SEA UN NUMERO Y NADA MAS. `'$ 25000.10'`, `'25000,10'`
+ *    o `'ARS 25000.10'` no pasan por aqui: `Number` no los lee y la aguja seria
+ *    un invento. Lo que se localiza es lo que es un numero.
+ *
+ * ---------------------------------------------------------------------------
+ * EL DIGITO QUE SE PIERDE, QUE ES LA PARTE QUE NO SE PUEDE DEDUCIR.
+ *
+ * `25000.10` localizado es `25.000,1`: EL CERO FINAL NO ESTA. O sea que la
+ * forma localizada de un centinela NO siempre contiene los mismos caracteres
+ * —ni los mismos digitos— que el centinela.
+ *
+ * A ESTA FORMA NO LE ROMPE NADA, y el motivo es que la aguja se CALCULA desde
+ * el centinela en vez de deducirse de el: se le pide a la plataforma el mismo
+ * `toLocaleString` que le pidio la pantalla, asi que el cero se pierde en los
+ * dos sitios igual y la subcadena empareja. Es la misma propiedad por la que
+ * `agujasDeBase64` codifica la AGUJA en vez de decodificar el volcado.
+ *
+ * LO QUE SI ROMPE ES LA FORMA GENERAL —buscar «la secuencia de digitos» en vez
+ * de una aguja exacta—, y esto se midio sobre el paquete entero antes de
+ * descartarla: el detalle esta en el ultimo punto de «lo que se queda fuera»
+ * del docblock de `FormaDelDato`.
+ *
+ * ---------------------------------------------------------------------------
+ * EL MINIMO, QUE ES LO QUE SEPARA UNA AGUJA DE UN FALSO POSITIVO.
+ *
+ * Es la misma decision que `MINIMO_DE_GRUPOS` en base64 y por el mismo motivo:
+ * una aguja corta empareja por casualidad. Aqui el riesgo es concreto y tiene
+ * nombre —LA COMA—: `(9.5).toLocaleString('es-AR')` es `'9,5'`, y un volcado de
+ * JSON con la lista `[9,5]` dentro lleva esos tres caracteres sin que nadie
+ * haya filtrado nada. Con seis caracteres, la aguja mas corta que se emite es
+ * `'15.000'`, que ya no aparece por azar.
+ *
+ * Se mide la AGUJA y no los digitos del centinela a proposito: lo que decide si
+ * una subcadena colisiona es su longitud, no cuantas cifras tenga el numero del
+ * que salio.
+ */
+const SOLO_UN_NUMERO = /^-?\d+(?:\.\d+)?$/;
+
+/** Las regiones cuyo formato se cubre. `undefined` es la de la maquina. */
+const REGIONES_DEL_IMPORTE: readonly (string | undefined)[] = ['es-AR', 'en-US', undefined];
+
+/** Sin opciones, y con los dos decimales de un importe. */
+const FORMATOS_DEL_IMPORTE: readonly (Intl.NumberFormatOptions | undefined)[] = [
+  undefined,
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+];
+
+/** Por debajo de esto, la aguja empareja por casualidad. Ver el docblock. */
+const MINIMO_DE_LA_FORMA_LOCAL = 6;
+
+function agujasLocalizadas(valor: string): string[] {
+  if (!SOLO_UN_NUMERO.test(valor)) return [];
+
+  const numero = Number(valor);
+
+  // Fuera del rango seguro, `Number` ya perdio cifras y `toLocaleString` pasa a
+  // notacion cientifica: la aguja dejaria de ser una forma de ESTE centinela.
+  if (!Number.isFinite(numero) || Math.abs(numero) > Number.MAX_SAFE_INTEGER) return [];
+
+  const agujas: string[] = [];
+
+  for (const region of REGIONES_DEL_IMPORTE) {
+    for (const opciones of FORMATOS_DEL_IMPORTE) {
+      let formateado: string;
+
+      try {
+        formateado = numero.toLocaleString(region, opciones);
+      } catch {
+        // Un entorno sin los datos de esa region lanza `RangeError`. No es una
+        // perdida: las otras dos siguen emitiendo su aguja.
+        continue;
+      }
+
+      if (formateado.length >= MINIMO_DE_LA_FORMA_LOCAL) agujas.push(formateado);
+    }
+  }
+
+  return agujas;
+}
+
+/**
  * Las agujas de cada centinela, calculadas UNA VEZ para todo el archivo de test.
  *
  * Es lo que hace que esto no cueste nada: el registro de datos vigilados no
  * cambia dentro de un spec, asi que codificar se paga una vez por centinela y
- * no quince veces por test. Lo que queda por test son unos pocos `includes` mas
+ * no dieciocho veces por test. Lo que queda por test son unos pocos `includes` mas
  * sobre un volcado que casi siempre esta vacio.
  */
 const AGUJAS_POR_CENTINELA = new Map<string, FormaDelDato[]>();
@@ -334,22 +531,85 @@ function formasDe(valor: string): FormaDelDato[] {
     formas.push({ aguja, comoSeDijo });
   };
 
-  for (const aguja of agujasDeBase64(valor)) agregar(aguja, ' (en base64)');
+  /**
+   * LA CAJA DE LAS LETRAS ES UNA FORMA MAS, Y ERA LA MAS BARATA QUE QUEDABA.
+   *
+   * MEDIDO en la cola de comprobantes de la Fase 14, por el canal MAS vigilado
+   * de los dieciocho:
+   *
+   *     console.info('[comprobantes] revisado', nombreDelArchivo + '|' + nota)
+   *       → caen 7 tests de 1809.
+   *     console.info('[comprobantes] revisado', (nombreDelArchivo + '|' + nota).toLowerCase())
+   *       → pasan los 1809.
+   *
+   * Lo unico que cambiaba entre caer y no caer era el `.toLowerCase()`. Es el
+   * mismo agujero que descubrio el `btoa` —buscar por subcadena del valor
+   * CRUDO deja pasar cualquier transformacion— y es la instancia mas barata
+   * que quedaba de el: no hay que saber que existe `caches` ni que `btoa`
+   * agrupa de tres en tres. Se escribe sola y ADEMAS suena a buena practica
+   * —«normalizo el nombre del archivo antes de registrarlo»—, que es
+   * exactamente lo que la hacia peligrosa: la escribe de buena fe quien no
+   * esta filtrando nada a proposito.
+   *
+   * Y NO PIERDE NADA POR EL CAMINO: «transferencia-ana-centinela-octubre.pdf»
+   * identifica a la misma persona que el original, y un nombre propio en
+   * mayusculas igual. Las dos cajas, y no solo la baja, porque un
+   * `.toUpperCase()` para un encabezado es la misma linea.
+   *
+   * Las variantes pasan por la MISMA tuberia que el valor en claro —base64 con
+   * sus tres desplazamientos y %-codificacion— porque componer las dos cosas
+   * es una linea igual de barata que cada una por separado. Un valor sin
+   * letras —un importe, un cuid en minusculas— produce la misma cadena y
+   * `agregar` lo descarta solo: no cuesta nada donde no hace falta.
+   */
+  /**
+   * Y LA FORMA LOCALIZADA VA POR LA MISMA TUBERIA, por lo mismo.
+   *
+   * El razonamiento entero —que regiones, que opciones, el minimo y el digito
+   * que se pierde— esta en el docblock de `agujasLocalizadas`. Aqui lo unico
+   * que importa es que entra en la MISMA lista que las cajas de letras: se
+   * compone con base64 y con el %-codificado porque componer cuesta una linea
+   * igual que cada cosa por separado, y porque la composicion es real —la coma
+   * de `25.000,1` SI la escapa `encodeURIComponent`, que la deja en `%2C`, asi
+   * que un importe formateado metido en el query de una imagen no aparece
+   * literal—. Un centinela que no sea un numero no produce ninguna y no paga
+   * nada mas que un `test` de expresion regular.
+   */
+  const enTodasLasFormas: [texto: string, porLaForma: string][] = [
+    [valor, ''],
+    [valor.toLowerCase(), ' con otra caja de letras'],
+    [valor.toUpperCase(), ' con otra caja de letras'],
+    ...agujasLocalizadas(valor).map((formateado): [string, string] => [
+      formateado,
+      ' con el numero formateado',
+    ]),
+  ];
 
-  for (const codificar of [encodeURIComponent, encodeURI]) {
-    let codificado: string;
+  for (const [texto, porLaForma] of enTodasLasFormas) {
+    // El valor en claro ya esta puesto arriba y no se vuelve a etiquetar: si
+    // una variante coincide con el crudo, `agregar` la descarta sola y el
+    // informe de la fuga normal sigue diciendo lo que decia.
+    const comoFue = texto === valor ? '' : porLaForma;
 
-    try {
-      codificado = codificar(valor);
-    } catch {
-      // Un sustituto suelto hace que `encodeURIComponent` lance `URIError`.
-      continue;
-    }
+    agregar(texto, comoFue === '' ? '' : ` (${comoFue.trim()})`);
 
-    agregar(codificado, ' (%-codificado)');
+    for (const aguja of agujasDeBase64(texto)) agregar(aguja, ` (en base64${comoFue})`);
 
-    for (const aguja of agujasDeBase64(codificado)) {
-      agregar(aguja, ' (en base64 de su forma %-codificada)');
+    for (const codificar of [encodeURIComponent, encodeURI]) {
+      let codificado: string;
+
+      try {
+        codificado = codificar(texto);
+      } catch {
+        // Un sustituto suelto hace que `encodeURIComponent` lance `URIError`.
+        continue;
+      }
+
+      agregar(codificado, ` (%-codificado${comoFue})`);
+
+      for (const aguja of agujasDeBase64(codificado)) {
+        agregar(aguja, ` (en base64 de su forma %-codificada${comoFue})`);
+      }
     }
   }
 
@@ -362,7 +622,7 @@ function formasDe(valor: string): FormaDelDato[] {
  * EN QUE FORMA lleva un volcado a un centinela, o `undefined` si no lo lleva.
  *
  * Es el unico sitio donde se compara un centinela con un volcado, y por eso es
- * el unico sitio que hay que tocar para que los quince canales aprendan una
+ * el unico sitio que hay que tocar para que los dieciocho canales aprendan una
  * forma nueva.
  *
  * SE EXPORTA SOLO PARA SU GUARDIAN, `alfabeto-de-centinelas.spec.ts`, por el
@@ -776,6 +1036,52 @@ const PROTOTIPO_DEL_NAVEGANTE = Object.getPrototypeOf(navigator) as Navigator;
  * cualquiera de esas formas. Un `JSON.stringify` del objeto no sirve: un
  * `URLSearchParams` serializa a `{}` y un `FormData` tambien.
  */
+/**
+ * SI ALGO ES UN `ArrayBuffer`, SIN PREGUNTARLE DE QUE REALM VIENE.
+ *
+ * `cuerpo instanceof ArrayBuffer` NO BASTA EN ESTE ENTORNO, y eso no se
+ * dedujo: se midio con una sonda, y lo descubrio el guardian del decimosexto
+ * canal al pedirle a `cuerpoDeUnaBaliza` que leyera un buffer crudo.
+ *
+ *     const crudo = new TextEncoder().encode('hola').buffer;
+ *     crudo.constructor.name        → 'ArrayBuffer'
+ *     Object.prototype.toString(…)  → '[object ArrayBuffer]'
+ *     crudo instanceof ArrayBuffer  → FALSE
+ *     crudo.constructor === ArrayBuffer → FALSE
+ *     new ArrayBuffer(4) instanceof ArrayBuffer → true
+ *
+ * O sea: EL `ArrayBuffer` GLOBAL DE UN SPEC Y EL DEL `TextEncoder` DE NODE SON
+ * DOS CLASES DISTINTAS. Es exactamente la leccion que este archivo ya se
+ * llevo con `performance` y su `Performance` y con `window.postMessage` y su
+ * `Window`, en otra forma: el global de una API y la clase que la fabrica
+ * pueden no ser la misma cosa dentro de Vitest.
+ *
+ * Y LA CONSECUENCIA ERA UNA RAMA MUERTA. Un cuerpo que llegara como buffer
+ * CRUDO —lo que devuelven `blob.arrayBuffer()`, `response.arrayBuffer()` y
+ * `encoder.encode(x).buffer`— se caia al `comoTexto` del final y se
+ * serializaba a `'[object ArrayBuffer] {}'`: el centinela invisible, y no en
+ * un canal sino en los TRES que usan este desmenuzador —la baliza, el cuerpo
+ * de un `fetch` y el de un `XMLHttpRequest`—. Las VISTAS (`Uint8Array` y
+ * compañia) no estaban afectadas, porque `ArrayBuffer.isView` es una
+ * comprobacion de marca y funciona entre realms; el buffer pelado no tiene
+ * ninguna funcion asi en la plataforma.
+ *
+ * SE PREGUNTA POR LA ETIQUETA Y NO POR LA CLASE, que es la unica forma que no
+ * depende del realm: `Symbol.toStringTag` de un `ArrayBuffer` es
+ * `'ArrayBuffer'` por especificacion, venga de donde venga. Se deja delante el
+ * `instanceof`, que es lo barato y acierta en el caso normal.
+ *
+ * (`TextDecoder().decode` SI acepta un buffer de otro realm — medido: devuelve
+ * el texto entero. O sea que lo unico roto era la pregunta, no la lectura.)
+ */
+function esUnArrayBuffer(cosa: unknown): boolean {
+  if (cosa instanceof ArrayBuffer) return true;
+
+  const etiqueta = Object.prototype.toString.call(cosa);
+
+  return etiqueta === '[object ArrayBuffer]' || etiqueta === '[object SharedArrayBuffer]';
+}
+
 function cuerpoDeUnaBaliza(cuerpo: unknown): string {
   if (cuerpo === undefined || cuerpo === null) return '';
   if (typeof cuerpo === 'string') return cuerpo;
@@ -785,7 +1091,7 @@ function cuerpoDeUnaBaliza(cuerpo: unknown): string {
     return [...cuerpo.entries()].map(([clave, valor]) => `${clave}=${String(valor)}`).join('&');
   }
 
-  if (cuerpo instanceof ArrayBuffer || ArrayBuffer.isView(cuerpo)) {
+  if (esUnArrayBuffer(cuerpo) || ArrayBuffer.isView(cuerpo)) {
     try {
       return new TextDecoder().decode(cuerpo as ArrayBuffer);
     } catch {
@@ -1478,7 +1784,8 @@ function claveSegura(clave: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// El duodecimo canal: los atributos del `<html>` y del `<body>`
+// El duodecimo canal: el `<html>` y el `<body>` — sus ATRIBUTOS, y lo que
+// CUELGA del `<html>` fuera del `<head>` y del `<body>`
 // ---------------------------------------------------------------------------
 
 /**
@@ -1539,6 +1846,13 @@ function claveSegura(clave: string): string {
  * CUBRE LOS DOS ELEMENTOS porque el hueco es el mismo en los dos, y se
  * informan POR SEPARADO para que el mensaje diga en cual de los dos fue.
  *
+ * Y CUBRE ADEMAS LO QUE CUELGA DEL `<html>` fuera del `<head>` y del `<body>`,
+ * que es la SEGUNDA MITAD de este canal y se agrego despues: un nodo hermano
+ * del `<body>` no esta en el `<head>` —que mira el cuarto canal—, no es un
+ * atributo —que es lo que miraba este— y no esta dentro del cuerpo —que es lo
+ * que miran los tests de pantalla—. El razonamiento entero, la medida de los
+ * tres huecos y por que se cierra aqui: el docblock de `loColgadoDelHtml`.
+ *
  * NO HACE FALTA ESPIA NINGUNO, y por eso este canal es el unico que no se
  * engancha en el `beforeEach`. Los otros once doblan una funcion o un accesor
  * y tienen que volver a hacerlo en cada test, porque los specs llaman a
@@ -1571,6 +1885,126 @@ function atributosDe(elemento: Element): [string, string][] {
  */
 function textoDeLosAtributos(atributos: [string, string][]): string {
   return atributos.map(([nombre, valor]) => `${nombre}=${valor}`).join(' ');
+}
+
+/**
+ * LA SEGUNDA MITAD DEL DUODECIMO CANAL: LO QUE CUELGA DEL `<html>` Y NO ES NI
+ * EL `<head>` NI EL `<body>`.
+ *
+ * MEDIDO en el catalogo de packs de la Fase 14, con el catalogo entero dentro
+ * —los tres nombres y los dos precios, EN CLARO—:
+ *
+ *     const marca = document.createElement('div');
+ *     marca.textContent = JSON.stringify(packs.data);
+ *     document.documentElement.append(marca);
+ *       → pasa los 1841 tests del paquete.
+ *
+ * Y la variante con el dato en un atributo (`marca.setAttribute('data-marca',
+ * …)`) tambien pasa. No hace falta ni esconderlo: el TEXTO de ese nodo tampoco
+ * lo ve nadie.
+ *
+ * CAE EN EL HUECO ENTRE TRES DEFENSAS, y las tres estan en este repo:
+ *
+ *  - EL CUARTO CANAL mira LOS HIJOS DEL `<head>` —`document.head.children`—,
+ *    asi que un hermano del `<head>` no esta en su lista.
+ *  - ESTE CANAL miraba LOS ATRIBUTOS del `<html>` y del `<body>`, no sus
+ *    HIJOS.
+ *  - Y LOS TESTS DE PANTALLA miran lo que hay DENTRO del `<body>`:
+ *    `screen.*`, `document.body.innerHTML`, los `querySelectorAll` del cuerpo.
+ *
+ * EL CASO SIMETRICO —un nodo colgado del `<head>`— SI ESTABA CUBIERTO, y eso se
+ * COMPROBO en vez de darse por hecho, porque si el cuarto canal mirara solo los
+ * `<meta>` o solo el crecimiento el agujero seria el doble de grande. Sonda:
+ * un `<div>` con un centinela dentro metido en el `<head>` hace caer el test
+ * con «la cabecera del documento lleva …». El cuarto canal mira el `<head>`
+ * ENTERO por `innerHTML` y ademas cuenta los hijos nuevos. Lo que no mira es su
+ * hermano.
+ *
+ * ---------------------------------------------------------------------------
+ * POR QUE SE CIERRA AQUI Y NO EN EL CUARTO CANAL NI EN UN CANAL NUEVO.
+ *
+ * Lo que agrupa un canal es EL SITIO DONDE ACABA EL DATO —es el criterio con el
+ * que `showNotification` acabo en el decimoseptimo y no en el decimo—, y este
+ * dato acaba colgado del `<html>`, que es LA SUPERFICIE DE ESTE CANAL. Las
+ * cuatro cosas que hacen falta ya estan aqui y ya estan argumentadas:
+ *
+ *  1. LA FORMA FUERTE. Ver abajo: el `<html>` tiene DOS hijos y nada mas.
+ *  2. LA LIMPIEZA ANTES DE AFIRMAR, que es la propiedad 1 de este canal
+ *     (`cleanup()` no lo quita) aplicada a un nodo en vez de a un atributo.
+ *  3. EL MOMENTO DE LA LECTURA: despues del `cleanup()`, como los atributos y
+ *     por el mismo motivo —no se pierde nada y se gana el nodo que cuelgue la
+ *     LIMPIEZA de un `useEffect`—.
+ *  4. Y EL MISMO INFORME: la etiqueta y nunca el contenido.
+ *
+ * En el CUARTO canal no cabe: ese lee `document.head.children` y su vocabulario
+ * es «la cabecera del documento»; un hermano del `<head>` no es la cabecera y
+ * meterlo ahi obligaria a que ese canal dejara de poder decir donde estaba. Y
+ * un canal NUEVO costaria renumerar los dieciocho en cuatro archivos para
+ * agregar una lectura de `document.documentElement.children` sobre un elemento
+ * que este canal ya vigila: seria contar dos veces el mismo sitio.
+ *
+ * ---------------------------------------------------------------------------
+ * LA FORMA ES LA FUERTE —«EL `<html>` NO TIENE UN TERCER HIJO»— Y ESO SE MIDIO.
+ *
+ * Primero con una sonda: en un test normal de este paquete,
+ * `[...document.documentElement.children].map((n) => n.tagName)` es
+ * EXACTAMENTE `['HEAD', 'BODY']`, antes y despues de un `render` con
+ * `QueryClientProvider`. Ni Next, ni React 19, ni Testing Library cuelgan nada
+ * ahi. Y la medida que decide no es esa sonda sino la del paquete entero: con
+ * esta afirmacion puesta, LOS 84 SPECS SIGUEN EN VERDE.
+ *
+ * Donde no hay uso legitimo que proteger la forma fuerte sale gratis, y aqui
+ * ademas CAZA EL NODO QUE NO LLEVA NINGUN CENTINELA —una marca de diagnostico
+ * con la lista de clases del dia, que es justo lo que una «marca» se lleva—.
+ * Es la forma de `window.name`, de IndexedDB y de los atributos de al lado.
+ *
+ * SE FILTRA POR `<head>` Y `<body>` Y NO POR POSICION. Un `insertBefore` antes
+ * del `<head>` es tan hijo del `<html>` como un `append`, y contar hijos
+ * dejaria pasar al que SUSTITUYE a uno de los dos: es la misma leccion que
+ * `nodosDeLaCabecera`, que guarda los nodos y no su cuenta.
+ *
+ * LO QUE NO VE, dicho sin adornar: un nodo que la pantalla cuelgue y QUITE
+ * antes de terminar el test. Es el mismo limite que tienen los atributos de al
+ * lado leidos por estado, y no es la fuga callada que este canal persigue: lo
+ * que una «marca de diagnostico» hace es QUEDARSE.
+ */
+const HIJOS_LEGITIMOS_DEL_HTML: readonly string[] = ['HEAD', 'BODY'];
+
+/** Un nodo colgado del `<html>` que no es ni el `<head>` ni el `<body>`. */
+interface NodoColgadoDelHtml {
+  /** Como se nombra en el informe: la etiqueta. NUNCA el contenido. */
+  etiqueta: string;
+  /** Lo que lleva dentro, para buscar centinelas. NUNCA entra en el informe. */
+  contenido: string;
+  /** El nodo, para quitarlo ANTES de afirmar. Ver la propiedad 1 del canal. */
+  nodo: Element;
+}
+
+/**
+ * Lo que cuelga del `<html>` fuera del `<head>` y del `<body>`.
+ *
+ * SE EXPORTA SOLO PARA SU GUARDIAN, `lo-que-cuelga-del-html.spec.ts`, por el
+ * mismo motivo por el que se exportan `formaQueSeFue`, `vinoDePedir`,
+ * `escondidoEnElCuerpo` y `contenidoDeUnaEscrituraEnDisco`: si alguien
+ * «simplifica» el filtro a contar hijos, o se deja fuera los atributos del
+ * nodo, los 84 specs siguen en verde y el canal se queda ciego. Ningun spec de
+ * pantalla lo llama.
+ *
+ * SE MIRAN LAS TRES COSAS QUE UN NODO PUEDE LLEVAR —sus atributos en crudo, su
+ * marcado serializado y su texto— porque son tres sitios distintos y los tres
+ * salen enteros en «ver codigo fuente»: el `outerHTML` cubre de paso a los
+ * DESCENDIENTES del nodo colgado, y los atributos se miran ademas en crudo
+ * porque la serializacion escapa las comillas y un centinela con comillas
+ * dentro no apareceria literal.
+ */
+export function loColgadoDelHtml(): NodoColgadoDelHtml[] {
+  return [...document.documentElement.children]
+    .filter((nodo) => !HIJOS_LEGITIMOS_DEL_HTML.includes(nodo.tagName))
+    .map((nodo) => ({
+      etiqueta: etiquetaDe(nodo),
+      contenido: `${textoDeLosAtributos(atributosDe(nodo))} ${nodo.outerHTML} ${nodo.textContent ?? ''}`,
+      nodo,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -1985,15 +2419,77 @@ interface LlamadaAlHistorial {
  *    metio NI UN nodo nuevo en el `<head>`; un `<iframe>` o un `<script>` en el
  *    `<body>` no los ve nadie. Para cerrarlo habria que barrer el documento
  *    entero por atributos de URL al terminar, que es un canal propio y no este.
- *  - WEBRTC (`RTCPeerConnection` y sus canales de datos), `Worker` y
- *    `SharedWorker`. Los tres son `undefined` en jsdom, o sea que valdria el
- *    argumento de `EventSource`. No entran por el OTRO criterio, el que este
- *    archivo ya usa para el alfabeto: se cubre lo que alguien escribiria SIN
- *    MALA INTENCION. Nadie abre una conexion WebRTC para mandar una metrica.
- *    Contra una fuga deliberada no hay defensa razonable, y el que quiera sacar
- *    un dato tiene caminos mas baratos que montar un par de ICE.
+ *  - WEBRTC (`RTCPeerConnection` y sus canales de datos). Es `undefined` en
+ *    jsdom, o sea que valdria el argumento de `EventSource`. No entra por el
+ *    OTRO criterio, el que este archivo ya usa para el alfabeto: se cubre lo
+ *    que alguien escribiria SIN MALA INTENCION. Nadie abre una conexion WebRTC
+ *    para mandar una metrica. Contra una fuga deliberada no hay defensa
+ *    razonable, y el que quiera sacar un dato tiene caminos mas baratos que
+ *    montar un par de ICE.
+ *
+ * ---------------------------------------------------------------------------
+ * LAS DOS PUERTAS QUE SE AGREGARON DESPUES, Y EL AGUJERO QUE CIERRAN A MEDIAS:
+ * `Worker` Y `SharedWorker`.
+ *
+ * Estaban en la lista de arriba, junto a WebRTC, con el argumento de «nadie
+ * monta un hilo para mandar una metrica». LA MEDIDA QUE LO CAMBIO no es esa
+ * frase sino otra, y es del propio canal: **UN `fetch` HECHO DENTRO DE UN
+ * WORKER NO PASA POR EL `fetch` QUE ESTE CANAL DOBLA**, porque el worker tiene
+ * su propio global y su propio `fetch`. O sea que `Worker` no es «una puerta
+ * mas que nadie usa»: es LA FORMA DE APAGAR LA PUERTA PRINCIPAL. El canal
+ * decimocuarto podia estar entero y la peticion salir igual.
+ *
+ * Y `Worker` es `undefined` en jsdom —medido, igual que `EventSource`—, asi que
+ * el agujero tiene la forma de siempre: `new Worker(…)` a pelo revienta y el
+ * test cae, pero detras de un `if ('Worker' in window)` no hace nada y pasa en
+ * verde mientras en el mostrador levanta un hilo de verdad.
+ *
+ * ESTE ES EXACTAMENTE EL CASO DEL DECIMO CANAL, VISTO EN UN HILO SIN REGISTRAR.
+ * Alli ya esta escrito el razonamiento entero, palabra por palabra: «mandarle
+ * un dato es sacarlo del alcance de los otros nueve tapones de un salto: el
+ * `caches` que se vigila es el que abre LA PAGINA, y el que abriria el worker
+ * con este mensaje no lo ve nadie». Un `Worker` corriente es el mismo hilo con
+ * el mismo origen y las mismas capacidades —`fetch`, `caches`, IndexedDB,
+ * OPFS—; lo unico que cambia es que no hay que registrarlo. Si aquello merecia
+ * un canal, esto merece dos puertas.
+ *
+ * SE CUBRE LA FRONTERA, QUE ES POR DONDE EL DATO TIENE QUE PASAR, Y SON DOS
+ * SITIOS:
+ *
+ *  - EL SCRIPT. `new Worker(url)` es, literalmente, UNA PETICION DE RED: el
+ *    navegador baja ese script. Por eso estas dos puertas viven en este canal
+ *    y no en uno nuevo. Y la URL lleva dato igual que cualquier otra —un
+ *    `new Worker('/w.js?d=' + datos)` lo publica sin mandar un solo mensaje—.
+ *  - LOS MENSAJES. `worker.postMessage(datos)` para un `Worker` y
+ *    `worker.port.postMessage(datos)` para un `SharedWorker`, que son LAS DOS
+ *    formas de meterle un dato de esta pagina a ese hilo.
+ *
+ * LO QUE NO SE CUBRE, Y ES EL LIMITE QUE HAY QUE ESCRIBIR PARA QUE NADIE LEA
+ * EL VERDE COMO «LOS WORKERS ESTAN TAPADOS»: **LO QUE EL SCRIPT DEL WORKER
+ * HAGA POR SU CUENTA**. El doble de abajo REGISTRA Y NO EJECUTA: no baja el
+ * script, no lo corre y no tiene dentro ningun `fetch` que doblar. Un worker
+ * que se trajera el dato el solo —pidiendoselo a la API con la cookie de
+ * sesion— y lo mandara fuera desde su propio hilo no lo ve nadie aqui.
+ *
+ * Y NO SE EJECUTA A PROPOSITO, que es la parte que no es pereza. Hacer que el
+ * doble CORRA el script pide escribir un entorno de worker entero —otro global,
+ * otro `fetch`, otro `postMessage`, otro ciclo de vida— y entonces lo que el
+ * canal mediria no es lo que hace la pantalla sino lo que hace NUESTRO DOBLE:
+ * es el mismo motivo por el que la base de mentira de IndexedDB no inventa
+ * registros y por el que el tapon de la URL no fabrica un `Location`. Ademas
+ * esa fuga ya no cabe en el criterio del alfabeto: escribir un segundo archivo,
+ * que ese archivo pida los datos por su cuenta y los mande a otro sitio no es
+ * un descuido de nadie, es un plan. Lo que SI es un descuido —«lo mando al
+ * worker para no bloquear la interfaz»— pasa por la frontera, y la frontera se
+ * mira entera.
+ *
+ * SE AFIRMAN POR LA FORMA FUERTE, como las otras tres que no son `fetch`, y
+ * por la misma medida: cero `Worker` y cero `SharedWorker` en `apps/web/src`,
+ * y con las dos puertas puestas los 80 specs siguen en verde, o sea que nadie
+ * del arbol de dependencias levanta un hilo durante un test.
  */
-type PuertaDeRed = 'fetch' | 'XMLHttpRequest' | 'WebSocket' | 'EventSource';
+type PuertaDeRed =
+  'fetch' | 'XMLHttpRequest' | 'WebSocket' | 'EventSource' | 'Worker' | 'SharedWorker';
 
 /** Una peticion de red vista por el espia. */
 interface PeticionDeRed {
@@ -2037,6 +2533,8 @@ export function vinoDePedir(pila: string): boolean {
 const RED_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
 const WEBSOCKET_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
 const EVENT_SOURCE_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'EventSource');
+const WORKER_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'Worker');
+const SHARED_WORKER_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'SharedWorker');
 const ABRIR_UN_XHR = XMLHttpRequest.prototype.open;
 
 /** Lo que un `open()` dejo dicho, hasta que llegue su `send()`. */
@@ -2239,16 +2737,30 @@ const PONER_UN_GLOBAL = vi.stubGlobal.bind(vi) as (nombre: unknown, valor: unkno
 };
 
 /**
- * Un `WebSocket` o un `EventSource` de mentira: anota y no conecta.
+ * Un `WebSocket`, un `EventSource`, un `Worker` o un `SharedWorker` de mentira:
+ * ANOTA Y NO CONECTA.
  *
  * No reenvia a nada, como la baliza y como `caches`, y por un motivo ademas del
  * de ellos: el `WebSocket` de jsdom MARCA DE VERDAD contra el destino. Dejarlo
- * pasar seria abrir un socket desde un test.
+ * pasar seria abrir un socket desde un test. Para las dos puertas de hilo el
+ * motivo es el otro, y esta escrito entero en el docblock de `PuertaDeRed`: el
+ * doble REGISTRA Y NO EJECUTA, porque ejecutar el script pedia inventar un
+ * entorno de worker y entonces el canal mediria nuestro doble.
+ *
+ * LAS CUATRO FORMAS DE HABLAR POR UNA DE ESTAS PUERTAS ESTAN TODAS AQUI, y
+ * cuestan una linea cada una: el DESTINO, que lo anota el constructor —y que
+ * para un worker es el script que el navegador baja, o sea una peticion de red
+ * de verdad—, el `send` de un socket, el `postMessage` de un `Worker` y el
+ * `port.postMessage` de un `SharedWorker`, que es la unica forma de hablarle a
+ * ese. Cubrir unas y no otras seria reabrir la puerta cambiando una palabra,
+ * que es el argumento de `mark` sin `measure`.
  */
 function conexionDeMentira(puerta: PuertaDeRed) {
   return class {
     readonly url: string;
     readonly readyState = 0;
+    /** La unica boca de un `SharedWorker`: `worker.port.postMessage(datos)`. */
+    readonly port: Record<string, unknown>;
 
     constructor(destino: unknown) {
       this.url = String(destino);
@@ -2260,19 +2772,39 @@ function conexionDeMentira(puerta: PuertaDeRed) {
         carga: '',
         dePedir: false,
       });
+
+      this.port = {
+        postMessage: (datos: unknown) => {
+          this.anotar('port.postMessage', datos);
+        },
+        start: () => {},
+        close: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      };
     }
 
-    /** `EventSource` no lo tiene; se deja igual, que cuesta una linea. */
-    send(datos: unknown): void {
+    private anotar(metodo: string, datos: unknown): void {
       PETICIONES_DE_RED.push({
         puerta,
-        metodo: 'send',
+        metodo,
         destino: this.url,
         carga: cuerpoDeUnaBaliza(datos),
         dePedir: false,
       });
     }
 
+    /** `EventSource` no lo tiene; se deja igual, que cuesta una linea. */
+    send(datos: unknown): void {
+      this.anotar('send', datos);
+    }
+
+    /** La boca de un `Worker`, y la forma de meterle un dato de esta pagina. */
+    postMessage(datos: unknown): void {
+      this.anotar('postMessage', datos);
+    }
+
+    terminate(): void {}
     close(): void {}
     addEventListener(): void {}
     removeEventListener(): void {}
@@ -2586,12 +3118,919 @@ export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
   return escondites;
 }
 
+// ---------------------------------------------------------------------------
+// El decimosexto canal: OPFS, EL SEXTO ALMACEN — un SISTEMA DE ARCHIVOS
+// ---------------------------------------------------------------------------
+
 /**
- * EL TAPON DE LOS QUINCE CANALES —Y EL EJE DECIMOSEPTIMO—, en todos los specs.
+ * `navigator.storage` NO EXISTE EN JSDOM, y por eso hay que PONERLO.
  *
- * Los quince canales son los de abajo. El eje decimoseptimo no es uno de ellos:
+ * Medido con una sonda en jsdom 26: `typeof navigator.storage` es
+ * `'undefined'`, no hay descriptor ni en `navigator` ni en su prototipo, y
+ * NINGUNA de las clases de la familia —`StorageManager`, `FileSystemHandle`,
+ * `FileSystemDirectoryHandle`, `FileSystemFileHandle`,
+ * `FileSystemWritableFileStream`— existe tampoco. Es la misma situacion que
+ * `sendBeacon`, que `caches`, que `serviceWorker` y que `indexedDB`, y la
+ * misma leccion que ya dejo CINCO fugas: UNA API QUE JSDOM NO IMPLEMENTA ES UN
+ * SITIO DONDE NADIE MIRA POR CONSTRUCCION. Un `navigator.storage.getDirectory()`
+ * a pelo revienta con un `TypeError` y el test cae solo; pero la forma que
+ * escribe cualquiera que programe con cuidado —`navigator.storage?.getDirectory?.()`,
+ * o detras de un `if ('storage' in navigator)`— NO HACE NADA y pasa en verde,
+ * mientras en el navegador del mostrador escribe un archivo en disco.
+ *
+ * LA MUTACION QUE LO DESCUBRIO, medida, en el `onSuccess` de una mutacion de
+ * cobro y con el `?.` prudente:
+ *
+ *     // Respaldo del cobro en disco, por si se corta la luz en el mostrador.
+ *     void navigator.storage?.getDirectory?.().then(async (raiz) => {
+ *       const archivo = await raiz.getFileHandle('cobros-del-dia.json', { create: true });
+ *       const flujo = await archivo.createWritable();
+ *       await flujo.write(JSON.stringify(pago));   // monto, nota, perfilId, metodo, fechas
+ *       await flujo.close();
+ *     });
+ *
+ * Sobrevivio los 1721 tests del paquete con los quince canales enchufados. Y
+ * el control que prueba que el instrumento funcionaba: EL MISMO DATO, EN LA
+ * MISMA LINEA, por `localStorage.setItem(...)` TIRA 7 TESTS. Lo unico que
+ * cambia entre caer y no caer es QUE API DE ALMACENAMIENTO SE USA.
+ *
+ * EL CONTROL SE REHIZO EN OTRA PANTALLA AL MONTAR ESTO, para medirlo donde el
+ * agujero tambien existe y no solo donde se encontro. En `useGuardarSmtp`
+ * —el mismo hook que abrio el canal de IndexedDB, y cuyo spec siembra los tres
+ * centinelas del SMTP— las dos lineas quedan EMPATADAS:
+ *
+ *     localStorage.setItem('config-del-dia', JSON.stringify(datos))  → 9 de 60
+ *     …getDirectory() … flujo.write(JSON.stringify(datos))           → 9 de 60
+ *
+ * La segunda es la que antes de este canal daba CERO de 60, y no por poco:
+ * `typeof navigator.storage` es `'undefined'`, asi que el `?.` cortocircuita y
+ * la fuga no llega a ejecutarse ni una vez dentro del test — mientras en el
+ * mostrador escribe el archivo entero.
+ *
+ * ---------------------------------------------------------------------------
+ * POR QUE ES UN ALMACEN NUEVO Y NO UNA VARIANTE DE LOS CINCO QUE YA SE VIGILAN.
+ *
+ * Los cinco almacenes tapados son `localStorage`, `sessionStorage`, las
+ * galletas, `CacheStorage` e IndexedDB. OPFS —el Origin Private File System—
+ * es EL SEXTO, y es peor que los cinco en las cosas que importan:
+ *
+ *  - SOBREVIVE IGUAL. Al logout, al cierre de la pestaña y al reinicio, como
+ *    `localStorage`, en una maquina que usan cuatro personas por turno.
+ *  - NO TIENE EL TOPE DE 5 MB. Donde `localStorage` obliga a elegir que
+ *    guardar, aqui cabe el dia entero del mostrador.
+ *  - GUARDA BYTES SIN QUE NADIE SERIALICE. `setItem` obliga a pasar por texto
+ *    —o sea, a PENSAR que se esta guardando—; aqui se escribe un `Blob` o un
+ *    `ArrayBuffer` tal cual.
+ *  - NO APARECE EN LA PESTAÑA «APPLICATION» como los otros cinco. Los cinco se
+ *    ven de un vistazo en las herramientas del navegador; este no, y por eso
+ *    una fuga ahi no la encuentra nadie mirando.
+ *  - Y `cleanup()` NO LO TOCA, como no toca la URL ni los atributos de
+ *    alrededor.
+ *
+ * Y LOS CINCO TAPONES NO LO PUEDEN VER, que es lo que lo hace un canal y no
+ * una forma: CADA UNO LEE SU PROPIA API —`Storage.prototype.setItem`, el
+ * accesor de las galletas, el `caches` de mentira, el `indexedDB` de
+ * mentira—. Ninguno de los cinco sabe que existe un SISTEMA DE ARCHIVOS. No
+ * hay ninguna lectura compartida que pudiera cazarlo de refilon.
+ *
+ * ---------------------------------------------------------------------------
+ * EL ARBOL TIENE MAS DE UNA PUERTA, Y SE MIRAN TODAS. EL NOMBRE ES UNA DE ELLAS.
+ *
+ * Es la leccion de `open(nombre)` en IndexedDB y la de
+ * `localStorage.setItem(claveTemporal, '1')`: **EL NOMBRE DEL ARCHIVO Y EL DEL
+ * DIRECTORIO LLEVAN DATO IGUAL QUE EL CONTENIDO**. Un
+ * `raiz.getFileHandle(claveTemporal, { create: true })` publica el secreto sin
+ * escribir un solo byte, y ahi se queda, en el nombre de una entrada del disco.
+ * Las puertas que se anotan:
+ *
+ *  - `navigator.storage.getDirectory()`. La entrada al arbol. Cuenta sola,
+ *    como `indexedDB.open`: pedir el disco privado ya es usarlo.
+ *  - `getFileHandle(nombre, { create })` y `getDirectoryHandle(nombre, { create })`.
+ *    El nombre, por la ruta entera.
+ *  - `removeEntry(nombre)`. Borrar tambien nombra: es la pareja de
+ *    `deleteDatabase`, que el undecimo canal ya anota por lo mismo.
+ *  - `createWritable()` y su `write`, que es donde van los bytes — y tambien
+ *    el `getWriter().write` de su `WritableStream`, que es la otra forma de
+ *    escribir el mismo flujo y cuesta una linea.
+ *  - `createSyncAccessHandle()` y su `write`, que es la puerta rapida que
+ *    existe en algunos navegadores y que es SINCRONA: ni promesa ni flujo.
+ *  - `move(nombre)` y `remove()` de un archivo. Renombrar publica el nombre
+ *    nuevo igual que crearlo.
+ *
+ * LO QUE NO SE ANOTA, dicho para que nadie lo descubra creyendo que lo cubria:
+ * LAS LECTURAS —`getFile()`, `values()`, `entries()`, `resolve()`—. No sacan
+ * un dato de esta pagina: lo traen. Devuelven lo que devuelve un disco vacio,
+ * que es lo que hay en un test.
+ *
+ * ---------------------------------------------------------------------------
+ * EL CONTENIDO PUEDE NO SER UNA CADENA, Y ESO NO SE DEDUJO: ESTA EN LA API.
+ *
+ * `write` acepta CUATRO formas —`string`, `ArrayBuffer` (y sus vistas), `Blob`
+ * y un objeto `{ type: 'write', data, position }`—, y por las cuatro se va el
+ * dato igual de bien. Un `JSON.stringify` del argumento no sirve: un `Blob`
+ * serializa a `{}`.
+ *
+ * SE REUSA `cuerpoDeUnaBaliza`, que es el desmenuzador que el octavo canal
+ * escribio para `sendBeacon` y que el decimocuarto ya reusa para el cuerpo de
+ * un `fetch` y de un `XMLHttpRequest`: sabe decodificar un `ArrayBuffer` con
+ * `TextDecoder` y leerle los bytes a un `Blob` por dentro, que es lo unico que
+ * hay que hacer aqui. Lo UNICO que agrega este canal es desenvolver la cuarta
+ * forma —la del objeto con `data` dentro—, que es la unica que esconde el
+ * contenido detras de una clave y que `cuerpoDeUnaBaliza` no podia conocer.
+ *
+ * ---------------------------------------------------------------------------
+ * LA FORMA ES LA FUERTE —«NO SE TOCO EL DISCO PRIVADO»— Y ESO SE MIDIO.
+ *
+ * Es la forma de `window.name`, de IndexedDB, de los atributos del `<html>` y
+ * de las cinco puertas de red que no son `fetch`, y el criterio es el mismo:
+ * donde no hay un uso legitimo que proteger, la forma fuerte sale gratis y
+ * caza ademas EL DATO QUE NADIE REGISTRO —que es justo el caso de un
+ * `write(JSON.stringify(pago))` que se lleva el objeto entero—.
+ *
+ *  1. No hay un solo uso de esta familia en `apps/web/src`. Medido con
+ *     `grep -rniE "navigator\.storage|getDirectory|StorageManager|OPFS|FileSystemHandle"`:
+ *     cero coincidencias. El producto no tiene NINGUNA puerta legitima aqui.
+ *  2. La duda real era el arbol de dependencias, porque fue la que invalido
+ *     media medida en IndexedDB: `serwist` SI usa IndexedDB, y lo que salvo la
+ *     forma fuerte alli fue que ese modulo no se carga en los tests. Aqui la
+ *     comprobacion que decide es la misma y es la del paquete completo: con
+ *     este tapon puesto y la afirmacion fuerte, LOS 80 SPECS SIGUEN EN VERDE,
+ *     o sea que nadie del arbol pide el disco privado durante un test.
+ *
+ * SE AFIRMAN IGUALMENTE LOS CENTINELAS, Y ANTES QUE LA FORMA FUERTE, como en
+ * IndexedDB y por lo mismo: un «una escritura en el disco privado lleva
+ * claveDelReset» dice QUE dato se fue, y la forma fuerte sola obligaria a ir a
+ * buscarlo. Y se separan EL NOMBRE y EL CONTENIDO en dos afirmaciones porque
+ * son dos sitios distintos —un `getFileHandle(claveTemporal)` publica el dato
+ * sin escribir un byte— y el informe gana diciendo cual.
+ *
+ * EL INFORME NOMBRA LA PUERTA Y LA RUTA, NUNCA EL CONTENIDO. Y la ruta pasa
+ * segmento a segmento por `claveSegura`, como las claves de los almacenes y
+ * los nombres de las bases, por si alguien escondio el dato ahi: entonces el
+ * mensaje dice como se llama el dato vigilado en vez de copiar la cadena al
+ * registro de CI.
+ *
+ * EL PRECIO, DICHO ENTERO: a partir de aqui la deteccion de capacidades ve un
+ * `navigator.storage` que jsdom no tiene, y una pantalla que pregunte
+ * `'storage' in navigator` tomara ese camino en los tests. Hoy no lo pregunta
+ * nadie —punto 1—, y el cambio acerca el entorno al navegador de verdad en
+ * lugar de alejarlo, que es la direccion correcta para una infraestructura de
+ * tests.
+ *
+ * LO QUE ESTE TAPON NO MONTA, por la misma regla que IndexedDB: las CLASES de
+ * la familia siguen sin existir. Un `FileSystemHandle` suelto revienta con un
+ * `ReferenceError` y el test cae —que es el comportamiento bueno—. Montarlas
+ * seria simular un sistema de archivos; esto no esta para eso, esta para que
+ * una escritura hacia el no sea invisible.
+ */
+const ALMACEN_DE_ARCHIVOS_ORIGINAL = Object.getOwnPropertyDescriptor(navigator, 'storage');
+
+/** Un paso por el disco privado del origen, con la PUERTA por la que entro. */
+interface PasoPorElDisco {
+  /** `getFileHandle`, `createWritable().write`, `removeEntry`… */
+  puerta: string;
+  /** La ruta desde la raiz, por segmentos. CADA NOMBRE puede llevar el dato. */
+  ruta: string[];
+  /** Lo escrito, en texto. Vacio cuando la puerta no escribe bytes. */
+  contenido: string;
+}
+
+/**
+ * LO QUE UNA ESCRITURA EN EL DISCO LLEVA DENTRO, en texto, en sus cuatro formas.
+ *
+ * `write` acepta `string`, `ArrayBuffer` (y sus vistas), `Blob` y el objeto
+ * `{ type: 'write', data, position }`. Las tres primeras ya las sabe
+ * desmenuzar `cuerpoDeUnaBaliza` —es el desmenuzador del octavo canal, que
+ * decodifica un `ArrayBuffer` con `TextDecoder` y le lee los bytes a un `Blob`
+ * por dentro— y por eso se reusa en vez de escribir otra decodificacion.
+ *
+ * LA CUARTA ES LA QUE HAY QUE DESENVOLVER AQUI, y es la unica que no se puede
+ * delegar: el contenido va escondido detras de la clave `data`, asi que sin
+ * esto un `write({ type: 'write', data: unBlob })` acabaria en `comoTexto` y
+ * se serializaria a `{"type":"write"}` — el canal verde y ciego justo en la
+ * forma que escribe quien necesita posicionar la escritura.
+ *
+ * Se pregunta por `data` y no por `type` a proposito: `'type' in unBlob` es
+ * TRUE —`Blob.prototype.type` es el tipo MIME— y preguntar por ahi mandaria
+ * todos los `Blob` por la rama equivocada. Medido antes de escribirlo.
+ *
+ * SE EXPORTA SOLO PARA SU GUARDIAN, `disco-privado.spec.ts`, por el mismo
+ * motivo por el que se exportan `formaQueSeFue`, `vinoDePedir` y
+ * `escondidoEnElCuerpo`: si esto se «simplificara» a mirar solo las cadenas,
+ * los 79 specs seguirian en verde y el canal se quedaria ciego para las otras
+ * tres formas. Ningun spec de pantalla lo llama.
+ */
+export function contenidoDeUnaEscrituraEnDisco(datos: unknown): string {
+  if (datos === undefined || datos === null) return '';
+
+  if (
+    typeof datos === 'object' &&
+    !(datos instanceof Blob) &&
+    !esUnArrayBuffer(datos) &&
+    !ArrayBuffer.isView(datos) &&
+    'data' in datos
+  ) {
+    return cuerpoDeUnaBaliza((datos as { data?: unknown }).data);
+  }
+
+  // Y lo que no sea ninguna de las cuatro formas cae en `cuerpoDeUnaBaliza`,
+  // que acaba en `comoTexto`. Es ruido —una orden `{ type: 'truncate' }` se
+  // anota como texto aunque no escriba un byte— y es el lado seguro: este
+  // canal puede permitirse mirar de mas, nunca de menos.
+  return cuerpoDeUnaBaliza(datos);
+}
+
+/** Cuantos bytes dice haber escrito una manija sincrona: lo que pide su API. */
+function bytesDe(datos: unknown): number {
+  if (ArrayBuffer.isView(datos)) return datos.byteLength;
+  if (esUnArrayBuffer(datos)) return (datos as ArrayBuffer).byteLength;
+
+  return 0;
+}
+
+/**
+ * UN DISCO PRIVADO DE MENTIRA QUE ANOTA CADA PUERTA Y NO GUARDA NADA.
+ *
+ * Al reves que la base de IndexedDB, que SI guarda porque sin registros no hay
+ * cursor que recorrer. Aqui no hace falta: no hay ninguna puerta de escritura
+ * que dependa de que el archivo ya tenga algo dentro —`createWritable()`
+ * empieza por el principio y `write` escribe—, asi que guardar seria inventar
+ * un sistema de archivos para no cazar nada mas. Las lecturas devuelven lo que
+ * devuelve un disco vacio, que es lo que hay en un test.
+ *
+ * SE EXPORTA SOLO PARA SU GUARDIAN, `disco-privado.spec.ts`, como el resto de
+ * lo invisible de este archivo: el guardian arma una raiz SUYA con su propio
+ * `anotar`, recorre las siete puertas y mide que cada una queda anotada con su
+ * ruta y su contenido. Hacerlo contra el tapon de verdad no se puede —tocar el
+ * disco privado es, por la forma fuerte, el fallo— y leer el codigo no mide
+ * nada. Ningun spec de pantalla lo llama.
+ */
+export function raizDeMentira(anotar: (paso: PasoPorElDisco) => void): Record<string, unknown> {
+  /** Lo que devuelve recorrer un directorio vacio, que es lo que hay aqui. */
+  const vacio = (): AsyncGenerator<never> => {
+    async function* nada(): AsyncGenerator<never> {
+      // Un disco de mentira no tiene entradas que entregar.
+    }
+
+    return nada();
+  };
+
+  const flujoDeMentira = (ruta: string[], puerta: string): Record<string, unknown> => {
+    const escribir = (datos: unknown): void => {
+      anotar({ puerta, ruta, contenido: contenidoDeUnaEscrituraEnDisco(datos) });
+    };
+
+    return {
+      write: (datos: unknown) => {
+        escribir(datos);
+        return Promise.resolve(undefined);
+      },
+      seek: () => Promise.resolve(undefined),
+      truncate: () => Promise.resolve(undefined),
+      close: () => Promise.resolve(undefined),
+      abort: () => Promise.resolve(undefined),
+      // Un `FileSystemWritableFileStream` ES un `WritableStream`, asi que
+      // `getWriter().write(datos)` escribe el mismo archivo por otra boca.
+      getWriter: () => ({
+        write: (datos: unknown) => {
+          escribir(datos);
+          return Promise.resolve(undefined);
+        },
+        close: () => Promise.resolve(undefined),
+        abort: () => Promise.resolve(undefined),
+        releaseLock: () => {},
+        ready: Promise.resolve(undefined),
+        closed: Promise.resolve(undefined),
+      }),
+    };
+  };
+
+  /** La puerta SINCRONA: ni promesa ni flujo, y devuelve bytes escritos. */
+  const manijaSincronaDeMentira = (ruta: string[]): Record<string, unknown> => ({
+    write: (datos: unknown) => {
+      anotar({
+        puerta: 'createSyncAccessHandle().write',
+        ruta,
+        contenido: contenidoDeUnaEscrituraEnDisco(datos),
+      });
+
+      return bytesDe(datos);
+    },
+    read: () => 0,
+    truncate: () => {},
+    getSize: () => 0,
+    flush: () => {},
+    close: () => {},
+  });
+
+  const archivoDeMentira = (ruta: string[]): Record<string, unknown> => ({
+    kind: 'file',
+    name: ruta[ruta.length - 1] ?? '',
+    createWritable: () => Promise.resolve(flujoDeMentira(ruta, 'createWritable().write')),
+    createSyncAccessHandle: () => Promise.resolve(manijaSincronaDeMentira(ruta)),
+    getFile: () => Promise.resolve(new Blob([])),
+    /**
+     * Renombrar PUBLICA EL NOMBRE NUEVO igual que crearlo.
+     *
+     * La plataforma acepta `move(nombre)` y `move(directorio, nombre)`: el
+     * nombre es el ultimo argumento en las dos formas.
+     */
+    move: (uno: unknown, otro?: unknown) => {
+      const nombre = otro === undefined ? uno : otro;
+      anotar({
+        puerta: 'move',
+        ruta: [...ruta.slice(0, -1), String(nombre)],
+        contenido: '',
+      });
+
+      return Promise.resolve(undefined);
+    },
+    remove: () => {
+      anotar({ puerta: 'remove', ruta, contenido: '' });
+      return Promise.resolve(undefined);
+    },
+    isSameEntry: () => Promise.resolve(false),
+    queryPermission: () => Promise.resolve('granted'),
+    requestPermission: () => Promise.resolve('granted'),
+  });
+
+  const directorioDeMentira = (ruta: string[]): Record<string, unknown> => ({
+    kind: 'directory',
+    name: ruta[ruta.length - 1] ?? '',
+    getFileHandle: (nombre: unknown) => {
+      const suya = [...ruta, String(nombre)];
+      anotar({ puerta: 'getFileHandle', ruta: suya, contenido: '' });
+
+      return Promise.resolve(archivoDeMentira(suya));
+    },
+    getDirectoryHandle: (nombre: unknown) => {
+      const suya = [...ruta, String(nombre)];
+      anotar({ puerta: 'getDirectoryHandle', ruta: suya, contenido: '' });
+
+      return Promise.resolve(directorioDeMentira(suya));
+    },
+    removeEntry: (nombre: unknown) => {
+      anotar({ puerta: 'removeEntry', ruta: [...ruta, String(nombre)], contenido: '' });
+      return Promise.resolve(undefined);
+    },
+    resolve: () => Promise.resolve(null),
+    keys: vacio,
+    values: vacio,
+    entries: vacio,
+    [Symbol.asyncIterator]: vacio,
+    isSameEntry: () => Promise.resolve(false),
+    queryPermission: () => Promise.resolve('granted'),
+    requestPermission: () => Promise.resolve('granted'),
+  });
+
+  return directorioDeMentira([]);
+}
+
+/**
+ * Como nombrar un paso por el disco en un informe SIN publicar lo que lleva.
+ *
+ * La puerta y la ruta; NUNCA el contenido, que es justamente lo que esta fuga
+ * se lleva. Y la ruta SEGMENTO A SEGMENTO por `claveSegura`, porque un archivo
+ * bautizado con el dato lo publica igual de bien que su contenido.
+ */
+function descripcionDeUnPaso(paso: PasoPorElDisco): string {
+  const ruta = paso.ruta.length === 0 ? 'la raiz' : `/${paso.ruta.map(claveSegura).join('/')}`;
+
+  return `${paso.puerta} en ${ruta}`;
+}
+
+// ---------------------------------------------------------------------------
+// El decimoseptimo canal: EL CENTRO DE NOTIFICACIONES DEL SISTEMA OPERATIVO
+// ---------------------------------------------------------------------------
+
+/**
+ * `Notification` NO EXISTE EN JSDOM, y por eso hay que PONERLO.
+ *
+ * Medido con una sonda en jsdom 26: `typeof Notification` es `'undefined'`, no
+ * hay descriptor en `globalThis` ni en `window`, y `PushManager` tampoco
+ * existe. Es la misma situacion que `sendBeacon`, `caches`, `serviceWorker`,
+ * `indexedDB`, `navigator.storage`, `EventSource` y `Worker`, y la misma
+ * leccion que ya dejo OCHO fugas: UNA API QUE JSDOM NO IMPLEMENTA ES UN SITIO
+ * DONDE NADIE MIRA POR CONSTRUCCION.
+ *
+ * Y AQUI LA AUSENCIA LA CONVIERTE EN SILENCIO EL `typeof`, QUE ES LA FORMA
+ * OBLIGATORIA. Con los otros ocho la forma prudente era un `?.` opcional —se
+ * podia escribir sin el, y entonces el test caia solo—. Aqui no: `Notification`
+ * es un BINDING GLOBAL, asi que `Notification.permission` a pelo lanza un
+ * `ReferenceError` en cualquier navegador que no lo traiga, y la unica manera
+ * correcta de usar esta API es preguntar antes. O sea que el codigo BIEN
+ * ESCRITO es exactamente el que pasa en verde:
+ *
+ *     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+ *       new Notification('Cobro registrado', {
+ *         body: `${usuario.nombreCompleto}: ${monto} (${metodo}). ${nota}`,
+ *         tag: `cobro-${usuario.perfilId}`,
+ *       });
+ *     }
+ *
+ * MEDIDO: esa mutacion, en el `onSuccess` de la mutacion de cobro de la ficha
+ * de una persona, SOBREVIVIO LOS 1761 TESTS del paquete con los dieciseis
+ * canales enchufados. El control que prueba que el instrumento funcionaba: LA
+ * MISMA TERNA DE DATOS, en la misma linea, por `console.info` TIRA 7 TESTS DE
+ * 26. Lo unico que cambia entre caer y no caer es la puerta.
+ *
+ * Y ESTE ARCHIVO YA LO TENIA ESCRITO SIN DARSE CUENTA. El docblock de
+ * `SERVICE_WORKER_ORIGINAL`, al justificar que montar el worker no le cambia
+ * nada a nadie, dice: «el unico sitio de `src/` que lo pregunta es
+ * `elNavegadorPuede()` en `boton-de-push.tsx`, y pide ADEMAS `Notification` y
+ * `PushManager`, QUE SIGUEN SIN EXISTIR». Esa frase era la descripcion exacta
+ * de un canal sin tapar, leida como si fuera una tranquilidad.
+ *
+ * ---------------------------------------------------------------------------
+ * LO QUE LO HACE GRAVE NO ES LA API: ES QUE ESTE PRODUCTO YA PIDIO EL PERMISO.
+ *
+ * `componentes/boton-de-push.tsx` llama a `Notification.requestPermission()`
+ * cuando un alumno activa los avisos, y `src/app/sw.ts` existe y los muestra.
+ * O sea que en la maquina del mostrador `Notification.permission === 'granted'`
+ * NO ES UNA HIPOTESIS: es el estado normal en cuanto alguien activo las
+ * notificaciones una vez en ese navegador. La rama de la fuga no esta detras de
+ * una condicion improbable — esta detras de una condicion que el propio
+ * producto se encarga de hacer verdadera.
+ *
+ * Y EL DESTINO ES PEOR QUE CUALQUIERA DE LOS DIECISEIS ANTERIORES, porque no es
+ * un sitio del navegador: es EL CENTRO DE NOTIFICACIONES DEL SISTEMA OPERATIVO.
+ *
+ *  - SE VE SIN TOCAR NADA. Aparece encima de todo, en una pantalla que esta de
+ *    cara al publico, y lo lee cualquiera que pase por delante del mostrador.
+ *    No hace falta abrir las herramientas del navegador como con los seis
+ *    almacenes, ni mirar la barra de direcciones como con la URL.
+ *  - SOBREVIVE A LA PESTAÑA, AL LOGOUT Y AL CIERRE DEL NAVEGADOR. Los seis
+ *    almacenes sobreviven al logout; este sobrevive ademas a que el navegador
+ *    ya no este abierto, porque el dato ya no lo guarda el navegador.
+ *  - EN WINDOWS QUEDA EN EL HISTORIAL DE NOTIFICACIONES —el centro de
+ *    actividades—, que no lo vacia ningun «borrar datos del sitio» y que no es
+ *    nuestro: es del sistema.
+ *  - Y NO LO MIRA NINGUNO DE LOS DIECISEIS TAPONES, porque no es un almacen
+ *    web, no es una peticion de red, no es el DOM y no es la consola. Cada uno
+ *    de los otros lee SU propia API; ninguno sabe que existe un centro de
+ *    notificaciones.
+ *
+ * ---------------------------------------------------------------------------
+ * CON QUE VALOR SE MONTA `permission`, QUE ES LO QUE DECIDE SI ESTO SIRVE.
+ *
+ * `Notification.permission` es un ACCESOR ESTATICO de solo lectura, y el codigo
+ * prudente lo consulta antes de construir nada: es lo que hace la mutacion de
+ * arriba y es lo que recomienda la documentacion. ASI QUE EL VALOR CON EL QUE
+ * SE MONTE DECIDE SI LA RAMA DE LA FUGA LLEGA A EJECUTARSE.
+ *
+ * SE MONTA EN `'granted'`, Y NO ES UNA ELECCION DE COMODIDAD: medido con la
+ * mutacion puesta en la ficha de una persona y el canal entero enchufado,
+ *
+ *     permission: 'default'   → 0 tests de 26 (la rama no corre: verde y ciego)
+ *     permission: 'granted'   → 7 tests de 26 (el canal nombra el campo)
+ *
+ * Con `'default'` el tapon quedaria instalado, el informe diria que se miro, y
+ * no se habria mirado nada — que es el modo de fallo que todo este archivo
+ * existe para evitar. Y `'granted'` no es ademas una exageracion: es el estado
+ * REAL del navegador del mostrador en cuanto alguien activo los avisos una vez,
+ * asi que montarlo asi acerca el entorno al navegador de verdad en lugar de
+ * alejarlo, que es la direccion correcta para una infraestructura de tests.
+ *
+ * `'denied'` se descarto por lo mismo que `'default'` y por una cosa mas: es el
+ * unico de los tres que ademas cambia lo que PINTA `boton-de-push.tsx`, que
+ * tiene una rama entera para quien dijo que no.
+ *
+ * ---------------------------------------------------------------------------
+ * SE MONTA `Notification` Y NO SE MONTA `PushManager`, A PROPOSITO.
+ *
+ * Es la unica decision de este canal que mira hacia afuera, y esta medida.
+ * `elNavegadorPuede()` en `boton-de-push.tsx` pide las TRES cosas:
+ * `Notification`, `PushManager` y `'serviceWorker' in navigator`. El decimo
+ * canal ya monta la tercera; este monta la primera. Dejando `PushManager`
+ * fuera, `elNavegadorPuede()` sigue devolviendo `false` en los 81 specs y el
+ * boton sigue sin pintarse donde no se pide —que es como estaba—, mientras el
+ * canal queda entero: lo que se vigila es `new Notification(...)`, y para
+ * escribir esa linea no hace falta `PushManager`.
+ *
+ * Montar `PushManager` encenderia el boton de push en cualquier spec que
+ * monte la pantalla del perfil del alumno sin pedirlo, y ademas volveria falsa
+ * la premisa de un test que ya existe —`boton-de-push.spec.tsx`, «en un
+ * navegador sin Notification tampoco»—. No hace falta para nada y se queda
+ * fuera.
+ *
+ * (Ese test SIGUE EN VERDE con esto puesto, y esta medido: lo que lo sostiene
+ * ahora es la ausencia de `PushManager`, no la de `Notification`. Su comentario
+ * dice «jsdom no trae ni Notification ni PushManager» y a partir de aqui eso ya
+ * no es cierto de la primera mitad. El test es correcto; la frase se quedo
+ * vieja.)
+ *
+ * ---------------------------------------------------------------------------
+ * QUE CAMPOS SE AUDITAN. TODOS LOS QUE LLEVEN TEXTO, Y NO UNA LISTA BLANCA.
+ *
+ * El titulo —primer argumento— y CADA CLAVE del objeto de opciones, una por
+ * una, sin enumerar cuales. Es la decision del decimoquinto canal
+ * («no se enumeran los tipos, a proposito») por el mismo motivo: una lista de
+ * campos es una lista negra, y el dia que la plataforma agregue uno —o que
+ * alguien escriba `lang` con un nombre dentro— el tapon seguiria en verde
+ * diciendo otra cosa. Lo que se recorre es `Object.entries` de lo que llegue.
+ *
+ * Los cuatro que la tarea pedia nombrar caen todos ahi dentro, y conviene decir
+ * por que cada uno lleva dato:
+ *
+ *  - `title`. Es la linea grande del aviso: lo que se lee desde dos metros.
+ *  - `body`. El cuerpo, y el sitio natural de «nombre: monto (metodo). nota».
+ *  - `tag`. No se ve, y por eso es peor: es el identificador con el que el
+ *    navegador agrupa avisos, la forma de manual es `cobro-${perfilId}`, y
+ *    sigue ahi aunque el aviso se reemplace.
+ *  - `data`. UN CAMPO LIBRE que acepta cualquier cosa estructurada, igual que
+ *    el `detail` de `performance.mark` y que el valor de un `put` de IndexedDB.
+ *    Se serializa con `comoTexto`, que es lo que ya hacen esos dos, para que un
+ *    dato ANIDADO en la tercera clave de un objeto cuente igual.
+ *
+ * Y LAS URLS ENTRAN, que es lo que el septimo canal enseño: `icon`, `badge` e
+ * `image` son URLs, Y UNA URL LLEVA DATO IGUAL QUE UN CUERPO. Un
+ * `icon: '/avatar.png?de=' + nombre` publica el dato sin escribir una palabra
+ * en el aviso, y ademas lo PIDE a la red. No hay que hacer nada especial para
+ * cubrirlas: son tres claves mas del objeto de opciones y el recorrido las
+ * mira solas. Lo mismo `actions`, que es un array de objetos con `title` y
+ * `action` dentro.
+ *
+ * LO QUE SE QUEDA FUERA, DICHO AQUI PARA QUE NADIE LO DESCUBRA CREYENDO QUE
+ * ESTO LO TAPABA —un limite escrito es una defensa; un limite tacito es una
+ * trampa para el que venga—:
+ *
+ *  - `Notification.requestPermission()`. NO ES UNA PUERTA DE ESTE CANAL y no se
+ *    anota: no saca ningun dato de esta pagina, no recibe ningun argumento con
+ *    contenido y es ademas lo UNICO de esta familia que el producto llama de
+ *    verdad. Contarla como uso del canal pondria la forma fuerte de abajo ROJA
+ *    con el codigo correcto en `boton-de-push.spec.tsx`. Se monta —devuelve
+ *    `'granted'`— para que el boton siga funcionando, y se ignora.
+ *  - LO QUE EL USUARIO HACE DESPUES con el aviso: `notificationclick`, el foco
+ *    de la ventana, el `close()`. No sacan nada; son entradas.
+ *  - LOS CAMPOS QUE NO PUEDEN LLEVAR UN NOMBRE DENTRO no se excluyen a mano
+ *    —`silent`, `renotify`, `requireInteraction` son booleanos y `timestamp` y
+ *    `vibrate` son numeros—: pasan por el recorrido, no emparejan con ningun
+ *    centinela y no cuestan nada. Excluirlos pedia una lista, que es lo que
+ *    este canal evita. Es el lado seguro, como en
+ *    `contenidoDeUnaEscrituraEnDisco`: aqui se puede mirar de mas, nunca de
+ *    menos.
+ *
+ * ---------------------------------------------------------------------------
+ * EL VECINO: `ServiceWorkerRegistration.showNotification()` ENTRA, Y AQUI.
+ *
+ * Es LA OTRA forma de mostrar una notificacion —la que usa el push, y la unica
+ * que existe dentro de un service worker: `src/app/sw.ts` la llama en su
+ * manejador de `push`—. Desde una PAGINA se escribe
+ * `(await navigator.serviceWorker.ready).showNotification(titulo, opciones)`, y
+ * es la forma que la documentacion recomienda porque admite `actions`.
+ *
+ * SE DECIDIO QUE ENTRA EN ESTE CANAL Y NO EN EL DECIMO, y el criterio es el que
+ * este archivo ya uso para separar `sendBeacon` del decimocuarto canal: lo que
+ * agrupa un canal es EL SITIO DONDE ACABA EL DATO, no la funcion por la que
+ * pasa. El decimo canal vigila lo que se le MANDA al worker —un `postMessage`,
+ * que se queda dentro del navegador en un hilo con nuestro origen—; esto SALE
+ * del navegador al centro de notificaciones del sistema, exactamente igual que
+ * `new Notification`. Mismo destino, mismos campos, mismo informe: un canal.
+ *
+ * Se monta sobre los registros de mentira que el DECIMO canal ya fabrica, que
+ * es donde la plataforma la pone, y se anota con la puerta `showNotification`
+ * para que el informe diga por cual de las dos salio.
+ *
+ * LO QUE ESO NO CUBRE, dicho entero: `getRegistration()` y `getRegistrations()`
+ * siguen devolviendo «no hay nada registrado», que es lo que el decimo canal
+ * decidio y lo que `boton-de-push.tsx` espera. Un
+ * `(await navigator.serviceWorker.getRegistration())?.showNotification(dato)`
+ * no se anota — pero tampoco se ejecuta, asi que no es una fuga silenciosa:
+ * es la misma nada que en un navegador sin worker instalado. Y el camino que
+ * SI usa el producto para esperar al worker es `ready`, que es el que se mira.
+ *
+ * ---------------------------------------------------------------------------
+ * LA FORMA: CENTINELAS PRIMERO Y LA FUERTE DETRAS. LAS DOS, Y ESO SE MIDIO.
+ *
+ * La duda era real: notificar ES legitimo en este producto —hay un boton que
+ * pide el permiso y un service worker que muestra avisos—, asi que la forma
+ * fuerte podia ser ROJA CON EL CODIGO CORRECTO, que es el criterio con el que
+ * este archivo decidio vigilar el `src` de una imagen, las salidas laterales y
+ * `fetch` por centinelas y no por «ninguna llamada».
+ *
+ * NO LO ES, Y LA MEDIDA QUE LO DECIDE ES LA DEL PAQUETE ENTERO: con la forma
+ * fuerte instalada, LOS 81 SPECS SIGUEN EN VERDE. El motivo es estructural y no
+ * una casualidad: en este producto NINGUNA PANTALLA MUESTRA UN AVISO. Los
+ * avisos los muestra el SERVICE WORKER —`sw.ts`, desde el manejador de `push`,
+ * con lo que manda el servidor—, y lo unico que hace la pagina es PEDIR EL
+ * PERMISO, que no es una puerta de este canal (ver arriba). Cero
+ * `new Notification` y cero `showNotification` en `apps/web/src` fuera de
+ * `sw.ts`, medido con `grep`.
+ *
+ * Donde no hay uso legitimo que proteger, la forma fuerte sale gratis y caza
+ * ademas EL DATO QUE NADIE REGISTRO —que es justo el caso del `nota` de un
+ * cobro, texto libre que nadie puede sembrar como centinela—. Es la forma de
+ * `window.name`, de IndexedDB, de los atributos del `<html>` y de OPFS.
+ *
+ * SE AFIRMAN IGUALMENTE LOS CENTINELAS, Y ANTES, como en IndexedDB y en OPFS y
+ * por lo mismo: un «una notificacion lleva claveDelReset (new Notification, el
+ * campo body)» dice QUE dato se fue y POR DONDE, y la forma fuerte sola
+ * obligaria a ir a buscarlo.
+ *
+ * EL INFORME NOMBRA LA PUERTA Y EL CAMPO, NUNCA EL CONTENIDO. Y el nombre del
+ * campo pasa por `claveSegura`, como las claves de los almacenes y los
+ * segmentos de una ruta del disco: un `{ [claveTemporal]: 1 }` en las opciones
+ * publicaria el dato en el propio nombre.
+ *
+ * EL PRECIO, DICHO ENTERO: a partir de aqui la deteccion de capacidades ve un
+ * `Notification` que jsdom no tiene. Se midio a quien le cambia algo y la
+ * respuesta esta arriba: solo a `elNavegadorPuede()`, que pide ademas
+ * `PushManager` y por eso sigue diciendo que no.
+ */
+const NOTIFICACION_ORIGINAL = Object.getOwnPropertyDescriptor(globalThis, 'Notification');
+
+/** Un campo de una notificacion que puede llevar texto dentro. */
+interface CampoDeUnAviso {
+  /** El nombre del campo: `titulo`, `body`, `tag`, `data`, `icon`… */
+  nombre: string;
+  /** Lo que lleva dentro, para buscar centinelas. NUNCA entra en el informe. */
+  contenido: string;
+}
+
+/** Una notificacion que una pantalla mando al centro de notificaciones. */
+interface AvisoMostrado {
+  /** `new Notification` o `showNotification`: por cual de las dos salio. */
+  puerta: string;
+  campos: CampoDeUnAviso[];
+}
+
+/**
+ * LOS CAMPOS DE UNA NOTIFICACION, UNO POR UNO Y SIN LISTA BLANCA.
+ *
+ * El titulo mas CADA CLAVE del objeto de opciones. El razonamiento entero
+ * —por que no se enumeran los campos, por que las URLs entran y que se queda
+ * fuera— esta en el docblock de `NOTIFICACION_ORIGINAL`.
+ *
+ * CADA VALOR PASA POR `cuerpoDeUnaBaliza`, que es el desmenuzador que el octavo
+ * canal escribio para `sendBeacon` y que el decimocuarto y el decimosexto ya
+ * reusan. Hacen falta las dos cosas que sabe hacer:
+ *
+ *  - CAER EN `comoTexto` para un objeto, que es lo que ya hacen el `detail` de
+ *    `performance.mark` y el valor de un `put` de IndexedDB. `data` acepta
+ *    cualquier cosa estructurada y el dato suele ir ANIDADO, asi que mirar solo
+ *    las cadenas de primer nivel dejaria pasar la forma normal de la fuga.
+ *  - Y DECODIFICAR LOS BYTES. `data` no es JSON: es un valor CLONABLE
+ *    ESTRUCTURADAMENTE, asi que admite un `Blob` y un `ArrayBuffer`, y los dos
+ *    se serializan a `{}` con un `JSON.stringify`. Es exactamente la rama que
+ *    el guardian del disco privado encontro muerta en `cuerpoDeUnaBaliza`, y
+ *    aqui sale gratis por reusarlo en vez de escribir otra decodificacion.
+ *
+ * SE EXPORTA SOLO PARA SU GUARDIAN, `centro-de-notificaciones.spec.ts`, por el
+ * mismo motivo por el que se exportan `formaQueSeFue`, `vinoDePedir`,
+ * `escondidoEnElCuerpo` y `contenidoDeUnaEscrituraEnDisco`: si esto se
+ * «simplificara» a mirar `title` y `body`, los 81 specs seguirian en verde y el
+ * canal se quedaria ciego para el `tag`, para `data` y para las tres URLs.
+ * Ningun spec de pantalla lo llama.
+ */
+export function camposDeUnAviso(titulo: unknown, opciones: unknown): CampoDeUnAviso[] {
+  /**
+   * SI UN CAMPO ESTA VACIO SE DECIDE SOBRE EL VALOR CRUDO, NO SOBRE EL TEXTO.
+   *
+   * Y eso NO se dedujo: lo encontro este canal en la primera corrida de su
+   * guardian. El filtro estaba escrito sobre el resultado de `comoTexto`
+   * —`campo.contenido.trim() !== ''`— y era UNA RAMA MUERTA, porque
+   * `comoTexto([''])` devuelve ` ""` (la representacion de texto mas el JSON)
+   * y eso no se vacia con un `trim`. O sea que un `{ body: '', tag: '' }` se
+   * anotaba como dos campos con `""` dentro: un `includes` por campo vacio en
+   * cada afirmacion, y —lo que importa— el mensaje de la forma fuerte
+   * enumerando campos que el aviso no lleva.
+   *
+   * Es la misma leccion que el guardian del disco privado se llevo con
+   * `instanceof ArrayBuffer`: una condicion que parece obvia y que en este
+   * entorno no es cierta, invisible mientras nadie la mida.
+   */
+  const vacio = (valor: unknown): boolean =>
+    valor === undefined || valor === null || (typeof valor === 'string' && valor.trim() === '');
+
+  const campos: CampoDeUnAviso[] = vacio(titulo)
+    ? []
+    : [{ nombre: 'titulo', contenido: cuerpoDeUnaBaliza(titulo) }];
+
+  if (typeof opciones === 'object' && opciones !== null) {
+    for (const [clave, valor] of Object.entries(opciones as Record<string, unknown>)) {
+      if (vacio(valor)) continue;
+
+      campos.push({ nombre: clave, contenido: cuerpoDeUnaBaliza(valor) });
+    }
+  }
+
+  return campos;
+}
+
+/**
+ * UNA NOTIFICACION DE MENTIRA: ANOTA Y NO MUESTRA NADA.
+ *
+ * No reenvia a nada, como la baliza, como `caches` y como el disco privado: en
+ * jsdom no hay centro de notificaciones debajo al que reenviar. La instancia
+ * se queda con los campos que la plataforma expone —`title`, `body`, `tag`,
+ * `data`— porque quien construye un aviso a veces los vuelve a leer, y con los
+ * cuatro manejadores a `null` para que asignarles algo no explote.
+ *
+ * SE EXPORTA SOLO PARA SU GUARDIAN, como `raizDeMentira`: el guardian arma su
+ * propia clase con su propio `anotar`, construye un aviso y mide que cada
+ * campo queda anotado. Hacerlo contra el tapon de verdad no se puede —mostrar
+ * una notificacion es, por la forma fuerte, el fallo—. Ningun spec de pantalla
+ * lo llama.
+ */
+export function notificacionDeMentira(anotar: (aviso: AvisoMostrado) => void) {
+  return class {
+    readonly title: string;
+    readonly body: string;
+    readonly tag: string;
+    readonly data: unknown;
+    onclick: unknown = null;
+    onclose: unknown = null;
+    onerror: unknown = null;
+    onshow: unknown = null;
+
+    constructor(titulo: unknown, opciones?: unknown) {
+      // Se ANOTA ANTES de nada, como en el resto del tapon: si algo de aqui
+      // abajo explotara, el aviso ya esta registrado.
+      anotar({ puerta: 'new Notification', campos: camposDeUnAviso(titulo, opciones) });
+
+      const init = (typeof opciones === 'object' && opciones !== null ? opciones : {}) as Record<
+        string,
+        unknown
+      >;
+
+      this.title = String(titulo ?? '');
+      this.body = typeof init.body === 'string' ? init.body : '';
+      this.tag = typeof init.tag === 'string' ? init.tag : '';
+      this.data = init.data ?? null;
+    }
+
+    close(): void {}
+    addEventListener(): void {}
+    removeEventListener(): void {}
+    dispatchEvent(): boolean {
+      return true;
+    }
+
+    /**
+     * EL VALOR QUE DECIDE SI ESTE CANAL VE ALGO. Ver el docblock de arriba.
+     *
+     * Un GETTER y no una propiedad de datos, que es como lo expone la
+     * plataforma: `Notification.permission` es de solo lectura, y un codigo que
+     * intente asignarlo no debe poder dejar el canal ciego.
+     */
+    static get permission(): string {
+      return 'granted';
+    }
+
+    static get maxActions(): number {
+      return 2;
+    }
+
+    /**
+     * NO ES UNA PUERTA DE ESTE CANAL Y NO SE ANOTA: no saca ningun dato.
+     *
+     * Se monta igualmente porque `boton-de-push.tsx` la llama de verdad, y se
+     * admite la forma con callback ademas de la promesa porque las dos estan en
+     * la plataforma y la vieja sigue siendo codigo que alguien escribe.
+     */
+    static requestPermission(alResponder?: unknown): Promise<string> {
+      if (typeof alResponder === 'function') (alResponder as (permiso: string) => void)('granted');
+
+      return Promise.resolve('granted');
+    }
+  };
+}
+
+/**
+ * Como nombrar una notificacion en un informe SIN publicar lo que lleva.
+ *
+ * La puerta y los NOMBRES de los campos; nunca el contenido, que es justamente
+ * lo que esta fuga se lleva. Y los nombres por `claveSegura`, como las claves
+ * de los almacenes y los segmentos de una ruta del disco: un
+ * `{ [claveTemporal]: 1 }` publica el dato en el propio nombre del campo.
+ */
+function descripcionDeUnAviso(aviso: AvisoMostrado): string {
+  const campos = aviso.campos.map((campo) => claveSegura(campo.nombre)).join(', ');
+
+  return campos === '' ? aviso.puerta : `${aviso.puerta} (${campos})`;
+}
+
+// ---------------------------------------------------------------------------
+// El vigesimo canal: los objetos publicados con URL (`URL.createObjectURL`)
+// ---------------------------------------------------------------------------
+
+/**
+ * `URL.createObjectURL` NO EXISTE EN JSDOM, y por eso hay que PONERLO.
+ *
+ * Medido con una sonda: `typeof URL.createObjectURL` es `'undefined'` en jsdom
+ * 26, y `revokeObjectURL` tampoco esta. Igual que con `sendBeacon`, `caches`,
+ * IndexedDB, el disco privado y `Notification`, eso NO es cobertura aunque lo
+ * parezca: la forma que escribe quien programa con cuidado —un
+ * `typeof URL.createObjectURL === 'function'` delante— no revienta, NO HACE
+ * NADA y pasa en verde, mientras en el navegador del mostrador publica el
+ * objeto.
+ *
+ * MEDIDO EN LA FASE 14, en la liquidacion de una profesora: un enlace
+ * «Descargar» armado en el render con
+ * `href={URL.createObjectURL(new Blob([csv]))}` —el CSV con el nombre, lo que
+ * se paga y la tarifa de cada franja— PASO LOS 1874 TESTS DEL PAQUETE con los
+ * diecisiete canales enchufados. Es de los patrones mas comunes que hay para
+ * descargar algo en React, y casi nadie lo revoca.
+ *
+ * EL DATO ACABA EN UN SITIO QUE NO ES NINGUNO DE LOS OTROS: el almacen de
+ * blobs del documento. No esta en el `<body>` —el marcado lleva `blob:…/uuid`,
+ * no el contenido—, no es una peticion, no es un almacen con API propia y no
+ * se serializa en ninguna parte. Pero el objeto sigue vivo hasta que alguien
+ * lo revoque o se cierre el documento, y en una aplicacion de una sola pagina
+ * el documento NO SE CIERRA AL SALIR DE LA SESION: el sueldo de la profesora
+ * sigue en memoria para el turno siguiente, y `chrome://blob-internals` lo
+ * enseña entero a quien se siente delante, sin ninguna contraseña.
+ *
+ * SE AFIRMA POR CENTINELAS Y ADEMAS POR LA FORMA FUERTE —«al terminar el test
+ * no queda ningun objeto publicado sin revocar»— y se lee DESPUES del
+ * `cleanup()`. Las dos cosas van juntas, y es lo que deja pasar el uso
+ * legitimo sin abrirle la puerta a la fuga:
+ *
+ *  - Una descarga bien hecha crea la URL en el `onClick`, hace el `click()` del
+ *    enlace y la revoca en la linea siguiente: al terminar el test no queda
+ *    nada.
+ *  - Una vista previa —el `<img>` de un comprobante antes de subirlo— la crea
+ *    al montar y la revoca en la limpieza de su `useEffect`: leida despues del
+ *    desmontaje, tampoco queda nada.
+ *  - Lo unico que queda es lo que nadie revoca nunca, que es exactamente la
+ *    fuga.
+ *
+ * Hoy no hay un solo `createObjectURL` en `apps/web/src`, y con este canal
+ * puesto los specs siguen en verde: la forma fuerte sale gratis. Lo que NO
+ * cubre, dicho entero: una revocacion aplazada con `setTimeout` —la forma de
+ * «darle tiempo al navegador a empezar la descarga»— cuenta como no revocada
+ * si el test termina antes. Es una falsa alarma y no un agujero, y se arregla
+ * esperando en el test, no abriendo el canal.
+ *
+ * El precio, el de siempre: a partir de aqui la deteccion de capacidades ve
+ * una API que jsdom no tiene. Y lo custodia un spec propio,
+ * `objetos-con-url.spec.ts`, porque ningun spec de pantalla toca este canal.
+ */
+const CREAR_UNA_URL_DE_OBJETO_ORIGINAL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+const REVOCAR_UNA_URL_DE_OBJETO_ORIGINAL = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
+
+/** Un objeto publicado con `createObjectURL` y todavia sin revocar. */
+export interface ObjetoPublicado {
+  /** El tipo, para el informe: `text/csv`, `File`… Va por `claveSegura`. */
+  tipo: string;
+  /** Lo que lleva, en texto, para buscar centinelas dentro. */
+  contenido: string;
+}
+
+export interface AlmacenDeObjetos {
+  crear: (objeto: unknown) => string;
+  revocar: (url: unknown) => void;
+  /** Lo que sigue publicado, en el orden en que se publico. */
+  vivos: () => ObjetoPublicado[];
+}
+
+/** El tipo de un objeto publicado, sin leer su contenido. */
+function tipoDeUnObjeto(objeto: unknown): string {
+  if (objeto instanceof Blob && objeto.type !== '') return objeto.type;
+  if (typeof objeto === 'object' && objeto !== null) return objeto.constructor.name;
+
+  return typeof objeto;
+}
+
+/**
+ * EL ALMACEN DE OBJETOS CON URL, exportado como `raizDeMentira` y
+ * `notificacionDeMentira`: el tapon instala uno por test, y el guardian arma
+ * los suyos sin tocar nada global.
+ *
+ * El contenido se lee EN EL ACTO, al publicar, reusando `cuerpoDeUnaBaliza`
+ * —que ya sabe leer un `Blob` por dentro, y un `File` es un `Blob`—: un
+ * objeto que se publica y despues se muta no existe —un `Blob` es
+ * inmutable—, y leerlo al final obligaria a guardar el objeto entero.
+ *
+ * REVOCAR UNA URL QUE NO ES SUYA NO BORRA NADA, como en la plataforma: es la
+ * propiedad que impide que un `revokeObjectURL('')` de cortesia vacie el
+ * almacen y deje la fuga en verde.
+ */
+export function almacenDeObjetosDeMentira(): AlmacenDeObjetos {
+  const publicados = new Map<string, ObjetoPublicado>();
+  let cuantos = 0;
+
+  return {
+    crear(objeto) {
+      cuantos += 1;
+      const url = `blob:${window.location.origin}/objeto-${cuantos}`;
+      publicados.set(url, { tipo: tipoDeUnObjeto(objeto), contenido: cuerpoDeUnaBaliza(objeto) });
+
+      return url;
+    },
+    revocar(url) {
+      publicados.delete(String(url));
+    },
+    vivos: () => [...publicados.values()],
+  };
+}
+
+/**
+ * EL TAPON DE LOS DIECIOCHO CANALES —Y EL EJE DECIMONOVENO—, en todos los specs.
+ *
+ * Los dieciocho canales son los de abajo. El eje decimonoveno no es uno de ellos:
  * es el despacho de los eventos de salida de la pestaña, que corre como
- * PRIMERA linea del `afterEach` para que los quince miren un mundo en el que la
+ * PRIMERA linea del `afterEach` para que los dieciocho miren un mundo en el que la
  * pestaña ya se cerro. Vive en `src/test/salida-de-la-pestana.ts` y el porque
  * de su sitio exacto esta ahi y en el comentario de esa primera linea.
  *
@@ -2723,7 +4162,8 @@ export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
  * motivo medido, y por que `serwist` —que si usa IndexedDB— no lo invalida,
  * estan en el docblock de `INDEXED_DB_ORIGINAL`.
  *
- * **Los atributos del `<html>` y del `<body>`.** Los dos elementos que
+ * **El `<html>` y el `<body>`: sus atributos, y lo que CUELGA del `<html>`.**
+ * Los dos elementos que
  * envuelven al cuerpo, y que no mira NADIE: los once canales de arriba miran
  * la consola, el titulo, el nombre de la pestaña, el CONTENIDO del `<head>`,
  * los cinco almacenes, User Timing, el `src` de una imagen, las tres salidas
@@ -2741,7 +4181,22 @@ export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
  * FORMA FUERTE —ni un atributo, contra el conjunto VACIO y no contra una foto
  * inicial, porque con la foto un atributo dejado por un test ANTERIOR pasaria
  * en verde— y el motivo por el que esa forma es legitima esta medido, no
- * leido: el docblock de `ALREDEDOR_DEL_CUERPO`.
+ * leido: el docblock de `ALREDEDOR_DEL_CUERPO`. Y ESTE CANAL TIENE UNA SEGUNDA
+ * MITAD: LO QUE CUELGA DEL `<html>` fuera del `<head>` y del `<body>`. Medido
+ * en la Fase 14 con el catalogo de packs entero dentro —tres nombres y dos
+ * precios EN CLARO—: un `document.documentElement.append(marca)` con el
+ * `JSON.stringify` de la lista en el `textContent` paso los 1841 tests, y la
+ * variante con el dato en un atributo tambien. Cae en el hueco entre TRES
+ * defensas —el cuarto canal mira los HIJOS DEL `<head>`, este miraba los
+ * ATRIBUTOS de los dos elementos y no sus hijos, y los tests de pantalla miran
+ * lo que hay DENTRO del `<body>`— y `cleanup()` tampoco lo quita, asi que
+ * sobrevive a su propio test y el tapon lo DESCUELGA antes de afirmar, igual
+ * que borra los atributos. Se afirma tambien por la forma fuerte —«el `<html>`
+ * no tiene un tercer hijo»—, que sale gratis y esta medida dos veces: una
+ * sonda dice que en un test normal los hijos son exactamente `['HEAD','BODY']`
+ * y el paquete entero sigue en verde con la afirmacion puesta. El caso
+ * simetrico —un nodo colgado del `<head>`— SI estaba cubierto, y se comprobo
+ * con una sonda en vez de darse por hecho.
  *
  * **La URL del documento.** EL HUECO ENTRE LAS DOS DEFENSAS: los doce canales
  * de arriba miran todo lo que no es el `<body>`, los tests de pantalla miran
@@ -2770,8 +4225,9 @@ export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
  * con un `Proxy`— esta medido y escrito entero en el docblock de
  * `PUERTAS_DEL_HISTORIAL`.
  *
- * **La red por fuera de `pedir`.** `fetch`, `XMLHttpRequest`, `WebSocket` y
- * `EventSource`. Es LA DEFENSA QUE ESTE MISMO DOCBLOCK DABA POR SUPUESTA: los
+ * **La red por fuera de `pedir`.** `fetch`, `XMLHttpRequest`, `WebSocket`,
+ * `EventSource`, `Worker` y `SharedWorker`. Es LA DEFENSA QUE ESTE MISMO
+ * DOCBLOCK DABA POR SUPUESTA: los
  * parrafos del `src` de una imagen y de las salidas laterales dicen los dos que
  * aquello se escapa porque «no es un `fetch`, asi que el test de no habla con la
  * red por fuera de `pedir` pasa en verde». MEDIDO: ese test existia a mano en
@@ -2793,7 +4249,7 @@ export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
  * `PuertaDeRed`. Y lo custodia un spec propio, `red-por-fuera-de-pedir.spec.ts`,
  * porque la pregunta de la pila es invisible desde cualquier spec de pantalla.
  *
- * **Lo que el marcado del `<body>` no serializa.** EL UNICO DE LOS QUINCE QUE
+ * **Lo que el marcado del `<body>` no serializa.** EL UNICO DE LOS DIECIOCHO QUE
  * VIVE DENTRO DEL CUERPO, o sea del lado que los tests de pantalla miran — y
  * que aun asi no ve ninguno, porque leen `innerHTML` y `textContent` y ahi
  * esto no sale: el `.value` de un control, que para los tipos en modo valor y
@@ -2814,6 +4270,82 @@ export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
  * su `.value` SI se refleja al atributo—, asi que el agujero no es el `<input>`
  * escondido sino el `.value` que no se refleja. Los tipos medidos uno a uno,
  * lo que se queda fuera y por que: el docblock de `EsconditeDelCuerpo`.
+ *
+ * **El disco privado del origen (OPFS).** EL SEXTO ALMACEN, y el que quedo
+ * fuera porque los cinco tapones de almacen leen CADA UNO SU PROPIA API y
+ * ninguno sabe que existe un sistema de archivos. Medido en esta fase: un
+ * respaldo del cobro en disco —`navigator.storage?.getDirectory?.()` y un
+ * `flujo.write(JSON.stringify(pago))` en el `onSuccess` de una mutacion de
+ * cobro, con el monto, la nota, el `perfilId`, el metodo y las fechas dentro—
+ * SOBREVIVIO LOS 1721 TESTS del paquete con los quince canales enchufados. El
+ * control que prueba que el instrumento funcionaba: el MISMO dato, en la MISMA
+ * linea, por `localStorage.setItem(...)` tira 7 tests; lo unico que cambia
+ * entre caer y no caer es QUE API DE ALMACENAMIENTO SE USA. Pasa porque
+ * `typeof navigator.storage` es `'undefined'` en jsdom y el `?.` que escribe
+ * quien programa con cuidado convierte la ausencia del entorno en un silencio
+ * —la leccion que ya dejo cinco fugas—. Y es peor que los cinco almacenes que
+ * si se vigilaban: sobrevive al logout y al reinicio como `localStorage`, NO
+ * TIENE EL TOPE DE 5 MB, GUARDA BYTES SIN QUE NADIE SERIALICE y NO APARECE EN
+ * LA PESTAÑA «APPLICATION», donde los otros cinco se ven de un vistazo. Se
+ * vigilan TODAS las puertas del arbol —`getDirectory`, `getFileHandle`,
+ * `getDirectoryHandle`, `removeEntry`, `move`, `remove`, el `write` de
+ * `createWritable()` y el de su `getWriter()`, y el `write` de la manija
+ * SINCRONA—, EL NOMBRE del archivo y del directorio ademas del contenido —un
+ * `getFileHandle(claveTemporal)` publica el secreto sin escribir un byte,
+ * igual que `open(nombre)` en IndexedDB— y LAS CUATRO FORMAS del contenido
+ * —cadena, `ArrayBuffer`, `Blob` y `{ type: 'write', data }`—, que se
+ * desmenuzan reusando `cuerpoDeUnaBaliza`. Se afirma por LA FORMA FUERTE —«no
+ * se toco el disco privado»— y el motivo medido esta en el docblock de
+ * `ALMACEN_DE_ARCHIVOS_ORIGINAL`. Y lo custodia un spec propio,
+ * `disco-privado.spec.ts`, porque ningun spec de pantalla toca este canal
+ * nunca y cualquier simplificacion de su aritmetica lo deja verde y ciego —de
+ * hecho ese guardian ya encontro una: la rama de `ArrayBuffer` de
+ * `cuerpoDeUnaBaliza` estaba MUERTA en este entorno, ver `esUnArrayBuffer`—.
+ *
+ * **El centro de notificaciones del sistema operativo.** EL UNICO DE LOS
+ * DIECIOCHO QUE NO ACABA DENTRO DEL NAVEGADOR: `new Notification(titulo,
+ * opciones)` y su vecina `ServiceWorkerRegistration.showNotification(…)` sacan
+ * el dato a una pantalla del SISTEMA. Medido en esta fase: un aviso de «Cobro
+ * registrado» en el `onSuccess` de la mutacion de cobro de la ficha de una
+ * persona —con el nombre completo, el monto, el metodo y la nota en el `body`
+ * y el `perfilId` en el `tag`— SOBREVIVIO LOS 1761 TESTS del paquete con los
+ * dieciseis canales enchufados. El control que prueba que el instrumento
+ * funcionaba: LA MISMA TERNA DE DATOS, en la misma linea, por `console.info`
+ * TIRA 7 TESTS DE 26; lo unico que cambia entre caer y no caer es la puerta.
+ * Pasa porque `typeof Notification` es `'undefined'` en jsdom y porque aqui el
+ * `typeof` prudente NO ES OPCIONAL —`Notification` es un binding global, asi
+ * que preguntar antes es la UNICA forma correcta de usar la API—: el codigo
+ * bien escrito es exactamente el que pasa en verde. Y LO QUE LO HACE GRAVE NO
+ * ES LA API SINO QUE ESTE PRODUCTO YA PIDIO EL PERMISO: `boton-de-push.tsx`
+ * llama a `Notification.requestPermission()`, asi que en el mostrador
+ * `permission === 'granted'` no es una hipotesis. El dato se ve sin tocar
+ * nada, sobrevive a la pestaña, al logout Y AL CIERRE DEL NAVEGADOR, y en
+ * Windows queda en el historial de notificaciones del sistema, que no vacia
+ * ningun «borrar datos del sitio». Se vigilan LAS DOS PUERTAS y TODOS los
+ * campos que lleven texto —el titulo y CADA clave de las opciones, sin lista
+ * blanca: `body`, `tag` y el `data` libre, y tambien `icon`, `badge` e `image`,
+ * que son URLs y UNA URL LLEVA DATO IGUAL QUE UN CUERPO, como enseño el
+ * septimo canal—. Se afirma por LA FORMA FUERTE —«ninguna notificacion»—
+ * ademas de por centinelas, y eso se midio: en este producto los avisos los
+ * muestra el SERVICE WORKER desde su manejador de `push` y lo unico que hace
+ * una pagina es PEDIR EL PERMISO, que NO es una puerta de este canal. Con que
+ * valor se monta `Notification.permission` —y por que con `'default'` el canal
+ * queda verde y ciego— esta medido en el docblock de `NOTIFICACION_ORIGINAL`.
+ * Y lo custodia un spec propio, `centro-de-notificaciones.spec.ts`.
+ *
+ * **Los objetos publicados con URL.** EL VIGESIMO CANAL, y no el decimoctavo:
+ * esos dos numeros ya los llevaban los ejes —`rato-libre.ts` y
+ * `salida-de-la-pestana.ts`— y renumerarlos costaba tocar cuatro archivos para
+ * nada. `URL.createObjectURL(blob)` deja el objeto en el almacen de blobs del
+ * documento hasta que alguien lo revoque, y en una aplicacion de una sola
+ * pagina el documento no se cierra al salir de la sesion. Medido en la Fase
+ * 14: el CSV de la liquidacion de una profesora, publicado en el render para
+ * un enlace «Descargar» y nunca revocado, paso los 1874 tests; con el canal
+ * puesto caen 16 de 25 en `liquidacion.spec.tsx`, y la misma linea revocada en
+ * la limpieza de un `useEffect` pasa los 25. Se afirma por centinelas Y por la
+ * forma fuerte, leyendo DESPUES del `cleanup()`: el motivo y lo que no cubre
+ * estan en el docblock de `CREAR_UNA_URL_DE_OBJETO_ORIGINAL`. Lo custodia
+ * `objetos-con-url.spec.ts`.
  *
  * EL CUARTO VECINO DE ESA FAMILIA —`navigator.clipboard`— NO SE VIGILA, a
  * proposito y con el motivo medido escrito al lado de los otros tres: el panel
@@ -2865,6 +4397,9 @@ export function vigilarLosCanalesDeSalida(): void {
   const basesAbiertas: string[] = [];
   const escritoEnLaBase: EscrituraEnLaBase[] = [];
   const navegado: LlamadaAlHistorial[] = [];
+  const pasosPorElDisco: PasoPorElDisco[] = [];
+  const avisosMostrados: AvisoMostrado[] = [];
+  let objetosConUrl = almacenDeObjetosDeMentira();
 
   /**
    * EL OYENTE DEL DECIMOQUINTO CANAL SE PONE AQUI, UNA VEZ POR ARCHIVO.
@@ -2894,6 +4429,8 @@ export function vigilarLosCanalesDeSalida(): void {
     basesAbiertas.length = 0;
     escritoEnLaBase.length = 0;
     navegado.length = 0;
+    pasosPorElDisco.length = 0;
+    avisosMostrados.length = 0;
     PETICIONES_DE_RED.length = 0;
     elDobleDeLaRed = undefined;
 
@@ -3183,6 +4720,10 @@ export function vigilarLosCanalesDeSalida(): void {
      * da una lista vacia— porque este tapon no esta para simular un worker:
      * esta para que un mensaje hacia el no sea invisible.
      */
+    const anotarUnAviso = (aviso: AvisoMostrado): void => {
+      avisosMostrados.push(aviso);
+    };
+
     const trabajadorDeMentira = (puerta: string) => ({
       scriptURL: '/sw.js',
       state: 'activated',
@@ -3193,14 +4734,39 @@ export function vigilarLosCanalesDeSalida(): void {
       removeEventListener: () => {},
     });
 
+    /**
+     * EL REGISTRO DEL WORKER, QUE ES POR DONDE ENTRA EL DECIMOSEPTIMO CANAL.
+     *
+     * `showNotification` vive aqui —en el registro y no en el worker— porque es
+     * donde la pone la plataforma, y lo que anota va al canal de las
+     * notificaciones y no al del service worker: lo que agrupa un canal es
+     * DONDE ACABA EL DATO, y esto acaba en el centro de notificaciones del
+     * sistema, igual que `new Notification`. El razonamiento entero esta en el
+     * docblock de `NOTIFICACION_ORIGINAL`.
+     */
+    const registroDeMentira = (puerta: string) => ({
+      active: trabajadorDeMentira(puerta),
+      scope: '/',
+      showNotification: (titulo: unknown, opciones?: unknown) => {
+        anotarUnAviso({ puerta: 'showNotification', campos: camposDeUnAviso(titulo, opciones) });
+
+        return Promise.resolve(undefined);
+      },
+      getNotifications: () => Promise.resolve([]),
+      update: () => Promise.resolve(undefined),
+      unregister: () => Promise.resolve(true),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+
     Object.defineProperty(navigator, 'serviceWorker', {
       configurable: true,
       enumerable: false,
       writable: true,
       value: {
         controller: trabajadorDeMentira('controller'),
-        ready: Promise.resolve({ active: trabajadorDeMentira('ready.active') }),
-        register: () => Promise.resolve({ active: trabajadorDeMentira('register.active') }),
+        ready: Promise.resolve(registroDeMentira('ready.active')),
+        register: () => Promise.resolve(registroDeMentira('register.active')),
         getRegistration: () => Promise.resolve(undefined),
         getRegistrations: () => Promise.resolve([]),
         startMessages: () => {},
@@ -3402,6 +4968,8 @@ export function vigilarLosCanalesDeSalida(): void {
     for (const [puerta, donde] of [
       ['WebSocket', 'WebSocket'],
       ['EventSource', 'EventSource'],
+      ['Worker', 'Worker'],
+      ['SharedWorker', 'SharedWorker'],
     ] as const) {
       Object.defineProperty(globalThis, donde, {
         configurable: true,
@@ -3410,13 +4978,113 @@ export function vigilarLosCanalesDeSalida(): void {
         value: conexionDeMentira(puerta),
       });
     }
+
+    /**
+     * EL DECIMOSEXTO CANAL: el disco privado del origen, que jsdom no trae.
+     *
+     * Se DEFINE, como la baliza, como `caches`, como el service worker y como
+     * IndexedDB, porque lo que hay que cazar es la forma prudente
+     * —`navigator.storage?.getDirectory?.()`—, que sin esto no hace nada y pasa
+     * en verde mientras en el navegador del mostrador escribe un archivo.
+     *
+     * SE ENGANCHA EN CADA TEST, como todo lo de arriba: los specs llaman a
+     * `vi.restoreAllMocks()` en su propio `afterEach`, que con el orden de
+     * hooks de Vitest corre ANTES que este tapon; y ademas el `afterEach` de
+     * abajo devuelve `navigator.storage` a no existir, asi que sin volver a
+     * ponerlo aqui el canal estaria apagado a partir del segundo test de cada
+     * archivo: verde y ciego.
+     *
+     * `estimate`, `persist` y `persisted` se montan tambien aunque no lleven
+     * dato: son el resto de `StorageManager`, y una pantalla que pregunte por
+     * el espacio libre antes de guardar —la forma de manual— no tiene por que
+     * reventar contra un objeto a medias. Ninguna de las tres se anota: no
+     * sacan nada de esta pagina.
+     */
+    const anotarUnPaso = (paso: PasoPorElDisco): void => {
+      pasosPorElDisco.push(paso);
+    };
+
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: {
+        getDirectory: () => {
+          // Pedir el disco privado YA es usarlo, como `indexedDB.open`: la
+          // forma fuerte de abajo cuenta esta puerta como las demas.
+          anotarUnPaso({ puerta: 'getDirectory', ruta: [], contenido: '' });
+
+          return Promise.resolve(raizDeMentira(anotarUnPaso));
+        },
+        estimate: () => Promise.resolve({ quota: 0, usage: 0 }),
+        persist: () => Promise.resolve(false),
+        persisted: () => Promise.resolve(false),
+      },
+    });
+
+    /**
+     * EL DECIMOSEPTIMO CANAL: el centro de notificaciones, que jsdom no trae.
+     *
+     * Se DEFINE, como la baliza, como `caches`, como el service worker, como
+     * IndexedDB y como el disco privado, porque lo que hay que cazar es la
+     * forma prudente —y aqui la forma prudente es la UNICA correcta: un
+     * `typeof Notification !== 'undefined'` delante, porque es un binding
+     * global—. Sin esto, esa condicion es `false`, la rama no corre y pasa en
+     * verde mientras en el mostrador el aviso sale a la pantalla del sistema.
+     *
+     * SE ENGANCHA EN CADA TEST, como todo lo de arriba: los specs llaman a
+     * `vi.restoreAllMocks()` y a `vi.unstubAllGlobals()` en su propio
+     * `afterEach`, que con el orden de hooks de Vitest corre ANTES que este
+     * tapon; y ademas el `afterEach` de abajo devuelve `Notification` a no
+     * existir, asi que sin volver a ponerlo aqui el canal estaria apagado a
+     * partir del segundo test de cada archivo: verde y ciego.
+     *
+     * Y `boton-de-push.spec.tsx` instala el suyo con `vi.stubGlobal` DENTRO del
+     * cuerpo de cada test, o sea DESPUES de este: el del spec gana, como tiene
+     * que ser, y su `vi.unstubAllGlobals()` devuelve este.
+     */
+    Object.defineProperty(globalThis, 'Notification', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: notificacionDeMentira(anotarUnAviso),
+    });
+
+    /**
+     * EL VIGESIMO CANAL: los objetos con URL, que jsdom no trae.
+     *
+     * Se DEFINEN las dos funciones, como la baliza y como `Notification`,
+     * porque lo que hay que cazar es la forma prudente —`typeof
+     * URL.createObjectURL === 'function'`—, que sin esto no hace nada y pasa
+     * en verde. Un almacen NUEVO por test, y no uno vaciado: lo que publico el
+     * test anterior no puede acusar al siguiente.
+     *
+     * SE ENGANCHA EN CADA TEST, como todo lo de arriba: el `afterEach` de
+     * abajo las devuelve a no existir.
+     */
+    objetosConUrl = almacenDeObjetosDeMentira();
+
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: (objeto: unknown): string => objetosConUrl.crear(objeto),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: (url: unknown): void => {
+        objetosConUrl.revocar(url);
+      },
+    });
   });
 
   afterEach(() => {
     /**
-     * LA PESTAÑA SE CIERRA AQUI, ANTES DE LEER NI UNO DE LOS QUINCE CANALES.
+     * LA PESTAÑA SE CIERRA AQUI, ANTES DE LEER NI UNO DE LOS DIECIOCHO CANALES.
      *
-     * Es el eje decimoseptimo, y esta primero por dos medidas que no se
+     * Es el eje decimonoveno, y esta primero por dos medidas que no se
      * adivinan y estan las dos en `salida-de-la-pestana.ts`:
      *
      * 1. EL OYENTE DE UNA FUGA DE SALIDA SE QUITA EN EL DESMONTAJE. Lo registra
@@ -3430,7 +5098,7 @@ export function vigilarLosCanalesDeSalida(): void {
      *    leen aqui abajo con el arbol todavia montado; el resto, despues del
      *    `cleanup()`. Despachando entre la foto de la cabecera y el desmontaje,
      *    un oyente de `pagehide` que subiera un `<meta>` al `<head>` no lo
-     *    veria nadie. Desde aqui arriba, los quince tapones miran un mundo en el
+     *    veria nadie. Desde aqui arriba, los dieciocho tapones miran un mundo en el
      *    que la pestaña ya se cerro.
      */
     despacharLaSalidaDeLaPestana();
@@ -3527,6 +5195,31 @@ export function vigilarLosCanalesDeSalida(): void {
     const almacenesAlTerminar = estadoDeLosAlmacenes();
 
     /**
+     * EL VIGESIMO CANAL SE LEE AQUI, DESPUES DE `cleanup()`, COMO LA URL Y LOS
+     * ATRIBUTOS DE ALREDEDOR.
+     *
+     * Leido antes, una vista previa que revoca su URL en la limpieza de su
+     * `useEffect` contaria como fuga sin serlo. Leido despues, lo unico que
+     * queda es lo que nadie revoca nunca. Ver `CREAR_UNA_URL_DE_OBJETO_ORIGINAL`.
+     *
+     * Se lee, se cambia el almacen y se devuelven las dos funciones a como
+     * estaban —en jsdom, a no estar— ANTES de afirmar, como `Notification`: si
+     * una afirmacion lanza, el test siguiente no hereda lo del que fallo.
+     */
+    const objetosSinRevocar = objetosConUrl.vivos();
+    objetosConUrl = almacenDeObjetosDeMentira();
+    const loPublicadoConUrl = objetosSinRevocar.map((uno) => uno.contenido).join(' ');
+    const tiposSinRevocar = objetosSinRevocar.map((uno) => claveSegura(uno.tipo));
+
+    for (const [nombre, original] of [
+      ['createObjectURL', CREAR_UNA_URL_DE_OBJETO_ORIGINAL],
+      ['revokeObjectURL', REVOCAR_UNA_URL_DE_OBJETO_ORIGINAL],
+    ] as const) {
+      if (original === undefined) Reflect.deleteProperty(URL, nombre);
+      else Object.defineProperty(URL, nombre, original);
+    }
+
+    /**
      * EL BUFFER SE LEE AQUI, DESPUES DE `cleanup()`, Y NO ANTES.
      *
      * Al reves que el `<head>`: las marcas no se borran al desmontar —son una
@@ -3552,6 +5245,18 @@ export function vigilarLosCanalesDeSalida(): void {
       '<html>': atributosDe(document.documentElement),
       '<body>': atributosDe(document.body),
     };
+
+    /**
+     * Y LO QUE CUELGA DEL `<html>`, AQUI MISMO Y POR LO MISMO.
+     *
+     * Es la segunda mitad de este canal y se lee en la misma linea que los
+     * atributos porque comparte las dos propiedades que deciden el momento: no
+     * esta en el arbol que `render` monta —asi que `cleanup()` no lo quita y
+     * leer despues no pierde nada— y leyendo despues se caza ademas el nodo
+     * que cuelgue la LIMPIEZA de un `useEffect`. El razonamiento entero esta
+     * en el docblock de `loColgadoDelHtml`.
+     */
+    const colgadoDelHtml = loColgadoDelHtml();
 
     /**
      * EL DECIMOTERCER CANAL SE LEE AQUI, DESPUES DE `cleanup()`, COMO EL DOCE.
@@ -3730,8 +5435,8 @@ export function vigilarLosCanalesDeSalida(): void {
      */
     const peticionesSueltas = PETICIONES_DE_RED.filter((una) => !una.dePedir);
     const loPedidoPorRed = peticionesSueltas.map((una) => `${una.destino} ${una.carga}`).join(' ');
-    // Las tres puertas que no son `fetch`, para la forma fuerte: el producto no
-    // tiene un solo uso legitimo de ninguna de las tres.
+    // Las cinco puertas que no son `fetch`, para la forma fuerte: el producto
+    // no tiene un solo uso legitimo de ninguna de las cinco.
     const puertasDeOtraRed = [
       ...new Set(PETICIONES_DE_RED.filter((una) => una.puerta !== 'fetch').map(laPuertaDe)),
     ];
@@ -3756,9 +5461,128 @@ export function vigilarLosCanalesDeSalida(): void {
       ['fetch', RED_ORIGINAL],
       ['WebSocket', WEBSOCKET_ORIGINAL],
       ['EventSource', EVENT_SOURCE_ORIGINAL],
+      ['Worker', WORKER_ORIGINAL],
+      ['SharedWorker', SHARED_WORKER_ORIGINAL],
     ] as const) {
       if (original === undefined) delete (globalThis as unknown as Record<string, unknown>)[donde];
       else Object.defineProperty(globalThis, donde, original);
+    }
+
+    /**
+     * EL DECIMOSEXTO CANAL: lo que paso por el disco privado del origen.
+     *
+     * Se lee, se vacia la lista y se devuelve `navigator.storage` a como
+     * estaba —en jsdom, a no estar— ANTES de afirmar, exactamente como
+     * `caches`, el service worker e IndexedDB: si una afirmacion lanza, el
+     * test siguiente no hereda lo del que fallo y el informe no acusa al
+     * inocente. Y dejarlo puesto entre archivos cambiaria la deteccion de
+     * capacidades de un spec que no pidio nada.
+     *
+     * EL NOMBRE Y EL CONTENIDO VAN SEPARADOS porque son dos sitios distintos
+     * —un `getFileHandle(claveTemporal)` publica el dato sin escribir un
+     * byte—, igual que el undecimo canal separa el nombre de la base de lo que
+     * se escribio dentro.
+     */
+    const pasosDelDisco = [...pasosPorElDisco];
+    const losNombresDelDisco = pasosDelDisco.map((paso) => paso.ruta.join('/')).join(' ');
+    const loEscritoEnElDisco = pasosDelDisco.map((paso) => paso.contenido).join(' ');
+    // Por `claveSegura` y sin repetidos: un archivo bautizado con un dato
+    // vigilado se nombra por el NOMBRE del dato, no por la cadena.
+    const puertasDelDisco = [...new Set(pasosDelDisco.map(descripcionDeUnPaso))];
+    pasosPorElDisco.length = 0;
+
+    /**
+     * POR QUE PUERTA DEL DISCO SE FUE UN DATO CONCRETO, para el mensaje del
+     * fallo.
+     *
+     * Es lo mismo que hacen `puertasQueLlevan` en el decimotercer canal y
+     * `redQueLleva` en el decimocuarto, y por lo mismo: el arbol de OPFS tiene
+     * siete puertas y decir «una escritura en el disco privado» obliga a ir a
+     * buscar cual. La descripcion es vocabulario fijo mas la ruta POR
+     * `claveSegura` —`createWritable().write en /config-del-dia.json`—: ubica
+     * la fuga sin publicar ni un caracter de lo que lleva dentro.
+     */
+    const discoQueLleva = (valor: string): string => {
+      const puertas = [
+        ...new Set(
+          pasosDelDisco
+            .filter(
+              (paso) =>
+                formaQueSeFue(`${paso.ruta.join('/')} ${paso.contenido}`, valor) !== undefined,
+            )
+            .map(descripcionDeUnPaso),
+        ),
+      ];
+
+      return puertas.length === 0 ? 'una puerta que ya no esta' : puertas.join(', ');
+    };
+
+    if (ALMACEN_DE_ARCHIVOS_ORIGINAL === undefined) {
+      Reflect.deleteProperty(navigator, 'storage');
+    } else {
+      Object.defineProperty(navigator, 'storage', ALMACEN_DE_ARCHIVOS_ORIGINAL);
+    }
+
+    /**
+     * EL DECIMOSEPTIMO CANAL: lo que se mando al centro de notificaciones.
+     *
+     * Se lee, se vacia la lista y se devuelve `Notification` a como estaba —en
+     * jsdom, a no estar— ANTES de afirmar, exactamente como `caches`, el
+     * service worker, IndexedDB y el disco privado: si una afirmacion lanza, el
+     * test siguiente no hereda lo del que fallo y el informe no acusa al
+     * inocente. Y dejarlo puesto entre archivos cambiaria la deteccion de
+     * capacidades de un spec que no pidio nada.
+     *
+     * UNA SOLA CADENA Y NO UNA POR CAMPO, al reves que el disco privado, que
+     * separa el nombre del contenido: alli son dos SITIOS distintos —el nombre
+     * de un archivo queda en el disco aunque no se escriba un byte— y aqui son
+     * partes del MISMO aviso, que sale entero a la misma pantalla. El informe
+     * no pierde nada: `avisoQueLleva` nombra la puerta Y el campo.
+     */
+    const avisosDeEsteTest = [...avisosMostrados];
+    // El NOMBRE del campo va junto al contenido, como la clave de un almacen y
+    // como la ruta del disco: un `{ [claveTemporal]: 1 }` publica el dato en el
+    // propio nombre.
+    const loAvisado = avisosDeEsteTest
+      .flatMap((aviso) => aviso.campos.map((campo) => `${campo.nombre} ${campo.contenido}`))
+      .join(' ');
+    const puertasDeAviso = [...new Set(avisosDeEsteTest.map(descripcionDeUnAviso))];
+    avisosMostrados.length = 0;
+
+    /**
+     * POR QUE PUERTA Y EN QUE CAMPO se fue un dato concreto, para el fallo.
+     *
+     * Es lo mismo que hacen `puertasQueLlevan`, `redQueLleva` y `discoQueLleva`
+     * y por lo mismo: hay dos puertas y un objeto de opciones con muchos
+     * campos, y decir «una notificacion» obliga a ir a buscar cual. El nombre
+     * del campo pasa por `claveSegura` y el contenido no entra nunca.
+     */
+    const avisoQueLleva = (valor: string): string => {
+      const puertas = [
+        ...new Set(
+          avisosDeEsteTest
+            .map((aviso) => {
+              // Los campos AGRUPADOS POR AVISO y no uno por uno: una fuga que
+              // reparte el dato entre el `body` y el `tag` del MISMO aviso es
+              // una sola fuga, y repetir ahi el nombre de la puerta hace el
+              // mensaje ilegible justo en el caso mas comun.
+              const campos = aviso.campos
+                .filter((campo) => formaQueSeFue(campo.contenido, valor) !== undefined)
+                .map((campo) => claveSegura(campo.nombre));
+
+              return campos.length === 0 ? '' : `${aviso.puerta}, en ${campos.join(' y ')}`;
+            })
+            .filter((una) => una !== ''),
+        ),
+      ];
+
+      return puertas.length === 0 ? 'una notificacion que ya no esta' : puertas.join('; ');
+    };
+
+    if (NOTIFICACION_ORIGINAL === undefined) {
+      delete (globalThis as unknown as Record<string, unknown>).Notification;
+    } else {
+      Object.defineProperty(globalThis, 'Notification', NOTIFICACION_ORIGINAL);
     }
 
     /**
@@ -3788,6 +5612,26 @@ export function vigilarLosCanalesDeSalida(): void {
       '<html>': textoDeLosAtributos(atributosDeAlrededor['<html>']),
       '<body>': textoDeLosAtributos(atributosDeAlrededor['<body>']),
     };
+
+    /**
+     * Y EL NODO COLGADO SE DESCUELGA AQUI, POR EL MISMO MOTIVO QUE EL ATRIBUTO.
+     *
+     * `cleanup()` no lo quita —esta FUERA del arbol que `render` monta—, asi
+     * que sin esta linea el test que lo cuelga hace caer TAMBIEN a todos los
+     * que vengan detras en el mismo archivo y el informe acusa al inocente.
+     * MEDIDO con una sonda antes de escribir esto: un `<div>` y un `<span>`
+     * colgados en dos tests distintos siguen los dos ahi en el cuarto.
+     *
+     * Se quitan TODOS y no se restaura ninguno, como los atributos y con la
+     * misma medida detras: el `<html>` nace con dos hijos exactos y nadie del
+     * arbol le cuelga un tercero.
+     */
+    const loColgado = colgadoDelHtml.map((uno) => uno.contenido).join(' ');
+    // Por `claveSegura` como el resto del informe: una etiqueta propia
+    // (`<x-25000-10>`) publicaria el dato en el nombre del elemento.
+    const etiquetasColgadas = colgadoDelHtml.map((uno) => claveSegura(uno.etiqueta));
+
+    for (const uno of colgadoDelHtml) uno.nodo.remove();
 
     /**
      * EL DECIMOTERCER CANAL SE DEVUELVE A SU SITIO AQUI, ANTES DE AFIRMAR.
@@ -3865,13 +5709,13 @@ export function vigilarLosCanalesDeSalida(): void {
      */
     for (const [nombre, valor] of todoLoVigilado()) {
       /**
-       * LOS QUINCE CANALES, CONTRA EL MISMO ALFABETO Y POR LA MISMA PUERTA.
+       * LOS DIECIOCHO CANALES, CONTRA EL MISMO ALFABETO Y POR LA MISMA PUERTA.
        *
        * Cada afirmacion busca el centinela en TODAS sus formas —en claro,
        * %-codificado, en base64 con sus tres desplazamientos— y no solo en la
        * cruda: ver el docblock de `FormaDelDato` para el porque y para lo que
        * se queda fuera a proposito. Pasa por aqui para que una forma nueva se
-       * agregue en UN sitio y la hereden los quince, igual que el registro de
+       * agregue en UN sitio y la hereden los dieciocho, igual que el registro de
        * datos vigilados es uno solo y no uno por tapon.
        *
        * EL INFORME SIGUE SIN PUBLICAR NADA. `decirlo` recibe COMO se fue
@@ -3971,6 +5815,63 @@ export function vigilarLosCanalesDeSalida(): void {
       noSeFuePor(loEscritoEnLaBase, (como) => `una escritura en IndexedDB lleva ${nombre}${como}`);
 
       /**
+       * EL DECIMOSEXTO CANAL, por centinelas PRIMERO y por «no se toco el
+       * disco» abajo. Misma forma y mismo orden que IndexedDB, que es el
+       * almacen al que mas se parece.
+       *
+       * DOS AFIRMACIONES porque son dos sitios: EL NOMBRE de un archivo o de
+       * un directorio —un `getFileHandle(claveTemporal, { create: true })`
+       * publica el secreto SIN ESCRIBIR UN BYTE, igual que un
+       * `indexedDB.open(claveTemporal)`— y LO ESCRITO, que puede llegar como
+       * cadena, como `ArrayBuffer`, como `Blob` o dentro de un
+       * `{ type: 'write', data }` y que se desmenuza con
+       * `contenidoDeUnaEscrituraEnDisco`.
+       *
+       * El valor NUNCA entra en el mensaje, como en el resto del tapon: lo
+       * unico que se publica es el NOMBRE del dato y un `true`.
+       */
+      /**
+       * EL DECIMOSEPTIMO CANAL, por centinelas PRIMERO y por «ninguna
+       * notificacion» abajo. Misma forma y mismo orden que IndexedDB y que el
+       * disco privado.
+       *
+       * UNA SOLA AFIRMACION para los dos sitios —el titulo y las opciones—
+       * porque son partes del MISMO aviso y salen juntas a la misma pantalla;
+       * lo que el informe necesita decir es POR CUAL DE LAS DOS PUERTAS y EN
+       * QUE CAMPO, y eso lo dice `avisoQueLleva` sin publicar un caracter.
+       *
+       * El valor NUNCA entra en el mensaje, como en el resto del tapon: lo
+       * unico que se publica es el NOMBRE del dato, la puerta, el nombre del
+       * campo y un `true`.
+       */
+      noSeFuePor(
+        loAvisado,
+        (como) => `una notificacion del sistema lleva ${nombre}${como} (${avisoQueLleva(valor)})`,
+      );
+
+      /**
+       * EL VIGESIMO CANAL, por centinelas PRIMERO y por «nada sin revocar»
+       * abajo. Misma forma y mismo orden que las notificaciones: con los
+       * centinelas delante el informe dice QUE se fue.
+       */
+      noSeFuePor(
+        loPublicadoConUrl,
+        (como) =>
+          `un objeto publicado con URL.createObjectURL y sin revocar lleva ${nombre}${como}`,
+      );
+
+      noSeFuePor(
+        losNombresDelDisco,
+        (como) =>
+          `el nombre de un archivo del disco privado lleva ${nombre}${como} (${discoQueLleva(valor)})`,
+      );
+      noSeFuePor(
+        loEscritoEnElDisco,
+        (como) =>
+          `una escritura en el disco privado lleva ${nombre}${como} (${discoQueLleva(valor)})`,
+      );
+
+      /**
        * EL DUODECIMO CANAL, por centinelas PRIMERO y por «ni un atributo»
        * abajo.
        *
@@ -3993,6 +5894,23 @@ export function vigilarLosCanalesDeSalida(): void {
           (como) => `un atributo del ${cual} lleva ${nombre}${como}`,
         );
       }
+
+      /**
+       * Y LA SEGUNDA MITAD DEL DUODECIMO: LO QUE CUELGA DEL `<html>`.
+       *
+       * Misma forma y mismo orden que los atributos de al lado —centinelas
+       * primero, la forma fuerte abajo— y por lo mismo: con la forma fuerte
+       * sola el informe diria «la pantalla colgo un <div>» y habria que ir a
+       * buscar QUE llevaba dentro.
+       *
+       * El mensaje nombra la ETIQUETA y nunca el contenido, que es justamente
+       * el volcado que esta fuga se lleva. Ver `loColgadoDelHtml`.
+       */
+      noSeFuePor(
+        loColgado,
+        (como) =>
+          `un nodo colgado del <html> lleva ${nombre}${como} (${etiquetasColgadas.join(', ')})`,
+      );
 
       /**
        * EL DECIMOTERCER CANAL, por centinelas PRIMERO y por «la URL no
@@ -4059,7 +5977,7 @@ export function vigilarLosCanalesDeSalida(): void {
 
       /**
        * EL DECIMOQUINTO CANAL, por CENTINELAS **Y CON LA RESTA**, que es lo
-       * que lo distingue de los otros catorce.
+       * que lo distingue de los otros quince.
        *
        * No se afirma «ningun centinela en un sitio no serializado», que seria
        * rojo con el codigo correcto en media docena de specs —una pantalla de
@@ -4193,6 +6111,60 @@ export function vigilarLosCanalesDeSalida(): void {
     ).toBe(0);
 
     /**
+     * EL SEXTO ALMACEN, afirmado por LA FORMA FUERTE: ni una puerta del disco.
+     *
+     * Es la forma de `window.name`, de IndexedDB y de los atributos del
+     * `<html>`, y no la de las imagenes. El motivo esta medido en el docblock
+     * de `ALMACEN_DE_ARCHIVOS_ORIGINAL`: el producto no tiene NINGUN uso
+     * legitimo de esta puerta —cero coincidencias de `navigator.storage`,
+     * `getDirectory`, `StorageManager`, `OPFS` o `FileSystemHandle` en
+     * `apps/web/src`— y nada del arbol de dependencias pide el disco privado
+     * durante un test. Donde no hay uso legitimo que proteger, la forma fuerte
+     * es gratis y caza ademas el dato que nadie registro, que es justo el caso
+     * de un `write(JSON.stringify(pago))` que se lleva el objeto entero.
+     *
+     * UNA SOLA AFIRMACION Y NO DOS, al reves que IndexedDB: alli la base y el
+     * almacen son dos nombres distintos y la escritura se nombra aparte; aqui
+     * cada paso ya trae SU puerta y SU ruta, asi que una lista basta y el
+     * informe dice igual de bien si solo se pidio la raiz
+     * —`getDirectory en la raiz`— o si se escribio un archivo
+     * —`createWritable().write en /cobros-del-dia.json`—.
+     *
+     * Ni la ruta ni el contenido se publican en crudo: cada segmento pasa por
+     * `claveSegura`, como las claves de los almacenes y los nombres de las
+     * bases, y el contenido no entra nunca en el mensaje.
+     */
+    expect(
+      puertasDelDisco.length,
+      `la pantalla uso el disco privado del origen: ${puertasDelDisco.join(', ')}`,
+    ).toBe(0);
+
+    /**
+     * EL CENTRO DE NOTIFICACIONES DEL SISTEMA: NI UN AVISO.
+     *
+     * La forma de `window.name`, de IndexedDB, de los atributos del `<html>` y
+     * del disco privado, y NO la del `src` de una imagen. La duda era real
+     * —notificar ES legitimo en este producto— y la medida que la resuelve es
+     * la del paquete entero: con esta afirmacion puesta, LOS 81 SPECS SIGUEN EN
+     * VERDE, porque en este producto los avisos los muestra el SERVICE WORKER
+     * desde su manejador de `push` y lo unico que hace una pagina es PEDIR EL
+     * PERMISO —que no es una puerta de este canal—. Cero `new Notification` y
+     * cero `showNotification` en `apps/web/src` fuera de `sw.ts`.
+     *
+     * Donde no hay uso legitimo que proteger, la forma fuerte sale gratis y
+     * caza ademas EL DATO QUE NADIE REGISTRO, que es justo el caso de la `nota`
+     * de un cobro: texto libre que nadie puede sembrar como centinela.
+     *
+     * El informe nombra LA PUERTA —`new Notification` o `showNotification`— y
+     * los NOMBRES de los campos por `claveSegura`; nunca el titulo, nunca el
+     * cuerpo, nunca el `tag` ni el `data`.
+     */
+    expect(
+      puertasDeAviso.length,
+      `la pantalla mostro una notificacion del sistema: ${puertasDeAviso.join(', ')}`,
+    ).toBe(0);
+
+    /**
      * LOS DOS ELEMENTOS QUE ENVUELVEN AL CUERPO: NI UN ATRIBUTO.
      *
      * La forma de `window.name` y de IndexedDB, no la de las imagenes, y el
@@ -4231,6 +6203,27 @@ export function vigilarLosCanalesDeSalida(): void {
     }
 
     /**
+     * Y EL `<html>` NO TIENE UN TERCER HIJO.
+     *
+     * La forma fuerte de la otra mitad de este canal, y sale gratis por la
+     * misma clase de medida que la de los atributos: el `<html>` de un test de
+     * este paquete tiene EXACTAMENTE `<head>` y `<body>` —sonda— y con esta
+     * afirmacion puesta los 84 specs siguen en verde. Nadie —ni Next, ni React
+     * 19, ni Testing Library, ni ningun proveedor— cuelga nada ahi.
+     *
+     * Y caza ademas EL NODO QUE NO LLEVA NINGUN CENTINELA, que es justo lo que
+     * una «marca de diagnostico» se lleva: la lista entera de lo que haya en
+     * pantalla, que nadie puede sembrar como centinela.
+     *
+     * Las etiquetas van por `claveSegura`, como los nombres de los atributos:
+     * el informe dice QUE se colgo y nunca lo que llevaba dentro.
+     */
+    expect(
+      etiquetasColgadas.length,
+      `la pantalla colgo nodos del <html>, fuera del <head> y del <body>: ${etiquetasColgadas.join(', ')}`,
+    ).toBe(0);
+
+    /**
      * LA URL DEL DOCUMENTO: NI UN CARACTER DISTINTO, Y NI UNA LLAMADA A MANO.
      *
      * La forma de `window.name`, de IndexedDB y de los atributos del `<html>`,
@@ -4264,15 +6257,16 @@ export function vigilarLosCanalesDeSalida(): void {
     ).toBe(0);
 
     /**
-     * LAS OTRAS TRES PUERTAS DE RED: NI UNA PETICION.
+     * LAS OTRAS CINCO PUERTAS DE RED: NI UNA PETICION.
      *
      * La forma de `window.name`, de IndexedDB y de los atributos del `<html>`,
-     * y NO la de `fetch`, que es el unico de los cuatro que tiene uso legitimo
+     * y NO la de `fetch`, que es el unico de los seis que tiene uso legitimo
      * en este producto. El motivo esta medido: cero `XMLHttpRequest`, cero
-     * `WebSocket` y cero `EventSource` en `apps/web/src`, y nada del arbol de
-     * dependencias abre ninguna de las tres durante un test. Donde no hay uso
-     * legitimo que proteger, la forma fuerte es gratis y caza ademas el dato
-     * que nadie registro —que es justo lo que `fetch` no puede cazar—.
+     * `WebSocket`, cero `EventSource`, cero `Worker` y cero `SharedWorker` en
+     * `apps/web/src`, y nada del arbol de dependencias abre ninguna de las
+     * cinco durante un test. Donde no hay uso legitimo que proteger, la forma
+     * fuerte es gratis y caza ademas el dato que nadie registro —que es justo
+     * lo que `fetch` no puede cazar—.
      *
      * El informe nombra la PUERTA, el metodo y el ORIGEN por `claveSegura`:
      * nunca la ruta, nunca el query, nunca el cuerpo.
@@ -4280,6 +6274,19 @@ export function vigilarLosCanalesDeSalida(): void {
     expect(
       puertasDeOtraRed.length,
       `la pantalla pidio red por una puerta que no es fetch: ${puertasDeOtraRed.join(', ')}`,
+    ).toBe(0);
+
+    /**
+     * Y NINGUN OBJETO PUBLICADO SIN REVOCAR.
+     *
+     * La forma fuerte del vigesimo canal, gratis por la medida de siempre: cero
+     * `createObjectURL` en `apps/web/src`. Caza ademas el objeto que no lleva
+     * ningun centinela —un CSV con datos que nadie registro—, y el informe
+     * dice el TIPO de lo que quedo y nunca lo que lleva.
+     */
+    expect(
+      tiposSinRevocar.length,
+      `la pantalla publico objetos con URL.createObjectURL y no los revoco: ${tiposSinRevocar.join(', ')}`,
     ).toBe(0);
   });
 }

@@ -13,6 +13,7 @@ import { mesDelValor, mesDeLaBusqueda, mesesOfrecidos, textoDelMes, valorDelMes 
 import { LAS_CINCO_METRICAS, Porcentaje, PorcentajeEnCelda } from './porcentaje';
 import { BloqueDeCaja } from './caja';
 import { BloqueDeComposicion } from './composicion';
+import { BloqueDeLiquidacion } from './liquidacion';
 
 /**
  * ANALISIS: los numeros que la Fase 6A calcula desde hace cuatro fases y que
@@ -36,7 +37,7 @@ import { BloqueDeComposicion } from './composicion';
  * LA DE LA CAJA SI ES DE VERDAD: `/stats/caja` pide `ADMIN_SALON` —es el unico
  * de los seis— porque lleva el margen y lo que cuesta cada profesora. Es el
  * criterio de la 5A y lo explica el controller: registrar un cobro es
- * operativo, mirar el margen del salon no. Ver `LaCaja`, aqui abajo.
+ * operativo, mirar el margen del salon no. Ver `ElDinero`, aqui abajo.
  *
  * ---------------------------------------------------------------------------
  * TRES REPORTES Y UN SOLO SELECTOR.
@@ -230,13 +231,23 @@ function ElMes({ actual }: { actual: MetricasOperativas }) {
  * que no puede cambiar, y de paso anuncia que hay un numero que no esta
  * viendo. Mismo criterio que el boton de publicar el mes: no se ofrece lo que
  * no se puede hacer.
+ *
+ * LA LIQUIDACION PASA POR LA MISMA PUERTA (Fase 14): `GET /liquidacion/:id`
+ * pide `ADMIN_SALON` por el mismo motivo —«esto ensena tarifas»—, y ademas el
+ * bloque pide la lista de profesoras al montarse. Las dos cosas quedan del
+ * otro lado.
  */
-function LaCaja({ mes }: { mes: Mes }) {
+function ElDinero({ mes }: { mes: Mes }) {
   const rol = useRolDeQuienMira();
 
   if (rol === null || !rolAlcanza(rol, 'ADMIN_SALON')) return null;
 
-  return <BloqueDeCaja mes={mes} />;
+  return (
+    <>
+      <BloqueDeCaja mes={mes} />
+      <BloqueDeLiquidacion mes={mes} />
+    </>
+  );
 }
 
 function PanelDeAnalisis() {
@@ -306,8 +317,9 @@ function PanelDeAnalisis() {
         )}
       </div>
 
-      {/* El dinero, solo para quien alcanza. Y la composicion, para todos. */}
-      <LaCaja mes={mes} />
+      {/* El dinero —la caja y la liquidacion—, solo para quien alcanza. Y la
+          composicion, para todos. */}
+      <ElDinero mes={mes} />
       <BloqueDeComposicion mes={mes} />
     </div>
   );
