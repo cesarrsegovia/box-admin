@@ -459,6 +459,20 @@ function botonesDelDocumento(): string[] {
   return [...document.querySelectorAll('button')].map((boton) => boton.textContent?.trim() ?? '');
 }
 
+function formularioDeEdicion() {
+  return within(screen.getByRole('form', { name: /^Editar el / }));
+}
+
+/** Con el formulario de edicion abierto: cambia la hora de fin y guarda. */
+async function guardarConHoraFin(hora: string): Promise<void> {
+  const sesion = userEvent.setup();
+  const horaFin = formularioDeEdicion().getByLabelText('Hora de fin');
+  await sesion.clear(horaFin);
+  await sesion.type(horaFin, hora);
+  await sesion.click(formularioDeEdicion().getByRole('button', { name: 'Guardar cambios' }));
+  await esperar();
+}
+
 function diasFijosDelDocumento(): string[] {
   return [...document.querySelectorAll('ul[aria-label="Dias fijos"] > li')].map(
     (li) => li.querySelector('p')?.textContent?.trim() ?? '',
@@ -1163,6 +1177,174 @@ describe('el bloque de dias fijos', () => {
     await confirmarEnElDialogo('Dar de baja');
 
     expect(escrituras()).toEqual([['/rutinas/r1', { metodo: 'DELETE' }]]);
+  });
+
+  /**
+   * El cableado de «Editar»: el formulario de la edicion vive en
+   * `editar-rutina.spec.tsx`; aqui solo se mira que cada boton abra el de SU fila.
+   * Dos rutinas con horarios distintos entre si: con una sola, un boton que abra
+   * «la primera» pasaria igual.
+   */
+  it('el boton Editar abre el formulario de ESA rutina, y de una en una', async () => {
+    await montar({
+      rutinas: [
+        unaRutina({
+          id: 'r-lun',
+          nombre: 'Funcional',
+          diaSemana: 1,
+          horaInicio: '09:00',
+          horaFin: '10:00',
+          hasta: '2026-12-15',
+        }),
+        unaRutina({
+          id: 'r-mar',
+          nombre: 'Pilates',
+          diaSemana: 2,
+          horaInicio: '18:00',
+          horaFin: '19:00',
+          hasta: null,
+        }),
+      ],
+    });
+
+    await clicEn('Editar el martes de 18:00 a 19:00');
+
+    const formularios = () => screen.getAllByRole('form', { name: /^Editar el / });
+    expect(formularios()).toHaveLength(1);
+    expect(within(formularios()[0] as HTMLElement).getByLabelText('Hora de inicio')).toHaveValue(
+      '18:00',
+    );
+    // Esta dentro de la fila del martes, no de la del lunes.
+    expect(formularios()[0]?.closest('li')).toHaveTextContent('Martes de 18:00 a 19:00');
+
+    await clicEn('Editar el lunes de 09:00 a 10:00');
+
+    expect(formularios()).toHaveLength(1);
+    expect(within(formularios()[0] as HTMLElement).getByLabelText('Hora de inicio')).toHaveValue(
+      '09:00',
+    );
+    expect(formularios()[0]?.closest('li')).toHaveTextContent('Lunes de 09:00 a 10:00');
+  });
+
+  it('guardar la edicion manda el PATCH de ESA rutina, cierra el formulario y avisa', async () => {
+    await montar({
+      rutinas: [
+        unaRutina({ id: 'r-lun', diaSemana: 1, horaInicio: '09:00', horaFin: '10:00' }),
+        unaRutina({ id: 'r-mar', diaSemana: 2, horaInicio: '18:00', horaFin: '19:00' }),
+      ],
+    });
+
+    await clicEn('Editar el martes de 18:00 a 19:00');
+
+    const formulario = within(screen.getByRole('form', { name: /^Editar el / }));
+    const sesion = userEvent.setup();
+    const horaFin = formulario.getByLabelText('Hora de fin');
+    await sesion.clear(horaFin);
+    await sesion.type(horaFin, '20:00');
+    await sesion.click(formulario.getByRole('button', { name: 'Guardar cambios' }));
+    await esperar();
+
+    expect(escrituras()).toEqual([
+      ['/rutinas/r-mar', { metodo: 'PATCH', cuerpo: { horaFin: '20:00' } }],
+    ]);
+    expect(screen.queryByRole('form', { name: /^Editar el / })).toBeNull();
+    expect(screen.getByRole('alert')).toHaveTextContent('Dia fijo actualizado.');
+    // Es un exito, no un error ni un dato: el mismo tono que el aviso de la clave.
+    expect(screen.getByRole('alert')).toHaveClass('bg-emerald-50');
+  });
+
+  it('al abrir la edicion el foco va al nombre, y Editar anuncia cual esta expandido', async () => {
+    await montar({
+      rutinas: [
+        unaRutina({ id: 'r-lun', diaSemana: 1, horaInicio: '09:00', horaFin: '10:00' }),
+        unaRutina({ id: 'r-mar' }),
+      ],
+    });
+
+    const martes = screen.getByRole('button', { name: 'Editar el martes de 18:00 a 19:00' });
+    const lunes = screen.getByRole('button', { name: 'Editar el lunes de 09:00 a 10:00' });
+    expect(martes).toHaveAttribute('aria-expanded', 'false');
+
+    await clicEn('Editar el martes de 18:00 a 19:00');
+
+    expect(martes).toHaveAttribute('aria-expanded', 'true');
+    expect(lunes).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(formularioDeEdicion().getByLabelText('Nombre del turno'));
+  });
+
+  it('cancelar devuelve el foco al boton Editar de ESA fila', async () => {
+    await montar({
+      rutinas: [
+        unaRutina({ id: 'r-lun', diaSemana: 1, horaInicio: '09:00', horaFin: '10:00' }),
+        unaRutina({ id: 'r-mar' }),
+      ],
+    });
+
+    await clicEn('Editar el martes de 18:00 a 19:00');
+    await userEvent.setup().click(formularioDeEdicion().getByRole('button', { name: 'Cancelar' }));
+    await esperar();
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Editar el martes de 18:00 a 19:00' }),
+    );
+  });
+
+  it('guardar devuelve el foco al boton Editar de ESA fila', async () => {
+    await montar({
+      rutinas: [
+        unaRutina({ id: 'r-lun', diaSemana: 1, horaInicio: '09:00', horaFin: '10:00' }),
+        unaRutina({ id: 'r-mar' }),
+      ],
+    });
+
+    await clicEn('Editar el martes de 18:00 a 19:00');
+    await guardarConHoraFin('20:00');
+
+    // La fila ya no se llama «de 18:00 a 19:00» si la lista se refresca; aqui el
+    // doble devuelve la misma, asi que se la busca por su dia.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Editar el martes/ }));
+  });
+
+  it('una baja que falla despues de una edicion OK no deja el «actualizado» colgado', async () => {
+    await montar({ rutinas: [unaRutina({ id: 'r-mar' })] });
+
+    await clicEn('Editar el martes de 18:00 a 19:00');
+    await guardarConHoraFin('20:00');
+    expect(screen.getByText('Dia fijo actualizado.')).toBeInTheDocument();
+
+    laApiFalla(new ErrorDeApi('No se pudo dar de baja', 400));
+    await clicEn('Dar de baja el martes de 18:00 a 19:00');
+    // Ya al abrir la baja se va: no espera a que la baja salga mal.
+    expect(screen.queryByText('Dia fijo actualizado.')).toBeNull();
+    await confirmarEnElDialogo('Dar de baja');
+
+    expect(screen.queryByText('Dia fijo actualizado.')).toBeNull();
+    expect(screen.getByText('No se pudo dar de baja')).toBeInTheDocument();
+  });
+
+  it('un error viejo de la baja no sobrevive a una edicion OK', async () => {
+    await montar({ rutinas: [unaRutina({ id: 'r-mar' })] });
+
+    laApiFalla(new ErrorDeApi('No se pudo dar de baja', 400));
+    await clicEn('Dar de baja el martes de 18:00 a 19:00');
+    await confirmarEnElDialogo('Dar de baja');
+    expect(screen.getByText('No se pudo dar de baja')).toBeInTheDocument();
+
+    laApiFalla(null);
+    await clicEn('Editar el martes de 18:00 a 19:00');
+    await guardarConHoraFin('20:00');
+
+    expect(screen.queryByText('No se pudo dar de baja')).toBeNull();
+  });
+
+  it('dar de baja la rutina que se esta editando cierra la edicion', async () => {
+    await montar({ rutinas: [unaRutina({ id: 'r-mar' })] });
+
+    await clicEn('Editar el martes de 18:00 a 19:00');
+    await clicEn('Dar de baja el martes de 18:00 a 19:00');
+    await confirmarEnElDialogo('Dar de baja');
+
+    expect(screen.queryByRole('form', { name: /^Editar el / })).toBeNull();
   });
 
   /**

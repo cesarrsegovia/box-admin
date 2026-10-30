@@ -31,6 +31,7 @@ interface Escenario {
   fati: ProfesorDeTest;
   ana: ProfesorDeTest;
   alumnoPerfilId: string;
+  alumnoToken: string;
 }
 
 describe('Fase 4 — el profesor como entidad real (e2e)', () => {
@@ -78,6 +79,7 @@ describe('Fase 4 — el profesor como entidad real (e2e)', () => {
       fati,
       ana,
       alumnoPerfilId: alumno.perfilId,
+      alumnoToken: alumno.token,
     };
   }
 
@@ -608,6 +610,82 @@ describe('Fase 4 — el profesor como entidad real (e2e)', () => {
       .query({ anio: ANIO, mes: MES })
       .set(auth(e.fati.token))
       .expect(403);
+  });
+
+  // --- GET /mi-liquidacion: la profesora ve la suya ---------------------------
+
+  it('la profesora ve SU liquidacion, sin id en la ruta', async () => {
+    const e = await montar('p15-mi-liquidacion');
+    await darHorario(e, e.fati.perfilId);
+    await darRutinaYPublicar(e);
+
+    const propia = await request(servidor)
+      .get('/mi-liquidacion')
+      .query({ anio: ANIO, mes: MES })
+      .set(auth(e.fati.token))
+      .expect(200);
+
+    // La MISMA que ve el admin, campo por campo: la ruta nueva no recalcula.
+    const delAdmin = await request(servidor)
+      .get(`/liquidacion/${e.fati.perfilId}`)
+      .query({ anio: ANIO, mes: MES })
+      .set(auth(e.gym.adminToken))
+      .expect(200);
+
+    expect(propia.body).toEqual(delAdmin.body);
+    expect(propia.body.profesorNombre).toBe('Fati Gomez');
+    // Con horario de verdad: si fueran ceros, igualar no probaria nada.
+    expect(propia.body.minutosContratados).toBeGreaterThan(0);
+  });
+
+  it('con el token de Ana sale la de Ana, aunque se le cuelgue un id', async () => {
+    const e = await montar('p15-mi-liquidacion-ana');
+    // Ana NO tiene horario: su liquidacion son ceros. Fati si.
+    await darHorario(e, e.fati.perfilId);
+    await darRutinaYPublicar(e);
+
+    // El id no va en la ruta: esa ruta no existe.
+    const inexistente = await request(servidor)
+      .get(`/mi-liquidacion/${e.fati.perfilId}`)
+      .query({ anio: ANIO, mes: MES })
+      .set(auth(e.ana.token))
+      .expect(404);
+    // Ruta que no existe, no un 404 de negocio: el filtro devuelve el mensaje
+    // de Nest para una ruta sin handler.
+    expect(inexistente.body.message).toBe(
+      `Cannot GET /mi-liquidacion/${e.fati.perfilId}?anio=${ANIO}&mes=${MES}`,
+    );
+
+    // Y un `profesorId` colgado de la query se ignora: sale la de Ana.
+    const colgado = await request(servidor)
+      .get('/mi-liquidacion')
+      .query({ anio: ANIO, mes: MES, profesorId: e.fati.perfilId })
+      .set(auth(e.ana.token))
+      .expect(200);
+
+    expect(colgado.body.minutosContratados).toBe(0);
+    expect(colgado.body.profesorNombre).toBe('Ana Ruiz');
+  });
+
+  it('un alumno recibe 403, y un admin no tiene liquidacion propia', async () => {
+    const e = await montar('p15-mi-liquidacion-roles');
+
+    await request(servidor)
+      .get('/mi-liquidacion')
+      .query({ anio: ANIO, mes: MES })
+      .set(auth(e.alumnoToken))
+      .expect(403);
+
+    // El admin pasa el guard por jerarquia (40 >= 20) pero no tiene perfil:
+    // `perfilDeLaProfesora` contesta 404.
+    const admin = await request(servidor)
+      .get('/mi-liquidacion')
+      .query({ anio: ANIO, mes: MES })
+      .set(auth(e.gym.adminToken))
+      .expect(404);
+    // Medido: `crearGimnasio` NO le da perfil al admin, asi que el 404 es el de
+    // `perfilDeLaProfesora` y no el de `cargar` por rol.
+    expect(admin.body.message).toBe('Este usuario no tiene perfil de profesora.');
   });
 
   // --- Punto 8: pasar lista -------------------------------------------------

@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect } from 'react';
+import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { SalaPublica, TurnoPublico } from '@boxadmin/shared';
 import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
@@ -155,6 +156,7 @@ function ListadoDeTurnos() {
 
       {turnos.data !== undefined && (
         <Tabla
+          etiqueta="Turnos"
           columnas={columnasDeTurnos(salas)}
           filas={turnos.data}
           claveDeFila={(turno) => turno.id}
@@ -188,9 +190,21 @@ function ListadoDeTurnos() {
  * de ubicar. El encabezado queda FUERA para que no parpadee.
  */
 export default function PaginaDeTurnos() {
+  const { slug } = useParams<{ slug: string }>();
+
   return (
     <section className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold text-slate-900">Turnos</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-2xl font-semibold text-slate-900">Turnos</h1>
+        {/* El panel entero ya exige ADMIN_OPERATIVO: el enlace no necesita una
+            puerta propia. */}
+        <Link
+          href={`/${slug}/admin/turnos/nuevo`}
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+        >
+          Nuevo turno
+        </Link>
+      </div>
 
       <Suspense fallback={<p className="text-sm text-slate-500">Cargando…</p>}>
         <ListadoDeTurnos />

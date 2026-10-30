@@ -120,6 +120,29 @@ export function useAsignarProfesor(id: string) {
   });
 }
 
+/** Lo que acepta `POST /turnos` (`CrearTurnoDto`). */
+export interface TurnoACrear {
+  salaId: string;
+  nombre: string;
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
+  cupo: number;
+  /** `perfilId`. AUSENTE = la del horario semanal; ni `null` ni vacio. */
+  profesorId?: string;
+}
+
+export function useCrearTurno() {
+  const cliente = useQueryClient();
+
+  return useMutation<TurnoPublico, ErrorDeApi, TurnoACrear>({
+    mutationFn: (datos) => pedir<TurnoPublico>('/turnos', { metodo: 'POST', cuerpo: datos }),
+    // Solo los listados: la ficha del turno nuevo no existe todavia en cache.
+    onSuccess: () => void cliente.invalidateQueries({ queryKey: ['turnos'] }),
+    gcTime: 0,
+  });
+}
+
 export function useBorrarTurno(id: string) {
   const cliente = useQueryClient();
 

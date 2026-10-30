@@ -7,8 +7,6 @@ import { z } from 'zod';
 import {
   comparaHoras,
   type DiaSemana,
-  PATRON_FECHA,
-  PATRON_HORA,
   type RutinaPublica,
   type UsuarioDetalle,
 } from '@boxadmin/shared';
@@ -19,6 +17,15 @@ import { ErrorDeApi } from '@/lib/cliente';
 import { useSalas } from '@/hooks/use-catalogos';
 import { useCrearRutina, useDarDeBajaRutina, useRutinas } from '@/hooks/use-rutinas';
 import { Seleccion } from './controles';
+import {
+  conMayuscula,
+  descripcionDe,
+  esquemaBase,
+  finDespuesDeInicio,
+  OPCIONES_DE_DIA,
+  REGLA_DE_HORAS,
+} from './dias-fijos';
+import { EditarRutina } from './editar-rutina';
 import { mensajeDeFallo } from './errores';
 
 /**
@@ -29,17 +36,6 @@ import { mensajeDeFallo } from './errores';
  * recurrencia de la Fase 2. Por eso vive dentro de la ficha: la pregunta que
  * contesta es "¿que dias viene Ana?".
  */
-
-/** Indexado por `DiaSemana`: 0 = domingo, como `Date.getUTCDay()`. */
-const NOMBRES_DE_DIA: readonly string[] = [
-  'domingo',
-  'lunes',
-  'martes',
-  'miercoles',
-  'jueves',
-  'viernes',
-  'sabado',
-];
 
 /**
  * De `DiaSemana` al orden en que se lee una semana.
@@ -53,28 +49,9 @@ function ordenDeSemana(dia: DiaSemana): number {
   return (dia + 6) % 7;
 }
 
-/** "martes de 18:00 a 19:00". En minusculas: se interpola dentro de frases. */
-function descripcionDe(rutina: RutinaPublica): string {
-  return `${NOMBRES_DE_DIA[rutina.diaSemana] ?? ''} de ${rutina.horaInicio} a ${rutina.horaFin}`;
-}
-
-function conMayuscula(texto: string): string {
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
-}
-
-const esquema = z
-  .object({
-    salaId: z.string().min(1, 'Elegi una sala'),
-    nombre: z.string().min(1, 'El turno necesita un nombre').max(80, 'Como mucho 80 caracteres'),
-    diaSemana: z.string(),
-    horaInicio: z.string().regex(PATRON_HORA, 'La hora va como HH:MM'),
-    horaFin: z.string().regex(PATRON_HORA, 'La hora va como HH:MM'),
-    desde: z.string().regex(PATRON_FECHA, 'La fecha va como YYYY-MM-DD'),
-  })
-  .refine((datos) => comparaHoras(datos.horaFin, datos.horaInicio) > 0, {
-    path: ['horaFin'],
-    message: 'La hora de fin tiene que ser despues de la de inicio',
-  });
+const esquema = esquemaBase
+  .extend({ salaId: z.string().min(1, 'Elegi una sala') })
+  .refine(finDespuesDeInicio, REGLA_DE_HORAS);
 
 type DatosDelAlta = z.infer<typeof esquema>;
 
@@ -86,6 +63,8 @@ export function BloqueDeDiasFijos({ usuario }: { usuario: UsuarioDetalle }) {
 
   const [enCurso, setEnCurso] = useState<RutinaPublica | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [confirmacion, setConfirmacion] = useState<string | null>(null);
 
   const opcionesDeSala = (salas ?? usuario.salas).map((sala) => ({
     valor: sala.id,
@@ -127,6 +106,7 @@ export function BloqueDeDiasFijos({ usuario }: { usuario: UsuarioDetalle }) {
 
   async function agregar(datos: DatosDelAlta): Promise<void> {
     setAviso(null);
+    setConfirmacion(null);
 
     try {
       await crear.mutateAsync({
@@ -150,14 +130,23 @@ export function BloqueDeDiasFijos({ usuario }: { usuario: UsuarioDetalle }) {
   async function confirmarLaBaja(): Promise<void> {
     if (enCurso === null) return;
     setAviso(null);
+    setConfirmacion(null);
 
     try {
       await darDeBaja.mutateAsync(enCurso.id);
+      // Si era la que se estaba editando, su formulario ya no tiene a quien editar.
+      if (enCurso.id === editandoId) setEditandoId(null);
       setEnCurso(null);
     } catch (fallo) {
       setAviso(mensajeDeFallo(fallo, 'ADMIN_OPERATIVO'));
       setEnCurso(null);
     }
+  }
+
+  /** Devuelve el foco a «Editar» de esa fila: el boton que lo tenia se desmonta. */
+  function cerrarLaEdicion(id: string): void {
+    setEditandoId(null);
+    document.getElementById(`editar-${id}`)?.focus();
   }
 
   return (
@@ -166,6 +155,11 @@ export function BloqueDeDiasFijos({ usuario }: { usuario: UsuarioDetalle }) {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Dias fijos</h2>
 
         {aviso !== null && <Aviso tono="error">{aviso}</Aviso>}
+        {confirmacion !== null && (
+          <Aviso tono="exito" alerta>
+            {confirmacion}
+          </Aviso>
+        )}
 
         {visibles.length === 0 ? (
           <Aviso>No tiene dias fijos cargados.</Aviso>
@@ -180,17 +174,50 @@ export function BloqueDeDiasFijos({ usuario }: { usuario: UsuarioDetalle }) {
                   {conMayuscula(descripcionDe(rutina))}
                 </p>
                 <p className="text-xs text-slate-500">{rutina.nombre}</p>
-                <Boton
-                  type="button"
-                  tono="secundario"
-                  // El nombre accesible lleva el dia y la hora: con siete filas
-                  // de "Dar de baja" nadie sabe cual esta pulsando, y con lector
-                  // de pantalla menos.
-                  aria-label={`Dar de baja el ${descripcionDe(rutina)}`}
-                  onClick={() => setEnCurso(rutina)}
-                >
-                  Dar de baja
-                </Boton>
+                <div className="flex gap-2">
+                  <Boton
+                    type="button"
+                    tono="secundario"
+                    // Simetrico al de "Dar de baja": el dia y la hora en el nombre.
+                    id={`editar-${rutina.id}`}
+                    aria-label={`Editar el ${descripcionDe(rutina)}`}
+                    aria-expanded={editandoId === rutina.id}
+                    onClick={() => {
+                      setConfirmacion(null);
+                      setEditandoId(rutina.id);
+                    }}
+                  >
+                    Editar
+                  </Boton>
+                  <Boton
+                    type="button"
+                    tono="secundario"
+                    // El nombre accesible lleva el dia y la hora: con siete filas
+                    // de "Dar de baja" nadie sabe cual esta pulsando, y con lector
+                    // de pantalla menos.
+                    aria-label={`Dar de baja el ${descripcionDe(rutina)}`}
+                    onClick={() => {
+                      setConfirmacion(null);
+                      setEnCurso(rutina);
+                    }}
+                  >
+                    Dar de baja
+                  </Boton>
+                </div>
+                {/* UNA SOLA A LA VEZ: `editandoId` es uno, y cada fila monta SU
+                    formulario, asi que al pasar de una a otra no se arrastra lo escrito. */}
+                {editandoId === rutina.id && (
+                  <EditarRutina
+                    rutina={rutina}
+                    perfilId={usuario.perfilId}
+                    alTerminar={() => {
+                      setAviso(null);
+                      setConfirmacion('Dia fijo actualizado.');
+                      cerrarLaEdicion(rutina.id);
+                    }}
+                    alCancelar={() => cerrarLaEdicion(rutina.id)}
+                  />
+                )}
               </li>
             ))}
           </ul>
@@ -227,11 +254,7 @@ export function BloqueDeDiasFijos({ usuario }: { usuario: UsuarioDetalle }) {
           />
           <Seleccion
             etiqueta="Dia"
-            // En orden de semana, igual que la lista de arriba.
-            opciones={[1, 2, 3, 4, 5, 6, 0].map((dia) => ({
-              valor: String(dia),
-              texto: conMayuscula(NOMBRES_DE_DIA[dia] ?? ''),
-            }))}
+            opciones={OPCIONES_DE_DIA}
             error={errors.diaSemana?.message}
             {...register('diaSemana')}
           />

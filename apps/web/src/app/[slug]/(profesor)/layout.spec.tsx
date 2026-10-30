@@ -52,6 +52,21 @@ vi.mock('@/lib/sesion', async () => ({
   leerRol: (access: string) => leerRol(access),
 }));
 
+/**
+ * La navegacion se sustituye por un doble, igual que en el layout del alumno:
+ * es de cliente y usaria `usePathname`, y asi se audita el juego EXACTO de
+ * props que la puerta le pasa. La puerta tiene el `/auth/me` entero en la mano
+ * y todo lo que cruce hacia un componente de cliente viaja en el payload RSC
+ * aunque no se dibuje.
+ */
+const propsDeLaNavegacion = vi.fn();
+vi.mock('./navegacion-profesora', () => ({
+  NavegacionProfesora: (props: { slug: string }) => {
+    propsDeLaNavegacion(props);
+    return <nav data-testid="navegacion" />;
+  },
+}));
+
 import LayoutDeProfesor from './layout';
 
 /** La entrada del area, escrita UNA vez. Es la que devuelve `destinoPorRol`. */
@@ -70,6 +85,7 @@ beforeEach(() => {
   navegar.mockClear();
   leerSesion.mockReset();
   leerRol.mockReset();
+  propsDeLaNavegacion.mockClear();
   // Por defecto, SIN middleware: ninguna ruta estampada.
   cabeceras.mockResolvedValue(new Headers());
 });
@@ -347,6 +363,31 @@ describe('el login manda a una profesora a SU area', () => {
     // siendo el del alumno.
     expect(destinoPorRol('PROFESOR', 'mi-gym')).not.toBe('/mi-gym/calendario');
     expect(destinoPorRol('ALUMNO', 'mi-gym')).toBe('/mi-gym/calendario');
+  });
+});
+
+describe('la navegacion del area', () => {
+  it('a la profesora se le da la navegacion, FUERA del main, con solo el slug', async () => {
+    conRol('PROFESOR');
+
+    await montar();
+
+    const barra = screen.getByTestId('navegacion');
+    expect(barra.closest('main')).toBeNull();
+    // Y el juego de props es EXACTAMENTE el slug: ni id, ni email, ni tenant.
+    expect(propsDeLaNavegacion.mock.calls).toEqual([[{ slug: 'mi-gym' }]]);
+  });
+
+  it('a quien no es profesora no se le da, para NINGUN otro rol', async () => {
+    for (const rol of ROLES_USUARIO.filter((otro) => otro !== 'PROFESOR')) {
+      conRol(rol);
+
+      await montar();
+
+      expect(screen.queryByTestId('navegacion'), rol).toBeNull();
+      expect(propsDeLaNavegacion, rol).not.toHaveBeenCalled();
+      cleanup();
+    }
   });
 });
 

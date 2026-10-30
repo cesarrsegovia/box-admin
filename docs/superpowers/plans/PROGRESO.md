@@ -4239,3 +4239,215 @@ Siete comprobaciones que **ningún test puede hacer**: no hay navegador en el en
 - [ ] **Dar de baja un pack** y comprobar **qué les pasa a los alumnos que lo tenían**: nada.
 - [ ] **Mirar la liquidación de una profesora con una franja sin tarifa** y comprobar que **el aviso está
       al lado del importe** — y que arreglar la tarifa en `admin/horarios` lo hace desaparecer.
+
+# Progreso Fase 15 — Cabos sueltos
+
+**Spec:** `docs/superpowers/specs/2026-10-29-fase15-cabos-sueltos.md`
+**Plan:** `docs/superpowers/plans/2026-10-29-fase15-cabos-sueltos.md` (6 tareas)
+
+Los **tres endpoints de negocio** que el cruce de la Fase 14 midió sin pantalla: `POST /turnos`,
+`PATCH /rutinas/:id` y la liquidación de la profesora. Una ruta nueva en la API (`GET /mi-liquidacion`);
+todo lo demás es web. ⚠️ **Y el cruce de cierre dice que NO quedan cero de negocio sin pantalla: queda
+uno, `GET /packs/:id`** —ver abajo—. Es un hueco del **alcance** de la fase, no un fallo de la
+implementación: la spec decía «cero» y el plan sólo atacó tres.
+
+- [x] T1 — `GET /mi-liquidacion` en la API
+- [x] T2 — La vista de la liquidación, extraída a un componente compartido
+- [x] T3 — «Mi liquidación» en el área de la profesora, con su navegación
+- [x] T4 — Crear un turno a mano (`/admin/turnos/nuevo`)
+- [x] T5 — Editar una rutina, en el bloque de días fijos
+- [x] T6 — Verificación, cruce, README y tracker
+
+## Los números, tarea por tarea
+
+Punto de partida, medido al empezar: web **1882 / 86**, api **1339 / 67**, e2e **218 / 13**, shared
+**103 / 4**, sin `MUTACION TEMPORAL`.
+
+| Tarea | web           | api       | e2e      |
+| ----- | ------------- | --------- | -------- |
+| T1    | 1882 / 86     | 1343 / 68 | 221 / 13 |
+| T2    | 1885 / 86     | —         | —        |
+| T3    | 1913 / 89     | —         | —        |
+| T4    | 1940 / 90     | —         | —        |
+| T5    | **1969 / 91** | —         | —        |
+
+## Lo que la fase hace
+
+- **T1 — `GET /mi-liquidacion`.** `perfilDeLaProfesora` en `liquidacion.datos.ts`; `deLaProfesora` y
+  `exigirMesValido` en el service (el segundo, compartido con `delMes`); `mi-liquidacion.controller.ts`
+  nuevo con `@Roles('PROFESOR')` y **sin id en la ruta**: el perfil sale del token. Tres e2e nuevos
+  (`profesor.e2e-spec.ts`, con `alumnoToken` en el Escenario) y `liquidacion.service.spec.ts`.
+  **Medido:** el admin que la pide recibe **404 «Este usuario no tiene perfil de profesora.»**, porque
+  `crearGimnasio` no le crea perfil.
+- **T2 — La vista, extraída.** `lib/mes.ts` nuevo (`admin/analisis/filtros.ts` reexporta desde ahí) y
+  `componentes/liquidacion-leida.tsx`, **sin `'use client'`**, con el aviso de minutos sin tarifa como
+  prop `avisoSinTarifa`. Los 25 tests de `liquidacion.spec.tsx` pasaron **sin tocarlos**.
+- **T3 — La pantalla de la profesora.** `useMiLiquidacion` (clave `['mi-liquidacion', anio, mes]`);
+  `(profesor)/navegacion-profesora.tsx`, una barra inferior con «Mis clases» y «Mi liquidación» cuya
+  sección activa se detecta **por prefijo con `/`**, porque `mis-clases/[turnoId]` cuenta. La barra va
+  **fuera del `<main>`**, que lleva `pb-24`. `mi-liquidacion/page.tsx` es de servidor
+  (`metadata.title` «Mi liquidación · BoxAdmin») y pinta `pantalla.tsx` (`'use client'`).
+- **T4 — Crear un turno a mano.** `useCrearTurno`; página `admin/turnos/nuevo`; enlace «Nuevo turno» en
+  el listado, cuya tabla quedó con la etiqueta «Turnos». **Sin profesora elegida el `profesorId` no
+  viaja; con profesora viaja su `perfilId`.**
+- **T5 — Editar una rutina.** `usuarios/[id]/editar-rutina.tsx` más `dias-fijos.ts`, compartido con el
+  alta. Botón «Editar» por rutina, formulario en línea y **uno a la vez**. Se envía **sólo lo que
+  cambió**, comparado contra una línea base fijada con `useState(rutina)`. Aviso fijo: «El cambio rige
+  para los meses que se publiquen de ahora en adelante. Las reservas ya generadas no se mueven.»
+  Vaciar el fin no se envía; tampoco un `hasta < desde`.
+
+## Las mutaciones
+
+**De tabla:** T1, las **4** caen. T2, la del aviso propio extra **NO cayó** (`querySelector` sólo ve el
+primero) y se cerró con «el aviso es UNO solo». T3, las **5** caen. T4, las **5** caen. T5, **todas**
+caen.
+
+**Las abiertas, y lo que se cerró:**
+
+| Tarea | Qué se agregó                                       | El hueco                                                    | Cómo se cerró                                                                               |
+| ----- | --------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| T1    | un `usuarioId` en la respuesta del controller       | —                                                           | **cayó** por el `toEqual` contra la respuesta del admin                                     |
+| T2    | un enlace de admin dentro del componente compartido | **pasó en verde**                                           | «el único enlace del bloque es el del aviso» y «sin aviso el bloque no tiene ningún enlace» |
+| T3    | un `<span hidden>` con el importe, fuera del bloque | **pasó en verde**                                           | «cada importe y el nombre aparecen UNA vez en toda la página», contado sobre `innerHTML`    |
+| T4    | un `usuarioId` colado en el cuerpo del POST         | **pasó en verde**                                           | «con profesora el cuerpo es EXACTAMENTE los siete campos»                                   |
+| T5    | `title={tenantId}` en el `<form>`                   | **pasó en verde** — atributos de descendientes del `<body>` | **no se cerró: es el agujero ya abierto y reportado**, no uno nuevo                         |
+
+⚠️ **T3, detalle:** `textContent` no ve atributos, y por eso el test pasó a contar sobre `innerHTML`.
+El aviso extra de la profesora cayó con el test de **dos montajes**.
+
+## La revisión de calidad de cada tarea
+
+- **T1:** el e2e del 404 se ató a «ruta inexistente» (`Cannot GET …`); se quitó una aserción que sólo
+  miraba el mock; se agregó un test de la validación de `delMes`.
+- **T2:** **dos tests de «sin aviso» —uno de ellos viejo— eran de premisa destruida**: pasaban con
+  «Cargando…». Se anclaron con `importeDe('aPagar')`. Se reescribió el encabezado de `lib/mes.ts`.
+- **T3:** título propio, porque el anunciador de rutas no anunciaba el cambio; `use-dinero.spec`
+  siembra la clave nueva en la red de invalidación; `aria-label="Secciones"`.
+- **T4:** una copia local de `Seleccion` sin `aria-describedby` (se pasó a la de la casa); catálogos que
+  fallaban **en silencio** y un 401 sin redirección al login; `mensajeDeFallo`; un test «sin sala» que
+  era de **caso ciego**; 401 separado por catálogo; test del 403.
+- **T5:** foco devuelto al botón «Editar»; avisos que quedaban colgados; baja de la rutina que se estaba
+  editando; `tono="exito"` (su mutación pasaba, y se cerró con `toHaveClass`).
+
+## El cruce de endpoints, rehecho y MEDIDO — y NO da cero de negocio
+
+Mismo método que la Fase 14: un recorrido en orden de los `*.controller.ts` (cada `@Controller` cambia
+la base de lo que sigue) contra **todos los `pedir` de `apps/web/src` fuera de los specs**, **más** la
+comprobación de que **el hook que pide la ruta lo monta alguna pantalla**. Las rutas que no entran por
+`pedir` (el BFF de `auth`, `fetch` de servidor, el `<img>` del QR, las construidas en un helper o con un
+ternario) se **verificaron a mano** una por una.
+
+**104 rutas** (las 103 de la Fase 14 más `GET /mi-liquidacion`; el recorrido da 105 porque cuenta otra
+vez el `@Patch(':id')` que vive dentro de un comentario de `turnos.controller.ts:50`). **97 tienen
+pantalla y 7 no.** De las 7:
+
+| Ruta                                         | Por qué                                                                                               |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GET` y `PUT /archivos-locales/:clave`       | URLs firmadas que genera la API y abre el navegador — **por diseño**                                  |
+| `GET /calendario/…/conflictos`               | ya viene dentro de `plan.conflictos` — **por diseño**                                                 |
+| `POST /auth/tenants` y `POST /auth/register` | alta de un gimnasio con `BootstrapKeyGuard`: del operador — **por diseño**                            |
+| `GET /auth/admin-only`                       | endpoint de prueba del checklist de la Fase 0 — **por diseño**                                        |
+| ⚠️ **`GET /packs/:id`**                      | **`usePack` existe y NINGUNA pantalla lo monta.** El catálogo ya trae todo, así que hoy no hace falta |
+
+**Las tres de la Fase 14 que esta fase atacó, ahora con pantalla:** `POST /turnos` (por `useCrearTurno`,
+en `admin/turnos/nuevo`), `PATCH /rutinas/:id` (por el formulario de `editar-rutina.tsx`) y
+`GET /mi-liquidacion` (por `useMiLiquidacion`, en `mi-liquidacion/pantalla.tsx`).
+
+### ⚠️ `GET /packs/:id`: un hueco del alcance, no un fallo de la implementación
+
+La spec de la fase decía «el cruce tiene que dar cero de negocio sin pantalla». **El plan sólo atacó
+tres** —`POST /turnos`, `PATCH /rutinas/:id` y la liquidación de la profesora— y **el cuarto, `GET
+/packs/:id`, se le escapó al planificador**: la Fase 14 lo había medido como «con hook y sin pantalla»
+y nadie lo trasladó al plan. La implementación hizo exactamente lo que el plan pedía. **No se arregló en
+el cierre**; queda anotado para que Cesar decida entre darle pantalla o borrar `usePack`.
+
+## Trampas nuevas
+
+**Un enumerador de rutas con `matchAll` y una ventana de contexto se come a su vecino.** Al buscar el
+`metodo:` de cada `pedir` con una ventana de 200 caracteres **consumida por el propio match**, el `GET`
+siguiente quedaba oculto y el cruce daba 82 «con pantalla» en vez de 85 automáticas. Se arregló con un
+`lookahead` y **cortando la ventana en el primer `)`**, para que el método de una llamada no se lea de
+la siguiente.
+
+**Los guardianes de «sin pantalla» no ven el BFF.** `auth/login`, `auth/logout`, `auth/auto-registro`,
+`auth/refresh`, `auth/me` y `public/salon/:slug` salen por un `fetch` y no por `pedir`: un cruce que sólo
+mire `pedir` los da por huérfanos y **hay que verificarlos a mano**.
+
+**Un `heredoc` se come las barras invertidas** de un script con expresiones regulares: el error sale como
+«flags inválidos» en la regex. Se escribió el script con la herramienta de edición.
+
+## Estado final
+
+|                   |                                                                   |
+| ----------------- | ----------------------------------------------------------------- |
+| `apps/web`        | **1970 tests / 91 suites**, tsc limpio, `build` OK                |
+| `apps/api`        | **1343 / 68**, tsc limpio, eslint en cero sobre `src/liquidacion` |
+| E2E de la API     | **221 / 13 — MEDIDO** en este cierre                              |
+| `packages/shared` | 103 / 4 — sin tocar                                               |
+
+De 1882 en web al empezar: **+87** (T2 +3, T3 +28, T4 +27, T5 +29). API **+4 / +1 suite**, e2e **+3**.
+`grep -rn "MUTACION TEMPORAL" apps` da **cero**. `prettier --check` limpio sobre lo tocado.
+
+Comandos: `pnpm --filter @boxadmin/web test`, `… exec tsc --noEmit`, `… build`;
+`pnpm --filter @boxadmin/api test`, `… exec tsc --noEmit`, `… exec eslint src/liquidacion`,
+`… test:e2e`; `pnpm --filter @boxadmin/shared test`.
+
+## Deuda anotada
+
+**Nueva de esta fase:**
+
+- ⚠️ **`GET /packs/:id` sin pantalla, con hook** (`usePack`): el único de negocio que queda. Hueco del
+  alcance de la fase.
+- **`SelectorDeMes` duplicado** entre `admin/analisis/page.tsx` y `(profesor)/mi-liquidacion/pantalla.tsx`.
+- **El tipo `Mes` vive en `hooks/use-stats`** y `lib/mes.ts` lo importa: capa invertida, sólo de tipos.
+- **`calendario/selectores.tsx` sigue con su propia copia** de los nombres de mes.
+- **La búsqueda del perfil por `actor.sub` está repetida en 8 archivos de la API** (medido con
+  `grep -rln "usuarioId: actor.sub" apps/api/src`): `checkin.service`, `comprobantes.service`,
+  `liquidacion.datos`, `lista-espera.service`, `mi-calendario.service`, `mi-pack.service`,
+  `mis-clases.service` y `push.service`.
+- **La profesora lee los textos del componente compartido en tercera persona** («La liquidación de
+  Ana Ruiz…», «Ana Ruiz no tiene ninguna franja…») y la nota «Lo calcula el servidor. Hoy es lo
+  dictado.». Se arregla con una prop de encabezado/vacío en `LiquidacionLeida`.
+- **`turnos/nuevo/page.tsx` importa `mensajeDeFallo` y `Seleccion` de `../../usuarios/[id]/`**:
+  conviene llevarlos a `componentes/`.
+- **El nombre de una rutina no hace `.trim()`**: un nombre de sólo espacios pasa el cliente y el DTO.
+- **En el bloque de días fijos, un 401 al guardar muestra el mensaje y no lleva al login**, igual que
+  el alta.
+- ⚠️ **`Importe` contra la cadena pelada**, en `packages/shared`: viene de la Fase 14.
+
+**Vieja, y sigue en pie:** la lista de la Fase 13 entera, con `navigator.clipboard`, el contexto de
+navegación anidado, los atributos de los descendientes del `<body>` (la de T5, `title={tenantId}`),
+partir el dato en trozos y el `.value` que escriba la limpieza de un `useEffect` todavía abiertos.
+
+**Cerrada por esta fase:** que la profesora no pudiera ver su propia liquidación.
+
+## Siguiente paso
+
+Lo que queda es **un endpoint suelto** (`GET /packs/:id`) y, de producto, **mover las reservas ya
+generadas cuando se edita una rutina** —lógica nueva en la API, fase propia— y **volver indefinida una
+rutina que tiene fin**, que el endpoint hoy no permite.
+
+## Lo que esta fase NO hace
+
+- **Mover las reservas ya generadas cuando se edita una rutina.**
+- **Volver indefinida una rutina con fin.** El endpoint no lo permite; la pantalla lo explica.
+- Cambiar la sala de una rutina.
+- Tocar `GET /liquidacion/:profesorId` o `packages/shared`.
+- La deuda `Importe` contra cadena pelada.
+
+## El checklist a mano (para Cesar)
+
+Ocho comprobaciones que **ningún test puede hacer**: no hay navegador en el entorno.
+
+- [ ] **Entrar como profesora**: la barra muestra «Mis clases» y «Mi liquidación», y **dentro de una
+      clase sigue marcada «Mis clases»**.
+- [ ] **«Mi liquidación» muestra lo mismo que el admin ve de ella en Análisis**, mismo mes.
+- [ ] **Con un horario sin tarifa**: la profesora ve el aviso **sin** enlace; el admin, **con**.
+- [ ] **Crear un turno sin elegir profesora** en una franja con horario: **queda con la del horario**.
+- [ ] **Crear un turno en una sala de baja**: no se ofrece. **Con una profesora sin acceso a la sala**:
+      el error de la API se ve.
+- [ ] **Editar el horario de un día fijo con el mes ya publicado**: las reservas de ese mes **no** se
+      mueven; las del mes siguiente, al publicarlo, salen en el horario nuevo.
+- [ ] **Con lector de pantalla o mirando la pestaña**: al pasar de «Mis clases» a «Mi liquidación» **el
+      título cambia**.
+- [ ] **Editar una rutina y cancelar**: el foco vuelve a «Editar».

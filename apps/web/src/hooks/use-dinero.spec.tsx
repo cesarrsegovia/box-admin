@@ -26,6 +26,7 @@ import {
   useCrearPack,
   useDarDeBajaPack,
   useLiquidacion,
+  useMiLiquidacion,
   usePack,
   usePagos,
   useRechazarComprobante,
@@ -318,6 +319,18 @@ describe('las rutas', () => {
     expect(llamada(doble).url).toBe('/api/bx/liquidacion/..%2Fusuarios?anio=2026&mes=10');
   });
 
+  it('mi liquidacion pide /mi-liquidacion con el mes y SIN id', async () => {
+    // El perfil sale del token: aqui no viaja id ninguno, y una ruta con un
+    // segmento de mas seria la del admin.
+    const doble = dobleDeFetch(LIQUIDACION);
+
+    const { result } = montar(() => useMiLiquidacion(MES));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(llamada(doble).url).toBe('/api/bx/mi-liquidacion?anio=2026&mes=10');
+    expect(doble).toHaveBeenCalledTimes(1);
+  });
+
   it('el `id` del comprobante viaja en la URL y NO en el cuerpo', async () => {
     // La API corre con `forbidNonWhitelisted`: un `id` de mas en el cuerpo
     // convierte una aprobacion valida en un 400. Y al reves, un `id` que se
@@ -485,6 +498,38 @@ describe('las claves', () => {
       new Set(textos).size,
       'dos liquidaciones comparten clave: una profesora veria el sueldo de otra, o el mes de al lado',
     ).toBe(4);
+  });
+
+  it('mi liquidacion de dos meses tiene claves distintas, y distintas de la del admin', () => {
+    const octubre = clavesDeDinero.miLiquidacion(MES);
+    const noviembre = clavesDeDinero.miLiquidacion({ anio: 2026, mes: 11 });
+    const elAnoQueViene = clavesDeDinero.miLiquidacion({ anio: 2027, mes: 10 });
+
+    expect(new Set([octubre, noviembre, elAnoQueViene].map((c) => JSON.stringify(c))).size).toBe(3);
+
+    // Ninguna empieza por la raiz de la liquidacion del admin: invalidar la de
+    // una profesora ajena no toca la propia, ni al reves.
+    for (const clave of [octubre, noviembre, elAnoQueViene]) {
+      expect(clave[0]).not.toBe(clavesDeDinero.liquidacion('pr-1', MES)[0]);
+    }
+  });
+
+  it('invalidar la liquidacion del admin NO mueve la propia', () => {
+    // La version de comportamiento: mira si la consulta se movio, no la clave.
+    dobleDeFetch(LIQUIDACION);
+    const { cliente } = montar(() => ({
+      propia: useMiLiquidacion(MES),
+      ajena: useLiquidacion('pr-1', MES),
+    }));
+
+    cliente.setQueryData(clavesDeDinero.miLiquidacion(MES), LIQUIDACION);
+    cliente.setQueryData(clavesDeDinero.liquidacion('pr-1', MES), LIQUIDACION);
+    void cliente.invalidateQueries({ queryKey: ['liquidacion'] });
+
+    expect(cliente.getQueryState(clavesDeDinero.miLiquidacion(MES))?.isInvalidated).toBe(false);
+    expect(cliente.getQueryState(clavesDeDinero.liquidacion('pr-1', MES))?.isInvalidated).toBe(
+      true,
+    );
   });
 
   it('dos rangos de pagos de la misma persona son DOS entradas de cache', () => {
@@ -672,6 +717,7 @@ function sembrarTodo(cliente: QueryClient): void {
   cliente.setQueryData(clavesDeDinero.colaDeComprobantes('PENDIENTE'), [COMPROBANTE]);
   cliente.setQueryData(claves.comprobantes(), [COMPROBANTE]);
   cliente.setQueryData(clavesDeDinero.liquidacion('pr-1', MES), LIQUIDACION);
+  cliente.setQueryData(clavesDeDinero.miLiquidacion(MES), LIQUIDACION);
   cliente.setQueryData(clavesDeUsuarios.uno(ANA.usuarioId), { id: ANA.usuarioId });
   cliente.setQueryData(clavesDeUsuarios.uno(BRUNO.usuarioId), { id: BRUNO.usuarioId });
 }
@@ -689,6 +735,7 @@ const NOMBRES: [string, readonly unknown[]][] = [
   ['cola', clavesDeDinero.colaDeComprobantes('PENDIENTE')],
   ['comprobantes del alumno', claves.comprobantes()],
   ['liquidacion', clavesDeDinero.liquidacion('pr-1', MES)],
+  ['mi liquidacion', clavesDeDinero.miLiquidacion(MES)],
   ['ficha de Ana', clavesDeUsuarios.uno(ANA.usuarioId)],
   ['ficha de Bruno', clavesDeUsuarios.uno(BRUNO.usuarioId)],
 ];
@@ -847,6 +894,7 @@ describe('el alcance de cada invalidacion', () => {
       await waitFor(() => expect(result.current.isSuccess, nombre).toBe(true));
 
       expect(invalidados(cliente), nombre).not.toContain('liquidacion');
+      expect(invalidados(cliente), nombre).not.toContain('mi liquidacion');
       unmount();
       vi.unstubAllGlobals();
     }

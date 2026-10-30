@@ -10,6 +10,7 @@ import { leerRol, leerSesion, sesionValidaPara } from '@/lib/sesion';
 // quien no puede hablar con la API, y una copia sin ese `catch` dejaria a la
 // profesora encerrada justamente el dia que la red falla.
 import { BotonDeSalir } from '../(alumno)/perfil/boton-de-salir';
+import { NavegacionProfesora } from './navegacion-profesora';
 
 // El layout raiz dice "Tus clases, en tu bolsillo", que es del alumno: las
 // clases de las que habla son las que TOMA, no las que da.
@@ -83,9 +84,9 @@ const COMO_SE_LLAMA_SU_SITIO: Record<Exclude<RolUsuario, 'PROFESOR' | 'FANTASMA'
  *
  * Quien pasa lista esta de pie en la sala con nueve personas esperando y el
  * telefono en una mano. `max-w-md` —el mismo ancho que el area del alumno— y
- * nada de barra lateral: el area tiene UNA pantalla y una lista por clase, asi
- * que una navegacion seria un menu de un solo elemento ocupando el sitio de los
- * nombres.
+ * nada de barra lateral: las secciones son dos —la agenda y la liquidacion—, y
+ * van en una barra inferior fija como la del alumno, que se alcanza con el
+ * pulgar y no le quita ancho a los nombres de la lista.
  */
 export default async function LayoutDeProfesor({
   children,
@@ -163,7 +164,10 @@ export default async function LayoutDeProfesor({
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-slate-50">
-      <main className="flex-1 p-4">{children}</main>
+      {/* La barra va FUERA del `main`: el `main` es la pagina y nada mas. Y
+          `pb-24` le deja sitio, porque la barra es fija y tapa lo de abajo. */}
+      <main className="flex-1 p-4 pb-24">{children}</main>
+      <NavegacionProfesora slug={slug} />
     </div>
   );
 }

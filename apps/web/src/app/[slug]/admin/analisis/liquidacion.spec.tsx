@@ -670,11 +670,45 @@ describe('los minutos sin tarifa', () => {
     expect(enlace.textContent).toBe('Configurar la tarifa en Horarios');
   });
 
+  it('el aviso es UNO solo: lo que pinta la pantalla y nada que el componente compartido anada', async () => {
+    // Fase 15: la vista se comparte con el area de la profesora. Si el
+    // componente compartido pintara un aviso propio ademas del recibido, el
+    // `querySelector` de arriba solo veria el primero y todo seguiria en verde.
+    montar();
+    await esperar();
+
+    expect(bloque().querySelectorAll('[data-sin-tarifa]')).toHaveLength(1);
+    expect(bloque().textContent?.match(/minutos de este mes no tienen tarifa/g)).toHaveLength(1);
+  });
+
+  it('el unico enlace del bloque es el del aviso', async () => {
+    // Fase 15: el componente compartido no puede agregar un enlace propio (a
+    // Horarios o a donde sea) que el admin vea de mas y la profesora tambien.
+    // Se cuentan los enlaces de todo el bloque, con aviso y sin el.
+    montar();
+    await esperar();
+
+    const enlaces = Array.from(bloque().querySelectorAll('a')).map((a) => a.getAttribute('href'));
+    expect(enlaces).toEqual(['/mi-gym/admin/horarios']);
+  });
+
+  it('y sin aviso el bloque no tiene ningun enlace', async () => {
+    montar({ liquidaciones: { 'pf-marina': CON_TODAS_LAS_TARIFAS } });
+    await esperar();
+
+    // La premisa: la liquidacion se pinto. Sin esto el test pasaria en verde
+    // sobre «Cargando…», sobre el error o sobre la sesion caducada.
+    expect(importeDe('aPagar')).toBe('987.65');
+    expect(bloque().querySelectorAll('a')).toHaveLength(0);
+  });
+
   it('con todas las tarifas puestas no hay aviso', async () => {
     // La otra mitad: un aviso que esta siempre no avisa de nada.
     montar({ liquidaciones: { 'pf-marina': CON_TODAS_LAS_TARIFAS } });
     await esperar();
 
+    // La premisa: la liquidacion se pinto (ver el test de arriba).
+    expect(importeDe('aPagar')).toBe('987.65');
     expect(avisoSinTarifa()).toBeNull();
     expect(bloque().textContent).not.toContain('no tienen tarifa');
   });

@@ -2396,7 +2396,7 @@ ponerse al día»_.
   cualquiera que lo consuma. **Queda anotado como deuda.**
 - **Que la profesora vea su liquidación.** ⚠️ `GET /liquidacion/:profesorId` pide `ADMIN_SALON`
   —«esto enseña tarifas», dice el controller—, así que **hoy no puede ver lo que va a cobrar**. No es
-  una pantalla que falte: es una decisión de permisos que hay que tomar antes.
+  una pantalla que falte: es una decisión de permisos que hay que tomar antes. → resuelto en la Fase 15 (`GET /mi-liquidacion`).
 - **Editar la asistencia de una sola persona.** El único endpoint es el reemplazo total; corregir a
   uno obliga a mandar la clase entera.
 - **La ficha de alumno.** No existe para su rol, y `AlumnoEnClase` es deliberadamente escueto
@@ -2469,7 +2469,7 @@ son la misma forma. **Es deuda de `packages/shared`** y queda anotada.
 ### Lo que esta fase NO trae
 
 - **Que la profesora vea su propia liquidación.** Sigue pidiendo `ADMIN_SALON`, y abrirlo es una
-  decisión de negocio.
+  decisión de negocio. → resuelto en la Fase 15 (`GET /mi-liquidacion`).
 - **Un listado global de pagos.** La caja de Análisis ya contesta esa pregunta sumando en
   `centavos` del lado del servidor, y `GET /pagos` no tiene tope.
 - **Exportar la liquidación** a nada.
@@ -2477,6 +2477,56 @@ son la misma forma. **Es deuda de `packages/shared`** y queda anotada.
   `POST /turnos` (fuera a propósito desde la Fase 9), `PATCH /rutinas/:id` (las rutinas se crean y
   se dan de baja, pero no se editan) y `GET /packs/:id` (tiene hook y ninguna pantalla lo usa). Ver
   `docs/superpowers/plans/PROGRESO.md`.
+
+## Cabos sueltos — Fase 15
+
+Los tres endpoints de negocio que la Fase 14 midió sin pantalla: **crear un turno a mano**, **editar
+una rutina** y **que la profesora vea lo que cobra**. Una sola ruta nueva en la API
+(`GET /mi-liquidacion`); lo demás es web.
+
+| Dónde                                            | Qué hace                                                     | Rol                        |
+| ------------------------------------------------ | ------------------------------------------------------------ | -------------------------- |
+| Área de la profesora → **Mi liquidación**        | Lo que cobra ella en un mes, franja a franja                 | `PROFESOR`                 |
+| Turnos → **Nuevo turno** (`/admin/turnos/nuevo`) | Crear un turno suelto: sala, fecha, horas, cupo y profesora  | el que ya pedía el listado |
+| Ficha de la persona → **Días fijos** → «Editar»  | Cambiar una rutina que ya existe, en línea, de a una por vez | el que ya pedía la ficha   |
+
+La profesora gana una **barra inferior** con «Mis clases» y «Mi liquidación»; dentro de una clase
+sigue marcada «Mis clases».
+
+### `GET /mi-liquidacion` no lleva id
+
+El perfil **sale del token**, no de la URL: una profesora no puede pedir la de otra ni por error. Es un
+controller aparte de `GET /liquidacion/:profesorId` —aquel es `ADMIN_SALON` y enseña las tarifas de
+cualquiera; este es `PROFESOR` y enseña sólo las suyas—, y **comparte el service**, así que el
+contenido es **el mismo** que el admin ve de ella en Análisis, mismo mes. Un admin que lo pida recibe
+404 «Este usuario no tiene perfil de profesora.»: no es su ruta.
+
+La vista es **un solo componente** (`componentes/liquidacion-leida.tsx`) para las dos pantallas. Lo
+único que cambia es el aviso de los minutos sin tarifa: **la profesora lo ve sin enlace** —no puede
+arreglarlo— y **el admin con enlace a Horarios**, que es donde se arregla.
+
+### Nuevo turno: sin profesora elegida, no se manda ninguna
+
+Si no se elige profesora, `profesorId` **no viaja** y la API usa la del horario de esa franja. Si se
+elige, viaja su `perfilId` —no el id del usuario—. Las salas de baja no se ofrecen, y el error de la
+API (por ejemplo, una profesora sin acceso a la sala) se muestra tal cual.
+
+### Editar una rutina: qué hace y qué NO hace
+
+Se manda **sólo lo que cambió**. Editar una rutina **no mueve las reservas ya generadas**: el cambio
+rige para los meses que se publiquen de ahora en adelante, y la pantalla lo dice con un aviso fijo.
+Tampoco:
+
+- **Vuelve indefinida una rutina que tiene fin**: el endpoint no lo permite, y la pantalla lo explica.
+- **Cambia la sala** ni la persona de la rutina: el endpoint no las acepta.
+
+### Lo que esta fase NO trae
+
+- **`GET /packs/:id` sigue sin pantalla.** `usePack` existe y ninguna pantalla lo monta: el catálogo ya
+  trae todo. El cruce de cierre da **un endpoint de negocio sin pantalla**, no cero; se le escapó al
+  alcance de la fase. Ver `docs/superpowers/plans/PROGRESO.md`.
+- **Mover reservas al editar una rutina**: es lógica nueva en la API y fase propia.
+- **La deuda `Importe` contra la cadena pelada**, de `packages/shared`, sigue en pie.
 
 ## Tests
 

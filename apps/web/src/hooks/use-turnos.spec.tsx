@@ -10,6 +10,7 @@ import {
   useAsignarProfesor,
   useBorrarTurno,
   useCancelar,
+  useCrearTurno,
   useReasignar,
   useReservasDelTurno,
   useTurno,
@@ -689,3 +690,60 @@ describe('una escritura no refresca consultas ajenas', () => {
 // `mutaciones-sin-gctime.spec.ts`, que barre TODOS los hooks. Aqui vivia un
 // analizador copiado que solo miraba este archivo: tres copias, y los cuatro
 // archivos de hooks sin spec propio quedaban afuera.
+
+// ---------------------------------------------------------------------------
+// Crear un turno a mano
+// ---------------------------------------------------------------------------
+
+describe('useCrearTurno', () => {
+  const DATOS = {
+    salaId: 's1',
+    nombre: 'Funcional',
+    fecha: '2026-11-03',
+    horaInicio: '08:00',
+    horaFin: '09:00',
+    cupo: 12,
+  };
+
+  it('crear un turno hace POST /turnos con el cuerpo tal cual', async () => {
+    const doble = dobleDeFetch({ id: 'nuevo' });
+
+    const { result } = montar(() => useCrearTurno());
+    result.current.mutate({ ...DATOS, profesorId: 'perfil-1' });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(doble).toHaveBeenCalledTimes(1);
+    expect(llamada(doble)).toEqual({
+      url: '/api/bx/turnos',
+      metodo: 'POST',
+      cuerpo: { ...DATOS, profesorId: 'perfil-1' },
+    });
+  });
+
+  it('sin profesora elegida, profesorId NO viaja (ni null, ni vacio)', async () => {
+    // El servicio distingue «ausente» (resuelve del patron) de «presente».
+    const doble = dobleDeFetch({ id: 'nuevo' });
+
+    const { result } = montar(() => useCrearTurno());
+    result.current.mutate(DATOS);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(Object.keys(llamada(doble).cuerpo as object).sort()).toEqual(
+      ['cupo', 'fecha', 'horaFin', 'horaInicio', 'nombre', 'salaId'].sort(),
+    );
+  });
+
+  it('crear invalida los listados de turnos y nada mas', async () => {
+    dobleDeFetch({ id: 'nuevo' });
+
+    const { result, cliente } = montar(() => useCrearTurno());
+    const sinTocarLoAjeno = vigilarUnaConsultaAjena(cliente);
+    const espia = vi.spyOn(cliente, 'invalidateQueries');
+
+    result.current.mutate(DATOS);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(espia).toHaveBeenCalledWith({ queryKey: ['turnos'] });
+    await sinTocarLoAjeno();
+  });
+});

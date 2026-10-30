@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { SalaPublica, TurnoPublico, UsuarioResumen } from '@boxadmin/shared';
@@ -244,8 +244,14 @@ function filasDelDocumento(): string[][] {
   );
 }
 
+/** Los de las FILAS: el enlace «Nuevo turno» del encabezado tiene su propio test. */
 function enlacesDelDocumento(): (string | null)[] {
-  return [...document.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  const tabla = screen.queryByRole('table', { name: 'Turnos' });
+  if (tabla === null) return [];
+
+  return within(tabla)
+    .queryAllByRole('link')
+    .map((a) => a.getAttribute('href'));
 }
 
 /** Las rutas pedidas, EN ORDEN y SIN deduplicar. */
@@ -288,6 +294,22 @@ describe('el listado de turnos', () => {
 
     expect(screen.getByText(/no hay turnos/i)).toBeInTheDocument();
     expect(document.querySelector('table')).toBeNull();
+  });
+
+  it('ofrece «Nuevo turno», que lleva al alta manual', () => {
+    montar({ turnos: [unTurno()] });
+
+    const enlace = screen.getByRole('link', { name: 'Nuevo turno' });
+    expect(enlace).toHaveAttribute('href', '/mi-gym/admin/turnos/nuevo');
+  });
+
+  it('«Nuevo turno» sale tambien con la lista vacia', () => {
+    montar({ turnos: [] });
+
+    expect(screen.getByRole('link', { name: 'Nuevo turno' })).toHaveAttribute(
+      'href',
+      '/mi-gym/admin/turnos/nuevo',
+    );
   });
 
   it('cada fila enlaza a SU ficha', () => {

@@ -176,6 +176,8 @@ export const clavesDeDinero = {
   colaDeComprobantes: (estado?: EstadoComprobante) =>
     [...claves.comprobantes(), estado ?? null] as const,
   liquidacion: (profesorId: string, m: Mes) => ['liquidacion', profesorId, m.anio, m.mes] as const,
+  /** La de quien mira: otra raiz, para que invalidar la del admin no la toque. */
+  miLiquidacion: (m: Mes) => ['mi-liquidacion', m.anio, m.mes] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -624,5 +626,17 @@ export function useLiquidacion(profesorId: string, m: Mes) {
       pedir<LiquidacionProfesor>(
         `/liquidacion/${encodeURIComponent(profesorId)}${queryDeLiquidacion(m)}`,
       ),
+  });
+}
+
+/**
+ * La liquidacion de quien mira. **PROFESOR**: el perfil sale del token, asi
+ * que aqui no viaja id ninguno —ni hay nada que codificar, a diferencia de
+ * `useLiquidacion`—.
+ */
+export function useMiLiquidacion(m: Mes) {
+  return useQuery({
+    queryKey: clavesDeDinero.miLiquidacion(m),
+    queryFn: () => pedir<LiquidacionProfesor>(`/mi-liquidacion${queryDeLiquidacion(m)}`),
   });
 }
