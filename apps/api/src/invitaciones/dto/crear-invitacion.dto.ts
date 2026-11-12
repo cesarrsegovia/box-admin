@@ -9,9 +9,11 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 export class CrearInvitacionDto {
   /** Para que el admin reconozca la clave en su listado. */
+  @Recortado()
   @IsString()
   @IsNotEmpty()
   @MaxLength(80)

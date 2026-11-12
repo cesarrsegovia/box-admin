@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { PATRON_FECHA, PATRON_HORA } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 export class CrearRutinaDto {
   @IsString()
@@ -21,6 +22,7 @@ export class CrearRutinaDto {
   salaId!: string;
 
   /** Nombre del turno que generara esta rutina. */
+  @Recortado()
   @IsString()
   @IsNotEmpty()
   @MaxLength(80)

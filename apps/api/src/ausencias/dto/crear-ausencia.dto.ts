@@ -1,5 +1,6 @@
 import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { PATRON_FECHA, PATRON_HORA } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 export class CrearAusenciaDto {
   /** Ausente = cierra todo el salon. */
@@ -30,6 +31,7 @@ export class CrearAusenciaDto {
   @IsBoolean()
   recuperable?: boolean;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(200)

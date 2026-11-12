@@ -7,6 +7,7 @@ import {
   type JwtPayload,
   type PresenteMarcado,
 } from '@boxadmin/shared';
+import { idDelPerfilDelActor } from '../common/perfil-del-actor';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 import { ConfigCheckInService } from './config-checkin.service';
 import { elegirReserva, type CandidataDeCheckIn } from './eleccion-de-reserva';
@@ -176,17 +177,13 @@ export class CheckinService {
    * opera sobre SU perfil, nunca sobre un perfilId del cuerpo.
    */
   private async perfilDelActor(actor: JwtPayload): Promise<{ id: string }> {
-    const perfil = await this.prisma.db.perfil.findFirst({
-      where: { usuarioId: actor.sub },
-      select: { id: true },
-    });
-    if (perfil === null) {
-      throw new NotFoundException(
+    return {
+      id: await idDelPerfilDelActor(
+        this.prisma.db,
+        actor,
         'Este usuario no tiene perfil de alumno, asi que no tiene reservas que marcar.',
-      );
-    }
-
-    return perfil;
+      ),
+    };
   }
 
   /**

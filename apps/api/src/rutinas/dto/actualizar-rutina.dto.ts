@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { PATRON_FECHA, PATRON_HORA } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /**
  * Los mismos campos que al crear MENOS `perfilId` y `salaId`, a proposito: mover
@@ -17,6 +18,7 @@ import { PATRON_FECHA, PATRON_HORA } from '@boxadmin/shared';
  * colgando de un patron que ya no existe. Para eso se da de baja y se crea otra.
  */
 export class ActualizarRutinaDto {
+  @Recortado()
   @IsOptional()
   @IsString()
   @IsNotEmpty()

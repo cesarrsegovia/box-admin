@@ -1,11 +1,13 @@
 import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 import { PATRON_FECHA, PATRON_HORA } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 export class CrearTurnoDto {
   @IsString()
   @IsNotEmpty()
   salaId!: string;
 
+  @Recortado()
   @IsString()
   @IsNotEmpty()
   @MaxLength(80)

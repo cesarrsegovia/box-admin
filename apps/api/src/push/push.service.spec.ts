@@ -241,6 +241,19 @@ describe('PushService.desuscribir', () => {
     expect(db.suscripcionPush.deleteMany).not.toHaveBeenCalled();
     expect(endpointsDe(filas, 'p-ana')).toHaveLength(2);
   });
+
+  it('un usuario sin perfil recibe el 404 de este servicio, con su texto entero', async () => {
+    // Un admin, por ejemplo: el doble no le conoce perfil y devuelve null.
+    const ADMIN = { sub: 'u-admin', tenantId: 't1', rol: 'ADMIN' } as never;
+    const { servicio, db, filas } = crearServicio();
+
+    await expect(servicio.desuscribir(ADMIN, undefined)).rejects.toHaveProperty(
+      'message',
+      'Este usuario no tiene perfil',
+    );
+    expect(db.suscripcionPush.deleteMany).not.toHaveBeenCalled();
+    expect(filas).toHaveLength(3);
+  });
 });
 
 describe('PushService.notificar', () => {

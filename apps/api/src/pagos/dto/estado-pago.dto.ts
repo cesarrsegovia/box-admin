@@ -1,5 +1,6 @@
 import { IsBoolean, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { PATRON_FECHA } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /**
  * El override del admin. `alDia: true` crea una cortesia que cubre hasta la
@@ -15,6 +16,7 @@ export class EstadoPagoDto {
   @Matches(PATRON_FECHA, { message: 'cubreHasta debe tener formato YYYY-MM-DD' })
   cubreHasta?: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(500)

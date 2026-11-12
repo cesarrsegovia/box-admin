@@ -15,6 +15,7 @@ import {
   type ReservaPublica,
   type TurnoDisponible,
 } from '@boxadmin/shared';
+import { idDelPerfilDelActor } from '../common/perfil-del-actor';
 import { DisponibilidadService } from '../disponibilidad/disponibilidad.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 import { ReservasService } from '../reservas/reservas.service';
@@ -62,17 +63,13 @@ export class MiCalendarioService {
     actor: JwtPayload,
     cliente: ClientePrismaTx = this.prisma.db,
   ): Promise<{ id: string }> {
-    const perfil = await cliente.perfil.findFirst({
-      where: { usuarioId: actor.sub },
-      select: { id: true },
-    });
-    if (!perfil) {
-      throw new NotFoundException(
+    return {
+      id: await idDelPerfilDelActor(
+        cliente,
+        actor,
         'Este usuario no tiene perfil de alumno, asi que no tiene calendario propio.',
-      );
-    }
-
-    return perfil;
+      ),
+    };
   }
 
   /**

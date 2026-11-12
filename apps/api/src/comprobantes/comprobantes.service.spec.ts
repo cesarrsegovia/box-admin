@@ -124,6 +124,15 @@ describe('ComprobantesService.crear', () => {
       servicio.crear(ALUMNO, { nombreOriginal: 'x.pdf', tipoMime: 'application/pdf' }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('el 404 sin perfil lleva el texto de este servicio, entero', async () => {
+    const { servicio, perfil } = crearServicio();
+    perfil.findFirst.mockResolvedValue(null);
+
+    await expect(
+      servicio.crear(ALUMNO, { nombreOriginal: 'x.pdf', tipoMime: 'application/pdf' }),
+    ).rejects.toHaveProperty('message', 'Este usuario no tiene perfil de alumno');
+  });
 });
 
 describe('ComprobantesService.confirmar', () => {

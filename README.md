@@ -2585,6 +2585,42 @@ no se tocaron.
 - **Cambiar cuándo navega una lectura con el 401**: sólo cambió el texto.
 - Ver `docs/superpowers/plans/PROGRESO.md`.
 
+## Deuda de la API — Fase 18
+
+La deuda que vivía en `apps/api`. Ninguna función nueva y ningún endpoint ni forma de respuesta
+cambia; sí se vuelve más estricta la validación: un texto de solo espacios ahora da 400, y lo que se
+guarda va recortado. `apps/web` y `packages/shared` no se tocaron.
+
+- **Los textos libres se recortan en la API** con `@Recortado()`
+  (`common/decorators/recortado.decorator.ts`), un `@Transform` que el `ValidationPipe` global
+  (`transform: true`) aplica **antes** de validar. Lo llevan **37 campos de 26 DTO**: nombres (de
+  salas, packs, turnos, rutinas, invitaciones, el gimnasio y las personas), teléfono, ficha médica,
+  notas, motivos, asunto de plantilla y los textos de la web del salón.
+  - **Cuáles no, y por qué:** contraseñas y tokens, emails, slugs y códigos, ids, fechas, URLs, claves
+    de push, la firma del check-in, los datos del archivo de un comprobante y el **HTML de las
+    plantillas**. Ahí un espacio puede ser parte del dato, o el texto no lo escribe una persona.
+  - **Un nombre de solo espacios da el 400 de un vacío.** Antes pasaba: `@IsNotEmpty()` de
+    class-validator **no rechaza `'   '`**. En las ediciones también da 400: `@IsOptional()` sólo deja
+    pasar `null` y `undefined`.
+  - Un opcional recortado queda `""`, **no `null`**.
+  - **Cómo se suma un campo nuevo:** `@Recortado()` encima de sus validaciones y **una fila** en
+    `common/decorators/recortado-en-los-dto.spec.ts`, que prueba cada campo contra el pipe real.
+- **El perfil de quien llama sale de `idDelPerfilDelActor`** (`common/perfil-del-actor.ts`), siempre
+  del token y nunca de la petición. La usan 7 servicios (check-in, comprobantes, liquidación, lista de
+  espera, mi calendario, mis clases y push), **cada uno con su texto de 404**. `mi-pack` no la usa:
+  necesita el perfil **con su pack**, y la función trae sólo el id.
+- **La regla del dinero (`Importe` contra la cadena):** lo que se guarda como `Decimal` (el precio de
+  un pack, el monto de un pago) viaja como **texto con dos decimales** (`"12500.00"`); lo que la API
+  calcula (la liquidación, la caja) viaja como **`Importe`, `{ centavos, texto }`**. Ninguna pantalla
+  hace cuentas con el texto; el día que haga falta sumar precios o montos en el cliente, se pasan a
+  `Importe`.
+
+### Lo que esta fase NO trae
+
+- **La deuda de la web de la Fase 17**: las escrituras con `pedir` directo (push y check-in), las
+  lecturas internas de las fichas y el 403 de invitaciones.
+- Ver `docs/superpowers/plans/PROGRESO.md`.
+
 ## Tests
 
 Unitarios:

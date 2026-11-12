@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { primerDiaDelMesUtc, ultimoDiaDelMesUtc, type JwtPayload } from '@boxadmin/shared';
+import { idDelPerfilDelActor } from '../common/perfil-del-actor';
 import { PrismaService } from '../prisma/prisma.service';
 import type { EntradaLiquidacion } from './calcular-liquidacion';
 
@@ -15,8 +16,8 @@ export class LiquidacionDatos {
 
   /**
    * El perfil de quien pide. Es la puerta de `GET /mi-liquidacion`: el id sale
-   * del token y no de la URL, asi que no hay forma de pedir la de otra. Mismo
-   * patron que `MisClasesService.perfilDelActor`.
+   * del token y no de la URL, asi que no hay forma de pedir la de otra. La
+   * busqueda es `idDelPerfilDelActor` (`common/perfil-del-actor.ts`).
    *
    * Un usuario sin perfil —un admin, que pasa el guard por jerarquia— recibe
    * 404: no tiene liquidacion propia.
@@ -24,14 +25,7 @@ export class LiquidacionDatos {
    * ninguna profesora con ese id»): el control de rol no se duplica a proposito.
    */
   async perfilDeLaProfesora(actor: JwtPayload): Promise<string> {
-    const perfil = await this.prisma.db.perfil.findFirst({
-      where: { usuarioId: actor.sub },
-      select: { id: true },
-    });
-    if (!perfil) {
-      throw new NotFoundException('Este usuario no tiene perfil de profesora.');
-    }
-    return perfil.id;
+    return idDelPerfilDelActor(this.prisma.db, actor, 'Este usuario no tiene perfil de profesora.');
   }
 
   async cargar(

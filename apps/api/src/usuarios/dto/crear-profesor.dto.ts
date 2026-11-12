@@ -7,6 +7,7 @@ import {
   IsString,
   MaxLength,
 } from 'class-validator';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /**
  * El alta de profesor NO acepta packId, clasesExtra, cancelaciones ni
@@ -18,6 +19,7 @@ import {
  * mensuales" a alguien que da la clase.
  */
 export class CrearProfesorDto {
+  @Recortado()
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
@@ -27,6 +29,7 @@ export class CrearProfesorDto {
   @MaxLength(180)
   email!: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(40)

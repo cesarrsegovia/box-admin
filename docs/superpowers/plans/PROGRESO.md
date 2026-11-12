@@ -4737,3 +4737,169 @@ Cinco comprobaciones que **ningún test puede hacer**: no hay navegador en el en
 - [ ] Editar una sala con « Box 2 » la deja como «Box 2».
 - [ ] El selector de mes de Análisis y el de «Mi liquidación» siguen cambiando el mes y conservan el
       resto de la URL.
+
+# Progreso Fase 18 — Deuda de la API
+
+**Spec:** `docs/superpowers/specs/2026-11-12-fase18-deuda-api.md`
+**Plan:** `docs/superpowers/plans/2026-11-12-fase18-deuda-api.md` (3 tareas)
+
+La deuda de las fases 16 y 17 que vive en `apps/api`. Ninguna función nueva y ningún endpoint ni forma
+de respuesta cambia; sí se vuelve más estricta la validación: un texto de solo espacios ahora da 400, y
+lo que se guarda va recortado. **Sólo `apps/api`**: `apps/web` y `packages/shared` no se tocaron (`git
+status --short apps/web packages/shared` da vacío).
+
+- [x] T1 — `@Recortado()` en los textos libres
+- [x] T2 — Una sola búsqueda del perfil de quien llama
+- [x] T3 — Verificación, README y tracker
+
+## Los números
+
+Punto de partida: api **1343 / 68** (con **un test que ya fallaba**, ver «Fuera del plan»), e2e
+**221 / 13** (medido ya puestos los decoradores: Docker estaba apagado al empezar y se encendió durante
+la T1).
+
+| Medido al cierre                  |                                                                     |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `apps/api`                        | **1435 tests / 71 suites** (+92 tests, +3 suites), verde            |
+| e2e                               | **223 tests / 13 suites** (+2 tests), verde                         |
+| `tsc --noEmit`                    | limpio                                                              |
+| `build`                           | OK                                                                  |
+| `MUTACION TEMPORAL`               | `grep -rn "MUTACION TEMPORAL" apps` da **cero**                     |
+| `usuarioId: actor.sub` (sin spec) | **dos líneas**: `common/perfil-del-actor.ts` y `mi-pack.service.ts` |
+| `apps/web` y `shared`             | sin cambios                                                         |
+
+Al terminar la T2 eran api 1429 / 71 y e2e 223 / 13; los 5 de más son los del texto del 404 (ver «La
+revisión de calidad»). Las correcciones menores de la revisión dejaron 1434 → **1435**: +1 en
+check-in, +1 en mi calendario y −1 en `perfil-del-actor.spec.ts`.
+
+## Lo que la fase hace
+
+- **T1 — `@Recortado()`.** Un `@Transform` en `common/decorators/recortado.decorator.ts`: recorta si es
+  string y deja pasar lo demás, para que el validador de tipo dé su error de siempre. El plan decía
+  **23 campos de 21 DTO**; la búsqueda de textos libres que faltaban agregó **14 → 37 campos en 26
+  DTO**: `nombreCompleto` (auto-registro, register, crear-alumno, crear-profesor, actualizar-usuario),
+  `telefono` (crear-alumno, crear-profesor, actualizar-usuario), `fichaMedica` (crear-alumno,
+  actualizar-usuario) y `tituloPrincipal`, `sobreElSalon`, `whatsapp`, `instagram`
+  (guardar-web-salon).
+  - **Descartados, con motivo:** el slug, el código de invitación, password y refreshToken, la firma
+    del check-in, `nombreOriginal` y `tipoMime` del comprobante, `cuerpoHtml`, las credenciales SMTP y
+    los emails, `tarifaPorHora`, las fechas, las URLs y las claves de push.
+  - `recortado-en-los-dto.spec.ts`: **una fila por campo** contra el `ValidationPipe` real (75 tests);
+    **74 de 75 en rojo** antes de poner los decoradores. e2e: una sala « Box 2 » se lee «Box 2», y una
+    de solo espacios da 400 sin crear nada.
+- **T2 — `idDelPerfilDelActor(cliente, actor, siNoTiene)`** en `common/perfil-del-actor.ts`. Los 7
+  servicios (check-in, comprobantes, `liquidacion.datos`, lista de espera, mi calendario, mis clases y
+  push) **conservan el nombre y la firma de su método** y sólo cambian el cuerpo, cada uno con su
+  texto de 404 letra por letra. `mi-pack` queda fuera (trae el perfil **con** su pack), con un
+  comentario que lo dice.
+
+## Las mutaciones
+
+| Tarea    | Qué se cambió                                                      | Resultado                                                                               |
+| -------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| T1       | `trimStart()` en vez de `trim()`                                   | **rojo**, 39 tests                                                                      |
+| T1       | sin `@Recortado()` en `CrearVacacionDto.motivo`                    | **rojo** sus 2 filas                                                                    |
+| T2       | `throw` con un texto fijo en `perfil-del-actor.ts`                 | rojo el spec de la función y 2 e2e (`profesor`, `checkin`); **ningún spec de servicio** |
+| Revisión | el mismo texto fijo (`'MUTACION'`), con los 5 tests nuevos puestos | **rojo** el spec de la función **y los 5 nuevos**, uno por servicio                     |
+| Menores  | un texto fijo en `perfil-del-actor.ts`                             | **rojo** el nuevo de check-in y el «sin perfil» de la función (con el texto de prueba)  |
+| Menores  | `mi-calendario` le pasa `this.prisma.db` a la función              | **rojo** el nuevo «consulta el cliente que recibe, no el db del servicio»               |
+
+## La revisión de calidad
+
+- **El hueco de la mutación de la T2: ningún spec de servicio comparaba el texto del 404.** Los de
+  `mi-calendario`, `mis-clases`, `comprobantes` y `lista-espera` sólo hacían
+  `rejects.toBeInstanceOf(NotFoundException)`, y `push` ni siquiera tenía un camino «sin perfil». Se
+  agregó **un test por servicio**, al lado del de «sin perfil» (sin tocar las afirmaciones que ya
+  estaban), que compara el mensaje **entero** con `rejects.toHaveProperty('message', …)`:
+  - `mi-calendario.service.spec.ts` › `MiCalendarioService.misClases` › «el 404 sin perfil lleva el
+    texto de este servicio, entero»;
+  - `mis-clases.service.spec.ts` › `MisClasesService.misClases` › ídem;
+  - `comprobantes.service.spec.ts` › `ComprobantesService.crear` › ídem;
+  - `lista-espera.service.spec.ts` › `ListaEsperaService.anotarse` › ídem;
+  - `push.service.spec.ts` › `PushService.desuscribir` › «un usuario sin perfil recibe el 404 de este
+    servicio, con su texto entero» (un admin que el doble no conoce; además no borra nada).
+
+  `push` dice «Este usuario no tiene perfil», así que la mutación de comprobación usó **otro** texto
+  (`'MUTACION'`): un texto fijo igual al de push habría dejado verde justo ese test.
+
+- **Correcciones menores de la revisión:**
+  - `checkin.service.spec.ts`: el sexto servicio sin test del texto; ahora «el 404 sin perfil dice que
+    no hay reservas que marcar» compara el mensaje entero.
+  - `perfil-del-actor.spec.ts`: el texto de prueba era el de mi calendario; ahora es
+    `'texto-del-404-de-prueba'`, que no usa ningún servicio, así una función que ignore `siNoTiene` no
+    puede pasar. Se borró «usa el cliente que recibe y ningún otro», que no podía fallar por lo que
+    prometía (el doble era el único cliente); lo reemplaza en `mi-calendario.service.spec.ts` ›
+    `MiCalendarioService.perfilDelActor` un test que pasa un `txFalso` distinto del `db` del servicio
+    y comprueba que la consulta fue por `txFalso` y no por `db`.
+  - `recortado-en-los-dto.spec.ts`: el `toHaveLength(37)` se llama y se comenta como lo que es, un
+    **candado del número de filas**; no detecta un campo nuevo sin decorador (eso lo cubre la regla del
+    README, «Cómo se suma un campo nuevo»). El docblock ya no dice que un nombre con espacios «no se
+    encuentra al buscarlo» (la API no busca por nombre): se muestra con sus espacios y se ordena mal.
+
+## Fuera del plan
+
+**`stats.service.spec.ts` › «poner a un alumno al dia baja el pendiente estimado sin esperar al TTL»
+ya fallaba antes de la fase.** `fijarEstado` crea la cortesía desde **hoy** (`comienzoDeHoyUtc(ahora)`)
+y el test pedía la caja de **octubre de 2026**: pasaba sólo mientras hoy fuera, a más tardar, octubre
+de 2026 (una cortesía que arranca antes también cubre octubre). Ahora se le pasa `ahora` = 2026-10-15.
+
+**Desvío del spec (§5).** El spec decía que los métodos que devolvían `{ id }` «pasan a usar el id
+directamente». Lo implementado —y lo que pedía el plan— **conserva el nombre y la firma `{ id }`** de
+cada método y cambia sólo el cuerpo, así los llamadores no se tocan. Se corrigió el spec.
+
+## Trampas nuevas
+
+**`@IsNotEmpty()` de class-validator no rechaza `'   '`.** Antes de esta fase un nombre de solo
+espacios pasaba el DTO; ahora el recorte lo deja vacío y da 400. Y en las ediciones (`Actualizar*`),
+`@IsOptional()` sólo deja pasar `null`/`undefined`: `'   '` también da 400.
+
+**Un spec con un mes fijo y un servicio que mira «hoy» es una bomba de tiempo.** El de `stats` pasaba
+sólo mientras hoy fuera, a más tardar, octubre de 2026, y nadie lo vio hasta que cambió el mes.
+
+**`rejects.toBeInstanceOf(NotFoundException)` no dice nada del texto.** Cuando el texto lo pone el
+llamador (como en `idDelPerfilDelActor`), el test del llamador tiene que comparar el mensaje entero.
+
+## Deuda anotada
+
+**Cerrada por esta fase:**
+
+- El recorte de nombres en la API (y de los demás textos libres: 37 campos).
+- La búsqueda del perfil repetida en 8 servicios: 7 la comparten; `mi-pack` queda fuera por diseño.
+
+**Por diseño, ya no es deuda:** `Importe` contra la cadena pelada. Lo que se guarda como `Decimal`
+(precio de un pack, monto de un pago) viaja como texto con dos decimales (`"12500.00"`); lo que la API
+calcula (liquidación, caja) viaja como `Importe`, `{ centavos, texto }`. Ninguna pantalla hace cuentas
+con el texto; el día que haga falta sumar precios o montos en el cliente, se pasan a `Importe`.
+
+**Decisión, no deuda:** un opcional recortado queda `""`, no `null`.
+
+**Nueva de esta fase:**
+
+- **Buscar otros tests con fecha fija** contra servicios que miran «hoy», como el de `stats`. **No se
+  hizo.**
+
+**Sigue (web, de la Fase 17):** las escrituras con `pedir` directo (push y check-in), que ante un 401
+muestran «Unauthorized» y no van al login; las lecturas internas de las fichas que podrían mostrar
+«Unauthorized»; el 403 sin traducir de invitaciones.
+
+**Sigue (grupo D):** la lista de la Fase 13.
+
+## Lo que esta fase NO hace
+
+- Tocar `apps/web` ni `packages/shared`.
+- Cambiar un mensaje de 404 o un texto de validación: siguen letra por letra.
+- Convertir `null` en vez de `""` los opcionales recortados.
+- Buscar otros tests con fecha fija.
+- **Recortar lo ya guardado** (sin backfill): los nombres viejos con espacios siguen así y en los
+  `orderBy nombreCompleto` se ordenan primero. No rompe nada: no hay índices únicos ni búsquedas por
+  nombre.
+
+Comandos: `pnpm --filter @boxadmin/api test`, `… test:e2e`, `… exec tsc --noEmit`, `… build`.
+
+## El checklist a mano (para Cesar)
+
+Dos comprobaciones que **ningún test puede hacer**: no hay navegador en el entorno.
+
+- [ ] Crear una sala con « Box 2 » desde la pantalla (que ya recorta) **y** desde un `curl` con
+      espacios: las dos quedan «Box 2».
+- [ ] Un admin sin perfil que abre «Mis clases» lee el mismo 404 de siempre.

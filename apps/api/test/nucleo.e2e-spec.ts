@@ -124,6 +124,35 @@ describe('Fase 1 — nucleo operativo (e2e)', () => {
 
       await request(servidor).delete(`/salas/${salaId}`).set(auth(gym.adminToken)).expect(409);
     });
+
+    /**
+     * EL NOMBRE SE GUARDA RECORTADO, de punta a punta: el pipe global de la app
+     * de test es el de `main.ts`, y lo que vuelve al listar es lo que quedo en la
+     * base, no lo que se mando.
+     */
+    it('el nombre se guarda sin los espacios de los bordes', async () => {
+      await request(servidor)
+        .post('/salas')
+        .set(auth(gym.adminToken))
+        .send({ nombre: '  Box 2  ' })
+        .expect(201);
+
+      const lista = await request(servidor).get('/salas').set(auth(gym.adminToken)).expect(200);
+
+      expect(lista.body.map((sala: { nombre: string }) => sala.nombre)).toEqual(['Box 2']);
+    });
+
+    it('un nombre de solo espacios da 400 y no crea nada', async () => {
+      await request(servidor)
+        .post('/salas')
+        .set(auth(gym.adminToken))
+        .send({ nombre: '   ' })
+        .expect(400);
+
+      const lista = await request(servidor).get('/salas').set(auth(gym.adminToken)).expect(200);
+
+      expect(lista.body).toEqual([]);
+    });
   });
 
   // 2 — Packs -------------------------------------------------------------

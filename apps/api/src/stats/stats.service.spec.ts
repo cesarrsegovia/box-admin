@@ -753,7 +753,16 @@ describe('StatsService.caja despues de una escritura', () => {
     const antes = await servicio.caja(ACTOR, OCTUBRE);
     expect(antes.pendienteEstimado.centavos).toBe(850_000);
 
-    await pagos.fijarEstado(ACTOR, 'alumno-1', { alDia: true, cubreHasta: '2099-12-31' });
+    // La cortesia arranca HOY (`fijarEstado` usa `comienzoDeHoyUtc(ahora)`): sin
+    // fijar `ahora` en octubre, el test pasaba solo mientras hoy fuera, a mas
+    // tardar, octubre de 2026 (una cortesia que arranca antes tambien cubre
+    // octubre) y la caja de OCTUBRE no veia la cortesia de noviembre.
+    await pagos.fijarEstado(
+      ACTOR,
+      'alumno-1',
+      { alDia: true, cubreHasta: '2099-12-31' },
+      new Date('2026-10-15T09:00:00.000Z'),
+    );
 
     const despues = await servicio.caja(ACTOR, OCTUBRE);
 

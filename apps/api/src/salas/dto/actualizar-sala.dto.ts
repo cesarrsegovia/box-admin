@@ -7,8 +7,10 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 export class ActualizarSalaDto {
+  @Recortado()
   @IsOptional()
   @IsString()
   @IsNotEmpty()

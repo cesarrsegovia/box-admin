@@ -1,5 +1,6 @@
 import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { PATRON_FECHA } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 export class CrearVacacionDto {
   @IsString()
@@ -12,6 +13,7 @@ export class CrearVacacionDto {
   @Matches(PATRON_FECHA, { message: 'hasta debe tener formato YYYY-MM-DD' })
   hasta!: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(200)

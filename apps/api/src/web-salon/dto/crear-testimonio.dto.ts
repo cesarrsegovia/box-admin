@@ -1,4 +1,5 @@
 import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /**
  * Tope del `orden`. No es una restriccion del dominio: es que la columna es un
@@ -8,6 +9,7 @@ import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'cl
 const MAXIMO_ORDEN = 100_000;
 
 export class CrearTestimonioDto {
+  @Recortado()
   @IsString()
   @IsNotEmpty()
   @MaxLength(80)
@@ -20,6 +22,7 @@ export class CrearTestimonioDto {
    * dato original— ; la garantia la da que la landing nunca use
    * `dangerouslySetInnerHTML`.
    */
+  @Recortado()
   @IsString()
   @IsNotEmpty()
   @MaxLength(1000)

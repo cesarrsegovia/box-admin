@@ -146,6 +146,16 @@ describe('ListaEsperaService.anotarse', () => {
 
     await expect(servicio.anotarse(ALUMNO, 'turno-1')).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('el 404 sin perfil lleva el texto de este servicio, entero', async () => {
+    const { servicio, db } = crearServicio();
+    db.perfil.findFirst.mockResolvedValue(null);
+
+    await expect(servicio.anotarse(ALUMNO, 'turno-1')).rejects.toHaveProperty(
+      'message',
+      'Este usuario no tiene perfil de alumno',
+    );
+  });
 });
 
 describe('ListaEsperaService.salirse', () => {

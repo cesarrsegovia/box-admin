@@ -10,12 +10,14 @@ import {
   Min,
 } from 'class-validator';
 import type { TipoPack } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /** Hasta 8 enteros y como mucho 2 decimales: encaja en DECIMAL(10, 2). */
 const PATRON_PRECIO = /^\d{1,8}(\.\d{1,2})?$/;
 
 /** Todos los campos son opcionales: un PATCH toca solo lo que trae. */
 export class ActualizarPackDto {
+  @Recortado()
   @IsOptional()
   @IsString()
   @IsNotEmpty()

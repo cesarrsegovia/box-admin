@@ -8,6 +8,7 @@ import {
   type JwtPayload,
 } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
+import { idDelPerfilDelActor } from '../common/perfil-del-actor';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 import { CacheDeStats } from '../stats/cache-de-stats';
 import type { PasarListaDto } from './dto/pasar-lista.dto';
@@ -56,17 +57,13 @@ export class MisClasesService {
     actor: JwtPayload,
     cliente: ClientePrismaTx = this.prisma.db,
   ): Promise<{ id: string }> {
-    const perfil = await cliente.perfil.findFirst({
-      where: { usuarioId: actor.sub },
-      select: { id: true },
-    });
-    if (!perfil) {
-      throw new NotFoundException(
+    return {
+      id: await idDelPerfilDelActor(
+        cliente,
+        actor,
         'Este usuario no tiene perfil de profesora, asi que no tiene clases propias.',
-      );
-    }
-
-    return perfil;
+      ),
+    };
   }
 
   async misClases(actor: JwtPayload, rango: RangoDeClases): Promise<ClaseDelProfesor[]> {

@@ -10,6 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /**
  * El `codigo` NO se puede cambiar: es una credencial ya repartida, y rotarla
@@ -17,6 +18,7 @@ import {
  * clave y se crea otra.
  */
 export class ActualizarInvitacionDto {
+  @Recortado()
   @IsOptional()
   @IsString()
   @IsNotEmpty()

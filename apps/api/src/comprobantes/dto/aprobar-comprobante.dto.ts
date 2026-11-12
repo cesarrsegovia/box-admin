@@ -1,5 +1,6 @@
 import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { PATRON_FECHA, type MetodoPago } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /** Hasta 8 enteros y como mucho 2 decimales: encaja en DECIMAL(10, 2). */
 const PATRON_MONTO = /^\d{1,8}(\.\d{1,2})?$/;
@@ -27,6 +28,7 @@ export class AprobarComprobanteDto {
   @IsIn(METODOS)
   metodo?: MetodoPago;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(500)

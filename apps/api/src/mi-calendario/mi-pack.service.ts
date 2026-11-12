@@ -27,6 +27,8 @@ export class MiPackService {
    * pack MENSUAL sale el mes en curso.
    */
   async deActor(actor: JwtPayload, ahora: Date = new Date()): Promise<MiPackPublico> {
+    // No usa `idDelPerfilDelActor` (`common/perfil-del-actor.ts`): necesita el
+    // perfil CON su pack para calcular el tope, y esa funcion trae solo el id.
     const perfil = await this.prisma.db.perfil.findFirst({
       where: { usuarioId: actor.sub },
       include: { pack: true },

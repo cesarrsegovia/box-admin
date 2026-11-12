@@ -1,4 +1,5 @@
 import { IsBoolean, IsHexColor, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /**
  * El PUT es un REEMPLAZO COMPLETO, no un parche.
@@ -30,16 +31,19 @@ export class GuardarWebSalonDto {
   @IsHexColor()
   colorSecundario?: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(120)
   tituloPrincipal?: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(200)
   tagline?: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(5000)
@@ -64,11 +68,13 @@ export class GuardarWebSalonDto {
   @IsUrl({ protocols: ['https'], require_protocol: true })
   imagenPrincipalUrl?: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(40)
   whatsapp?: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(120)

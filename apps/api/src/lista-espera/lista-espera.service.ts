@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type { EntradaListaEspera, JwtPayload } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
+import { idDelPerfilDelActor } from '../common/perfil-del-actor';
 import { DisponibilidadService } from '../disponibilidad/disponibilidad.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 
@@ -210,13 +211,13 @@ export class ListaEsperaService {
   }
 
   private async perfilDelActor(actor: JwtPayload): Promise<{ id: string }> {
-    const perfil = await this.prisma.db.perfil.findFirst({
-      where: { usuarioId: actor.sub },
-      select: { id: true },
-    });
-    if (!perfil) throw new NotFoundException('Este usuario no tiene perfil de alumno');
-
-    return perfil;
+    return {
+      id: await idDelPerfilDelActor(
+        this.prisma.db,
+        actor,
+        'Este usuario no tiene perfil de alumno',
+      ),
+    };
   }
 
   /** La posicion se deriva del orden: 1 = el proximo en entrar. */

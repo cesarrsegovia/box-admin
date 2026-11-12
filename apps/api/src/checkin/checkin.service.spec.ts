@@ -352,6 +352,21 @@ describe('CheckinService.marcarPresente, los rechazos', () => {
     );
   });
 
+  /**
+   * El texto del 404 es el de check-in, letra por letra: lo pone este servicio
+   * y no la funcion compartida.
+   */
+  it('el 404 sin perfil dice que no hay reservas que marcar', async () => {
+    const { servicio } = crearServicio({ perfil: null });
+
+    await expect(
+      servicio.marcarPresente(ACTOR, FIRMA, RASTRO, A_LAS_18_DE_ALLA),
+    ).rejects.toHaveProperty(
+      'message',
+      'Este usuario no tiene perfil de alumno, asi que no tiene reservas que marcar.',
+    );
+  });
+
   it('con la primera clase ya marcada se marca la segunda, no se rechaza', async () => {
     // El orden del algoritmo visto desde el service: `yaMarcada` se mira
     // DESPUES de elegir. Dos clases pegadas y ventana de 45 minutos.

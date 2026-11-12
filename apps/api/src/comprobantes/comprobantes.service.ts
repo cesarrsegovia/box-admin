@@ -17,6 +17,7 @@ import {
 } from '@boxadmin/shared';
 import { ALMACEN_DE_ARCHIVOS, type AlmacenDeArchivos } from '../almacen/almacen.interface';
 import { HistorialService } from '../common/historial/historial.service';
+import { idDelPerfilDelActor } from '../common/perfil-del-actor';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 import { CacheDeStats } from '../stats/cache-de-stats';
 import type { AprobarComprobanteDto } from './dto/aprobar-comprobante.dto';
@@ -301,13 +302,13 @@ export class ComprobantesService {
   }
 
   private async perfilDelActor(actor: JwtPayload): Promise<{ id: string }> {
-    const perfil = await this.prisma.db.perfil.findFirst({
-      where: { usuarioId: actor.sub },
-      select: { id: true },
-    });
-    if (!perfil) throw new NotFoundException('Este usuario no tiene perfil de alumno');
-
-    return perfil;
+    return {
+      id: await idDelPerfilDelActor(
+        this.prisma.db,
+        actor,
+        'Este usuario no tiene perfil de alumno',
+      ),
+    };
   }
 
   /** Sin archivo no hay nada que firmar, y firmar igualmente daria un 404 al abrirlo. */

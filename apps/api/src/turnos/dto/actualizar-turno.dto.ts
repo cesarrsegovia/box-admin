@@ -1,11 +1,13 @@
 import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 import { PATRON_FECHA, PATRON_HORA } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /**
  * Sin `salaId` a proposito: mover un turno de sala invalidaria los accesos de
  * quienes ya reservaron. Si hace falta, se borra el turno y se recrea.
  */
 export class ActualizarTurnoDto {
+  @Recortado()
   @IsOptional()
   @IsString()
   @IsNotEmpty()

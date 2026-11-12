@@ -115,6 +115,16 @@ describe('MisClasesService.misClases', () => {
 
     await expect(servicio.misClases(ACTOR, RANGO)).rejects.toThrow(NotFoundException);
   });
+
+  it('el 404 sin perfil lleva el texto de este servicio, entero', async () => {
+    const db = prismaFalso({ perfil: null });
+    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
+
+    await expect(servicio.misClases(ACTOR, RANGO)).rejects.toHaveProperty(
+      'message',
+      'Este usuario no tiene perfil de profesora, asi que no tiene clases propias.',
+    );
+  });
 });
 
 describe('MisClasesService.alumnos', () => {

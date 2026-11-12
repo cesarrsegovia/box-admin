@@ -1,4 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, Length, MaxLength, MinLength } from 'class-validator';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /**
  * El DTO NO acepta `rol`, y el ValidationPipe global corre con
@@ -17,6 +18,7 @@ export class AutoRegistroDto {
   @Length(32, 32)
   codigo!: string;
 
+  @Recortado()
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)

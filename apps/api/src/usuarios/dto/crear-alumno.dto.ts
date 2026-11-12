@@ -11,8 +11,10 @@ import {
   Min,
 } from 'class-validator';
 import { PATRON_FECHA } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 export class CrearAlumnoDto {
+  @Recortado()
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
@@ -22,11 +24,13 @@ export class CrearAlumnoDto {
   @MaxLength(180)
   email!: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(40)
   telefono?: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(2000)

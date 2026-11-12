@@ -1,6 +1,8 @@
 import { IsString, Length, Matches } from 'class-validator';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 export class CreateTenantDto {
+  @Recortado()
   @IsString()
   @Length(2, 120)
   nombre!: string;

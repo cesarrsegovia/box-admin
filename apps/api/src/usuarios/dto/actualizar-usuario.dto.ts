@@ -1,5 +1,6 @@
 import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 import { PATRON_FECHA } from '@boxadmin/shared';
+import { Recortado } from '../../common/decorators/recortado.decorator';
 
 /**
  * Edicion de perfil. Acepta los campos de alumno, pero el service los rechaza
@@ -7,17 +8,20 @@ import { PATRON_FECHA } from '@boxadmin/shared';
  * sola, y la separacion que importa —la del alta— ya esta hecha en dos DTOs.
  */
 export class ActualizarUsuarioDto {
+  @Recortado()
   @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
   nombreCompleto?: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(40)
   telefono?: string;
 
+  @Recortado()
   @IsOptional()
   @IsString()
   @MaxLength(2000)

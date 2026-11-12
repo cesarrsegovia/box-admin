@@ -77,6 +77,25 @@ function crearServicio() {
   };
 }
 
+describe('MiCalendarioService.perfilDelActor', () => {
+  /**
+   * DENTRO DE UNA TRANSACCION, EL PERFIL SE LEE CON EL CLIENTE DE LA
+   * TRANSACCION. El cliente falso es otro objeto que el `db` del servicio: si
+   * el servicio consultara `this.prisma.db`, el contador de `db` subiria y el
+   * de `txFalso` quedaria en cero.
+   */
+  it('consulta el cliente que recibe, no el db del servicio', async () => {
+    const { servicio, db } = crearServicio();
+    const txFalso = { perfil: { findFirst: jest.fn().mockResolvedValue({ id: 'perfil-tx' }) } };
+
+    const perfil = await servicio.perfilDelActor(ALUMNO, txFalso as never);
+
+    expect(perfil).toEqual({ id: 'perfil-tx' });
+    expect(txFalso.perfil.findFirst).toHaveBeenCalledTimes(1);
+    expect(db.perfil.findFirst).not.toHaveBeenCalled();
+  });
+});
+
 describe('MiCalendarioService.misClases', () => {
   it('devuelve las reservas activas del alumno con los datos del turno', async () => {
     const { servicio } = crearServicio();
@@ -149,6 +168,18 @@ describe('MiCalendarioService.misClases', () => {
     await expect(
       servicio.misClases(ALUMNO, { desde: '2099-10-01', hasta: '2099-10-31' }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('el 404 sin perfil lleva el texto de este servicio, entero', async () => {
+    const { servicio, db } = crearServicio();
+    db.perfil.findFirst.mockResolvedValue(null);
+
+    await expect(
+      servicio.misClases(ALUMNO, { desde: '2099-10-01', hasta: '2099-10-31' }),
+    ).rejects.toHaveProperty(
+      'message',
+      'Este usuario no tiene perfil de alumno, asi que no tiene calendario propio.',
+    );
   });
 });
 

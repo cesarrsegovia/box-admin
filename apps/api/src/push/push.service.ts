@@ -3,10 +3,10 @@ import {
   Inject,
   Injectable,
   Logger,
-  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { JwtPayload } from '@boxadmin/shared';
+import { idDelPerfilDelActor } from '../common/perfil-del-actor';
 import { ENVIOS_PUSH, type EnviosPush, type MensajePush } from '../comunicacion/envios.interface';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 import type { SuscribirDto } from './dto/suscribir.dto';
@@ -155,12 +155,6 @@ export class PushService {
   }
 
   private async perfilDelActor(actor: JwtPayload): Promise<{ id: string }> {
-    const perfil = await this.prisma.db.perfil.findFirst({
-      where: { usuarioId: actor.sub },
-      select: { id: true },
-    });
-    if (!perfil) throw new NotFoundException('Este usuario no tiene perfil');
-
-    return perfil;
+    return { id: await idDelPerfilDelActor(this.prisma.db, actor, 'Este usuario no tiene perfil') };
   }
 }
