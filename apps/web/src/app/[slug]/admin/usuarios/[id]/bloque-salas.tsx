@@ -6,7 +6,7 @@ import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { useSalas } from '@/hooks/use-catalogos';
 import { useActualizarSalas } from '@/hooks/use-usuarios';
-import { mensajeDeFallo } from './errores';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 
 /**
  * Las salas de la persona. `PATCH /usuarios/:id/salas`.

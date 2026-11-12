@@ -4451,3 +4451,152 @@ Ocho comprobaciones que **ningún test puede hacer**: no hay navegador en el ent
 - [ ] **Con lector de pantalla o mirando la pestaña**: al pasar de «Mis clases» a «Mi liquidación» **el
       título cambia**.
 - [ ] **Editar una rutina y cancelar**: el foco vuelve a «Editar».
+
+## Apéndice (2026-10-30): `GET /packs/:id` pasa a «por diseño»
+
+Cesar lo decidió después de commitear la fase (`e091d67`). Se miró dónde podría usarse y **no hay
+pantalla que resuelva un pack suelto**: la ficha del alumno (`bloque-datos.tsx`), las invitaciones y
+Análisis cargan el catálogo entero (`usePacks`) porque lo necesitan para sus selects, y la edición de
+packs es un panel dentro de `/admin/configuracion/packs`, no una página con id.
+
+- La tabla del cruce queda con **7 rutas sin pantalla, todas por diseño**: `GET /packs/:id` entra como
+  «endpoint sin `@Roles` para resolver un `packId` suelto; ninguna pantalla lo necesita hoy — **por
+  diseño**». **Cero de negocio sin pantalla**, que era lo que pedía la spec.
+- **`usePack` se deja**, con sus tests: borrarlo obligaba a tocar ocho puntos de `use-dinero.spec.tsx`
+  y la invalidación `['pack', id]` de las tres escrituras de packs, sin ganar nada.
+- Sale de la deuda de la Fase 15 el punto «`GET /packs/:id` sin pantalla, con hook».
+- Sin cambios de código: sólo este apéndice y el README.
+
+# Progreso Fase 16 — Pulido
+
+**Spec:** `docs/superpowers/specs/2026-10-30-fase16-pulido.md`
+**Plan:** `docs/superpowers/plans/2026-10-30-fase16-pulido.md` (5 tareas)
+
+Cuatro puntos de la deuda de la Fase 15 que se notan al usar la app o que traban lo que viene. Ninguna
+función nueva, **sólo `apps/web`**: `apps/api` y `packages/shared` no se tocaron
+(`git status --short apps/api packages/shared` da vacío).
+
+- [x] T1 — Los helpers de error y los controles salen de la ficha del usuario
+- [x] T2 — La liquidación compartida recibe una `voz`
+- [x] T3 — El 401 de cualquier escritura manda al login (global)
+- [x] T4 — El nombre de un día fijo se recorta
+- [x] T5 — Verificación, README y tracker
+
+## Los números
+
+Punto de partida (Fase 15): web **1970 / 91**.
+
+| Medido al cierre      |                                                                            |
+| --------------------- | -------------------------------------------------------------------------- |
+| `apps/web`            | **2004 tests / 94 suites** (+34 tests, +3 suites), verde                   |
+| `tsc --noEmit`        | limpio                                                                     |
+| `build`               | OK                                                                         |
+| `MUTACION TEMPORAL`   | `grep -rn "MUTACION TEMPORAL" apps` da **cero**                            |
+| Imports de la ficha   | el grep de `usuarios/[id]/errores` y `usuarios/[id]/controles` da **cero** |
+| `apps/api` y `shared` | sin cambios                                                                |
+
+## Lo que la fase hace
+
+- **T1 — Mudanza.** `usuarios/[id]/errores.ts` pasó a `lib/errores-de-api.ts` y
+  `usuarios/[id]/controles.tsx` a `componentes/controles.tsx`: **23 importadores**, **sin puente** (no
+  queda reexportación en el sitio viejo). _Revisión:_ el orden de imports de 7 archivos, corregido.
+- **T2 — La `voz`.** `LiquidacionLeida` recibe `voz: 'admin' | 'propia'`, **obligatoria**. La profesora
+  lee «Tu liquidación, …», «Se calcula con las horas dictadas.» y «No tenés ninguna franja…»; su
+  nombre no aparece en ningún lado. El admin, igual que antes.
+- **T3 — El 401, global.** `crearClienteDeDatos(ir, donde)` en `lib/query.tsx` con un
+  `MutationCache.onError` que llama a `lib/sesion-caducada.ts` (`destinoSiCaducoLaSesion`: toma el slug
+  del primer segmento; **sin slug, o ya en el login, no navega**). Navega con `window.location.assign`
+  y una bandera `saliendo` **por cliente** para que sea **una sola vez**. `mensajeDeFallo` ante un 401
+  dice «Tu sesión caducó. Te llevamos al login.»; **sólo donde el fallo pasa por él**: las
+  escrituras que muestran el `message` crudo («Unauthorized») están listadas en la deuda nueva.
+  - **Desvío:** `donde` es inyectable, porque el guardián de consola prohíbe cambiar la URL del
+    documento en un test.
+  - **Segunda pantalla que navegaba por su cuenta: «Pasar lista»**
+    (`(profesor)/mis-clases/[turnoId]`). La premisa de la spec («sólo Nuevo turno») estaba mal; la
+    encontró la revisión y se corrigió igual que Nuevo turno. Su fallo al guardar usa ahora
+    `mensajeDeFallo(…, 'PROFESOR')`, con un efecto de pasada: **el 403 se dice en castellano**.
+  - `admin/calendario/publicar.tsx` cambió el texto de su 401 («Volvé a entrar» → «Te llevamos al
+    login.»).
+- **T4 — El `.trim()`.** `esquemaBase.nombre` (`usuarios/[id]/dias-fijos.ts`) recorta **antes** del
+  `.min(1)`: un nombre de sólo espacios no pasa. «Nuevo turno» ya recortaba desde la Fase 15 y sólo
+  ganó tests.
+
+## Las mutaciones
+
+| Tarea | Qué se agregó                                   | Resultado                                       | Cómo se cerró                                   |
+| ----- | ----------------------------------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| T1    | un puente en el sitio viejo + un import viejo   | **lo detectó el grep**, no un test              | la red de esta tarea **es el grep**, no un test |
+| T2    | `title` con el nombre en el `h2`                | **rojo**                                        | —                                               |
+| T2    | `title` con el nombre en el aviso del mes vacío | **pasó en verde** (lo vio la revisión)          | test nuevo que mira ese aviso; ahora **rojo**   |
+| T3    | un `QueryCache` con el mismo `onError`          | **rojo** en «una LECTURA con 401 no lo dispara» | —                                               |
+| T4    | un cambio en `cambiosEntre`                     | **5 rojos**                                     | —                                               |
+
+⚠️ T2, segunda fila: es el mismo mecanismo (el nombre en un `title`) en un segundo sitio; lo encontró la
+revisión y se cerró **con un test**, no con una nota.
+
+## La revisión de calidad de cada tarea
+
+- **T1:** el orden de imports en 7 archivos.
+- **T2:** el agujero del `title` en el aviso del mes vacío (arriba).
+- **T3:** la **segunda pantalla** que navegaba sola ante el 401 de una escritura («Pasar lista»). La
+  re-revisión notó que el único test de 401 de esa pantalla era el de la escritura, así que **la
+  LECTURA quedaba sin test**: se agregó.
+
+## Trampas nuevas
+
+**`node_modules/.bin/prettier` desde PowerShell no imprime nada.** Parece que pasó y no corrió. Usar
+`node node_modules/prettier/bin/prettier.cjs --check <archivo>`.
+
+**El guardián de consola prohíbe cambiar la URL del documento en un test**, y `window.location.assign`
+lo hace. Por eso `crearClienteDeDatos` recibe `donde` por parámetro.
+
+## Deuda anotada
+
+**Cerrada por esta fase:**
+
+- Los textos en tercera persona para la profesora.
+- El 401 de las escrituras (ahora **global**, no pantalla por pantalla).
+- El `.trim()` del nombre de rutina.
+- `turnos/nuevo` importando de `usuarios/[id]/`.
+
+**Nueva de esta fase:**
+
+- **Recortar nombres en salas, packs, invitaciones y en la API.** Hoy sólo se recorta el de las rutinas
+  y el de «Nuevo turno».
+- **Dos grafías del mismo mensaje conviven en toda la app**: todas las lecturas dicen «Tu sesion
+  caduco…» **sin tildes** y las escrituras lo dicen **con tildes** («Tu sesión caducó…»).
+- **Escrituras que siguen mostrando el `message` crudo («Unauthorized») el instante antes de salir**,
+  aunque navegan bien al login: no pasan por `mensajeDeFallo`.
+  - `(alumno)/comprobantes/subir-comprobante.tsx:25`
+  - `admin/configuracion/checkin/page.tsx:258`
+  - `admin/configuracion/email/page.tsx:650`
+  - `admin/configuracion/email/plantillas.tsx:477`
+  - `admin/configuracion/web/page.tsx:592`
+  - `admin/configuracion/web/listas.tsx:251,296,403`
+  - `admin/configuracion/page.tsx:213`
+- **Los valores por defecto de `ir` y `donde` en `crearClienteDeDatos` no tienen test**: no se puede sin
+  mover la URL del documento.
+
+**Sigue:** `SelectorDeMes` duplicado; el tipo `Mes` en `hooks/use-stats`; la copia de nombres de mes del
+calendario; la búsqueda del perfil repetida en 8 servicios de la API; `Importe` contra la cadena pelada;
+y la lista vieja de la Fase 13 (`navigator.clipboard`, el contexto de navegación anidado, los atributos
+de los descendientes del `<body>`, partir el dato en trozos y el `.value` de la limpieza de un
+`useEffect`).
+
+## Lo que esta fase NO hace
+
+- Recortar nombres de salas, packs e invitaciones, ni en la API.
+- Tocar el 401 de las **lecturas**: cada pantalla sigue resolviendo la suya.
+- Tocar `apps/api` ni `packages/shared`.
+
+Comandos: `pnpm --filter @boxadmin/web test`, `… exec tsc --noEmit`, `… build`.
+
+## El checklist a mano (para Cesar)
+
+Cuatro comprobaciones que **ningún test puede hacer**: no hay navegador en el entorno.
+
+- [ ] Con la sesión vencida (borrar la cookie), **guardar** algo en la ficha de un alumno: va al
+      login, y al volver a entrar aparece la ficha.
+- [ ] **Pasar lista** con la sesión vencida: guardar la asistencia va al login **una sola vez**.
+- [ ] Como profesora, «Mi liquidación» dice «Tu liquidación, …» y no muestra su nombre.
+- [ ] Un día fijo con nombre « Funcional » se guarda como «Funcional».

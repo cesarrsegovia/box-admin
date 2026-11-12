@@ -208,15 +208,23 @@ interface Relleno {
   profesora?: string;
   /** `null` = no se elige ninguna. */
   sala?: string | null;
+  nombre?: string;
 }
 
 /** Rellena todo lo obligatorio y envia. */
 async function completarYEnviar(
   sesion: ReturnType<typeof userEvent.setup>,
-  { inicio = '08:00', fin = '09:00', cupo = '12', profesora, sala = 'Sala Chica' }: Relleno = {},
+  {
+    inicio = '08:00',
+    fin = '09:00',
+    cupo = '12',
+    profesora,
+    sala = 'Sala Chica',
+    nombre = 'Funcional',
+  }: Relleno = {},
 ): Promise<void> {
   if (sala !== null) await elegir(sesion, 'Sala', sala);
-  await escribir(sesion, 'Nombre de la clase', 'Funcional');
+  await escribir(sesion, 'Nombre de la clase', nombre);
   await escribir(sesion, 'Fecha', '2026-11-03');
   await escribir(sesion, 'Hora de inicio', inicio);
   await escribir(sesion, 'Hora de fin', fin);
@@ -341,6 +349,23 @@ describe('crear un turno a mano: lo que viaja', () => {
 // ---------------------------------------------------------------------------
 
 describe('crear un turno a mano: validacion', () => {
+  it('el nombre viaja recortado', async () => {
+    const sesion = montar();
+    await completarYEnviar(sesion, { nombre: '  Funcional  ' });
+
+    expect(cuerpoEnviado().nombre).toBe('Funcional');
+  });
+
+  it('un nombre de solo espacios no se envia, y se dice', async () => {
+    const sesion = montar();
+    await completarYEnviar(sesion, { nombre: '   ' });
+
+    expect(huboEscritura()).toBe(false);
+    expect(screen.getByLabelText('Nombre de la clase')).toHaveAccessibleDescription(
+      'El turno necesita un nombre',
+    );
+  });
+
   it('fin antes que inicio no se envia, y se dice', async () => {
     const sesion = montar();
     await completarYEnviar(sesion, { inicio: '10:00', fin: '09:00' });
@@ -455,14 +480,16 @@ describe('crear un turno a mano: cuando algo falla', () => {
     expect(screen.queryByText(/no pudimos traer las profesoras/i)).toBeNull();
   });
 
-  it('un 401 en el POST manda al login y no enseña el mensaje crudo', async () => {
+  it('un 401 en el POST no navega por su cuenta y dice que la sesion caduco', async () => {
+    // La navegacion la hace el cliente de datos (`lib/query.spec.tsx`), que este
+    // spec no monta. Si la pantalla empujara tambien, serian dos entradas en el
+    // historial.
     const sesion = montar({ error: new ErrorDeApi('Unauthorized', 401) });
     await completarYEnviar(sesion);
 
-    expect(empujar).toHaveBeenCalledTimes(1);
-    expect(empujar.mock.calls[0]?.[0]).toContain('/mi-gym/login');
+    expect(empujar).not.toHaveBeenCalled();
     expect(screen.queryByText('Unauthorized')).toBeNull();
-    expect(screen.getByText(/tu sesion caduco/i)).toBeInTheDocument();
+    expect(screen.getByText('Tu sesión caducó. Te llevamos al login.')).toBeInTheDocument();
   });
 
   it('un 401 SOLO al cargar las salas manda al login, UNA sola vez', async () => {

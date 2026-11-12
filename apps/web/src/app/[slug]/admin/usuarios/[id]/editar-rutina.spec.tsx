@@ -214,6 +214,39 @@ describe('editar un dia fijo', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('No hay cambios para guardar.');
   });
 
+  it('un nombre de solo espacios no se envia y dice que falta', async () => {
+    montar(RUTINA_CON_FIN);
+
+    await escribir('Nombre del turno', '   ');
+    await guardar();
+
+    expect(pedirEspia).not.toHaveBeenCalled();
+    expect(formulario().getByLabelText('Nombre del turno')).toHaveAccessibleDescription(
+      'El turno necesita un nombre',
+    );
+  });
+
+  it('el nombre viaja recortado', async () => {
+    montar(RUTINA_CON_FIN);
+
+    await escribir('Nombre del turno', '  Funcional  ');
+    await guardar();
+
+    expect(escrituras()).toEqual([
+      ['/rutinas/r-con-fin', { metodo: 'PATCH', cuerpo: { nombre: 'Funcional' } }],
+    ]);
+  });
+
+  it('agregarle espacios al nombre no es un cambio', async () => {
+    montar(RUTINA_CON_FIN);
+
+    await escribir('Nombre del turno', ' Pilates-Marcador ');
+    await guardar();
+
+    expect(pedirEspia).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('No hay cambios para guardar.');
+  });
+
   it('el dia viaja como numero', async () => {
     montar(RUTINA_CON_FIN);
 

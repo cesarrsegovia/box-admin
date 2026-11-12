@@ -2,9 +2,10 @@
  * LA VISTA DE UNA LIQUIDACION, compartida.
  *
  * La montan Analisis (`admin/analisis/liquidacion.tsx`) y, desde la Task 3 de
- * la Fase 15, `mi-liquidacion` de la profesora. LA UNICA DIFERENCIA entre las
- * dos es el aviso de minutos sin tarifa: el admin puede ir a configurarla y la
- * profesora no, asi que lo pone quien monta (`avisoSinTarifa`).
+ * la Fase 15, `mi-liquidacion` de la profesora. DIFIEREN EN DOS COSAS: el aviso
+ * de minutos sin tarifa —el admin puede ir a configurarla y la profesora no,
+ * asi que lo pone quien monta (`avisoSinTarifa`)— y la voz (`voz`): a quien se
+ * le habla en el encabezado, la nota de «A pagar» y el mes vacio.
  *
  * No importa nada de `app/`: ninguna area importa de otra. Sin `use client`
  * por lo mismo que `tabla.tsx`: no tiene hooks ni estado y quien lo monta ya
@@ -168,6 +169,36 @@ function Horas({ liquidacion }: { liquidacion: LiquidacionProfesor }) {
 }
 
 /**
+ * QUIEN LEE. El admin lee la liquidacion de otra persona; la profesora, la
+ * suya. Los numeros y la tabla son los mismos: cambian el encabezado, la nota
+ * de «A pagar» y el mes vacio. Sin valor por defecto a proposito: cada pantalla
+ * tiene que decir cual es la suya.
+ */
+export type VozDeLiquidacion = 'admin' | 'propia';
+
+const TEXTOS: Record<
+  VozDeLiquidacion,
+  {
+    encabezado: (nombre: string, mes: string) => string;
+    notaAPagar: string;
+    vacio: (nombre: string, mes: string) => string;
+  }
+> = {
+  admin: {
+    encabezado: (nombre, mes) => `La liquidación de ${nombre}, ${mes}`,
+    notaAPagar: 'Lo calcula el servidor. Hoy es lo dictado.',
+    vacio: (nombre, mes) =>
+      `${nombre} no tiene ninguna franja en ${mes}: ni horarios contratados ni clases dadas.`,
+  },
+  propia: {
+    encabezado: (_nombre, mes) => `Tu liquidación, ${mes}`,
+    notaAPagar: 'Se calcula con las horas dictadas.',
+    vacio: (_nombre, mes) =>
+      `No tenés ninguna franja en ${mes}: ni horarios contratados ni clases dadas.`,
+  },
+};
+
+/**
  * La liquidacion ya leida.
  *
  * EL NOMBRE Y EL MES SALEN DE LA RESPUESTA y no del selector: pintar lo que
@@ -176,11 +207,14 @@ function Horas({ liquidacion }: { liquidacion: LiquidacionProfesor }) {
 export function LiquidacionLeida({
   liquidacion,
   avisoSinTarifa,
+  voz,
 }: {
   liquidacion: LiquidacionProfesor;
+  /** Quien lee: ver `VozDeLiquidacion`. */
+  voz: VozDeLiquidacion;
   /**
-   * Lo que se dice cuando hay minutos sin tarifa. Es LA UNICA diferencia
-   * entre el admin —que puede ir a configurarla— y la profesora —que no—.
+   * Lo que se dice cuando hay minutos sin tarifa: lo pone quien monta, porque
+   * el admin puede ir a configurarla y la profesora no.
    * Se llama solo con minutos > 0: la condicion es de aqui y no de quien
    * llama, para que ninguna de las dos pantallas pueda olvidarla.
    */
@@ -188,11 +222,12 @@ export function LiquidacionLeida({
 }) {
   const { importes } = liquidacion;
   const mes = textoDelMes(liquidacion);
+  const textos = TEXTOS[voz];
 
   return (
     <>
       <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-        {`La liquidación de ${liquidacion.profesorNombre}, ${mes}`}
+        {textos.encabezado(liquidacion.profesorNombre, mes)}
       </h2>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -200,7 +235,7 @@ export function LiquidacionLeida({
           clave="aPagar"
           titulo="A pagar"
           importe={importes.aPagar}
-          nota="Lo calcula el servidor. Hoy es lo dictado."
+          nota={textos.notaAPagar}
           destacada
         >
           {importes.minutosSinTarifa > 0 && avisoSinTarifa(importes.minutosSinTarifa)}
@@ -235,11 +270,7 @@ export function LiquidacionLeida({
         columnas={COLUMNAS_DE_LAS_FRANJAS}
         filas={liquidacion.franjas}
         claveDeFila={claveDeLaFranja}
-        vacio={
-          <Aviso>
-            {`${liquidacion.profesorNombre} no tiene ninguna franja en ${mes}: ni horarios contratados ni clases dadas.`}
-          </Aviso>
-        }
+        vacio={<Aviso>{textos.vacio(liquidacion.profesorNombre, mes)}</Aviso>}
       />
     </>
   );

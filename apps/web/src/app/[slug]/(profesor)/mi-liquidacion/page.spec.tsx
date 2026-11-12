@@ -266,7 +266,7 @@ describe('lo que pinta', () => {
     expect(horasDe('cerradas')).toBe('9.50');
   });
 
-  it('cada importe y el nombre aparecen UNA vez en toda la pagina, no solo en el bloque', async () => {
+  it('cada importe aparece UNA vez en toda la pagina, y el nombre NINGUNA', async () => {
     // El guardian global SI vigila los atributos del propio `<body>`; lo que no
     // ve es el texto ni los atributos de sus descendientes. Un importe repetido
     // en un `hidden`, o el nombre en un `title`, fuera del bloque, pasaria todo
@@ -286,18 +286,39 @@ describe('lo que pinta', () => {
       '7.25',
       '8.75',
       '9.50',
-      'Marina-Ferreyra-Propia',
     ]) {
       expect(veces(buscado), buscado).toBe(1);
     }
+
+    // Ella sabe quien es: su nombre no se le muestra en ningun lado, ni en un
+    // atributo. Se cuenta sobre el HTML entero por lo mismo que los importes.
+    expect(veces('Marina-Ferreyra-Propia')).toBe(0);
   });
 
-  it('dice de quien es y de que mes, en un solo encabezado', async () => {
+  it('le habla a ella: «Tu liquidación» y el mes, en un solo encabezado', async () => {
     await montarYEsperar();
 
     expect(within(bloque()).getByRole('heading', { level: 2 }).textContent).toBe(
-      'La liquidación de Marina-Ferreyra-Propia, enero 2026',
+      'Tu liquidación, enero 2026',
     );
+  });
+
+  it('la nota de «A pagar» le habla a ella', async () => {
+    await montarYEsperar();
+
+    expect(bloque().querySelector('[data-cifra="aPagar"] [data-nota]')?.textContent).toBe(
+      'Se calcula con las horas dictadas.',
+    );
+  });
+
+  it('un mes sin franjas se lo dice a ella', async () => {
+    await montarYEsperar({ liquidacion: { ...LIQUIDACION, franjas: [] } });
+
+    expect(bloque().textContent).toContain(
+      'No tenés ninguna franja en enero 2026: ni horarios contratados ni clases dadas.',
+    );
+    // En el mes vacio el nombre tampoco aparece, ni siquiera en un atributo.
+    expect(document.body.innerHTML).not.toContain('Marina-Ferreyra-Propia');
   });
 
   it('con minutos sin tarifa dice que avise a la administracion, SIN enlace', async () => {
@@ -321,11 +342,12 @@ describe('lo que pinta', () => {
     expect(bloque().querySelector('[data-sin-tarifa]')).toBeNull();
   });
 
-  it('lo unico que cambia contra el admin es el aviso', async () => {
+  it('con la misma voz, lo unico que cambia contra el admin es el aviso', async () => {
     // MONTAR DOS VECES y comparar el resto POR IGUALDAD: afirmar «no hay nada
     // de mas» con `not.toContain` pasaria sobre cualquier cosa que no se haya
-    // pensado antes. La vista del admin es la compartida con SU aviso —el que
-    // lleva un enlace—; aqui basta una forma suya con el mismo marcador.
+    // pensado antes. Se monta el componente compartido con la voz de ella y el
+    // aviso del admin —el que lleva un enlace—; aqui basta una forma suya con
+    // el mismo marcador.
     await montarYEsperar();
     const deLaProfesora = bloque();
     deLaProfesora.querySelectorAll('[data-sin-tarifa]').forEach((aviso) => aviso.remove());
@@ -336,6 +358,7 @@ describe('lo que pinta', () => {
       <section data-bloque="mi-liquidacion" className="flex flex-col gap-3">
         <LiquidacionLeida
           liquidacion={LIQUIDACION}
+          voz="propia"
           avisoSinTarifa={(minutos) => (
             <p data-sin-tarifa>
               {`${minutos} minutos sin tarifa. `}
@@ -345,12 +368,40 @@ describe('lo que pinta', () => {
         />
       </section>,
     );
-    const delAdmin = bloque();
-    delAdmin.querySelectorAll('[data-sin-tarifa]').forEach((aviso) => aviso.remove());
+    const conAvisoDelAdmin = bloque();
+    conAvisoDelAdmin.querySelectorAll('[data-sin-tarifa]').forEach((aviso) => aviso.remove());
 
-    expect(htmlDeLaProfesora).toBe(delAdmin.outerHTML);
+    expect(htmlDeLaProfesora).toBe(conAvisoDelAdmin.outerHTML);
     // Y no es una igualdad de dos cadenas vacias.
-    expect(delAdmin.outerHTML.length).toBeGreaterThan(500);
+    expect(conAvisoDelAdmin.outerHTML.length).toBeGreaterThan(500);
+  });
+
+  it('entre la voz del admin y la suya cambian SOLO los tres textos', async () => {
+    // MONTAR DOS VECES y comparar el resto POR IGUALDAD: asi «no se le dice el
+    // nombre» no depende de haber pensado cada sitio donde podria colarse.
+    const sinAviso = () => null;
+    const htmlCon = (voz: 'admin' | 'propia'): string => {
+      render(
+        <section data-bloque="mi-liquidacion">
+          <LiquidacionLeida liquidacion={LIQUIDACION} avisoSinTarifa={sinAviso} voz={voz} />
+        </section>,
+      );
+      const html = bloque().outerHTML;
+      cleanup();
+      return html;
+    };
+
+    const delAdmin = htmlCon('admin');
+    const suya = htmlCon('propia');
+
+    const traducido = delAdmin
+      .replace('La liquidación de Marina-Ferreyra-Propia, enero 2026', 'Tu liquidación, enero 2026')
+      .replace('Lo calcula el servidor. Hoy es lo dictado.', 'Se calcula con las horas dictadas.');
+
+    expect(suya).toBe(traducido);
+    // Y el reemplazo hizo algo: si no, la igualdad seria de dos cosas iguales.
+    expect(traducido).not.toBe(delAdmin);
+    expect(suya).not.toContain('Marina-Ferreyra-Propia');
   });
 });
 

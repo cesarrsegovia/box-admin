@@ -19,7 +19,7 @@ import {
   useTurnos,
 } from '@/hooks/use-turnos';
 import { useUsuarios } from '@/hooks/use-usuarios';
-import { mensajeDeFallo } from '../../usuarios/[id]/errores';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 
 /**
  * QUIEN ESTA ANOTADO EN EL TURNO, y las tres cosas que se pueden hacer con eso:

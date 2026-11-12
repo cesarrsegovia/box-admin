@@ -706,7 +706,10 @@ describe('los rechazos de la API se mandan a buscar y se pintan enteros', () => 
    * EL TOKEN SE MUERE CON LA PANTALLA ABIERTA, Y AQUI ES LO NORMAL: la lista
    * se abre al empezar la clase y se guarda al terminarla.
    */
-  it('un 401 al guardar no se enseña crudo: se va al login', async () => {
+  it('un 401 al guardar no navega por su cuenta y dice que la sesion caduco', async () => {
+    // La navegacion la hace el cliente de datos (`lib/query.tsx`), que este
+    // spec no monta. Si la pantalla empujara tambien, serian dos entradas en el
+    // historial.
     await montarYEsperar({
       lista: LISTA_CON_QR,
       errorAlGuardar: new ErrorDeApi('Unauthorized', 401),
@@ -715,10 +718,33 @@ describe('los rechazos de la API se mandan a buscar y se pintan enteros', () => 
     await clicEnGuardar();
     await esperar();
 
-    expect(document.querySelector('[data-fallo-al-guardar]')).toBeNull();
+    expect(empujar).not.toHaveBeenCalled();
+    expect(screen.getByText('Tu sesión caducó. Te llevamos al login.')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('Unauthorized');
+  });
+
+  it('un 403 al guardar dice que rol hace falta, no «Forbidden resource»', async () => {
+    await montarYEsperar({
+      lista: LISTA_CON_QR,
+      errorAlGuardar: new ErrorDeApi('Forbidden resource', 403),
+    });
+
+    await clicEnGuardar();
+    await esperar();
+
+    expect(textoDe(document.querySelector('[data-fallo-al-guardar] [role="alert"]'))).toBe(
+      'No se pudo pasar lista: Para esto hace falta ser profesor. Tu rol no alcanza.',
+    );
+    expect(document.body.textContent).not.toContain('Forbidden resource');
+  });
+
+  it('un 401 al LEER la lista manda al login, una vez y sin query', async () => {
+    await montarYEsperar({ errorAlLeer: new ErrorDeApi('Unauthorized', 401) });
+
     // SIN query: esta pantalla no lee nada de la barra de direcciones, asi que
     // no se cuela un `?` pelado que cambiaria la cadena del destino.
-    expect(empujar).toHaveBeenCalledWith(`/${SLUG}/login?volverA=${encodeURIComponent(RUTA)}`);
+    expect(empujar.mock.calls).toEqual([[`/${SLUG}/login?volverA=${encodeURIComponent(RUTA)}`]]);
+    expect(screen.getByText('Tu sesion caduco. Te llevamos al login.')).toBeInTheDocument();
   });
 });
 

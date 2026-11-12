@@ -38,7 +38,13 @@ export function descripcionDe(rutina: RutinaPublica): string {
  * siempre devuelven texto, y el dia es un numero recien en el cuerpo.
  */
 export const esquemaBase = z.object({
-  nombre: z.string().min(1, 'El turno necesita un nombre').max(80, 'Como mucho 80 caracteres'),
+  // `.trim()` ANTES de `.min(1)`: un nombre de solo espacios es un nombre vacio,
+  // y lo que viaja (y lo que la edicion compara) es el valor recortado.
+  nombre: z
+    .string()
+    .trim()
+    .min(1, 'El turno necesita un nombre')
+    .max(80, 'Como mucho 80 caracteres'),
   diaSemana: z.string(),
   horaInicio: z.string().regex(PATRON_HORA, 'La hora va como HH:MM'),
   horaFin: z.string().regex(PATRON_HORA, 'La hora va como HH:MM'),

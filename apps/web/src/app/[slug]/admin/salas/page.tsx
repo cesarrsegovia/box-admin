@@ -10,7 +10,7 @@ import { ErrorDeApi } from '@/lib/cliente';
 import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useSalas } from '@/hooks/use-catalogos';
 import { useCrearSala } from '@/hooks/use-salas-admin';
-import { mensajeDeFallo, repartirPorCampo } from '../usuarios/[id]/errores';
+import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
 import { useRolDeQuienMira } from '../rol-del-panel';
 import { textoDeAjuste } from './ajuste-heredable';
 

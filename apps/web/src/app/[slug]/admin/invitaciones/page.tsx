@@ -9,7 +9,7 @@ import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useCambiarActiva, useInvitaciones } from '@/hooks/use-invitaciones';
-import { mensajeDeFallo } from '../usuarios/[id]/errores';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 import {
   ETIQUETAS_DE_ESTADO,
   TONOS_DE_ESTADO,

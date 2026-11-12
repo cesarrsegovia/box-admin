@@ -6,8 +6,8 @@ import type { TurnoPublico } from '@boxadmin/shared';
 import { Confirmar } from '@/componentes/confirmar';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { queryDeTurnos, useBorrarTurno } from '@/hooks/use-turnos';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 import { filtrosDeLaBusqueda } from '../filtros';
-import { mensajeDeFallo } from '../../usuarios/[id]/errores';
 
 /**
  * Borrar el turno. `DELETE /turnos/:id`.

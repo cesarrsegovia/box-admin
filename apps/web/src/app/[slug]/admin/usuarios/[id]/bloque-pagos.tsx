@@ -13,9 +13,9 @@ import { Confirmar } from '@/componentes/confirmar';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { useAnularPago, usePagos, useRegistrarPago } from '@/hooks/use-dinero';
+import { Seleccion } from '@/componentes/controles';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 import { useRolDeQuienMira } from '../../rol-del-panel';
-import { Seleccion } from './controles';
-import { mensajeDeFallo } from './errores';
 
 /**
  * LOS PAGOS DE ESTA PERSONA: cobrar, ver lo cobrado y deshacer un cobro.

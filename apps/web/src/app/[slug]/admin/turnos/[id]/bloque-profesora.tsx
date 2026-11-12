@@ -5,7 +5,7 @@ import type { TurnoPublico } from '@boxadmin/shared';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { useAsignarProfesor } from '@/hooks/use-turnos';
 import { useUsuarios } from '@/hooks/use-usuarios';
-import { mensajeDeFallo } from '../../usuarios/[id]/errores';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 
 /**
  * La profesora del turno. `PATCH /turnos/:id/profesor`.

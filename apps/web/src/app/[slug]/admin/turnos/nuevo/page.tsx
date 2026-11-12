@@ -13,8 +13,8 @@ import { destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useSalas } from '@/hooks/use-catalogos';
 import { useCrearTurno, type TurnoACrear } from '@/hooks/use-turnos';
 import { useUsuarios } from '@/hooks/use-usuarios';
-import { mensajeDeFallo } from '../../usuarios/[id]/errores';
-import { Seleccion } from '../../usuarios/[id]/controles';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
+import { Seleccion } from '@/componentes/controles';
 
 /**
  * Lo que el formulario tiene en pantalla, TODO como texto.
@@ -94,14 +94,14 @@ export default function PaginaDeTurnoNuevo() {
   } = useForm<Datos>({ resolver: zodResolver(esquema), defaultValues: VACIO });
 
   /**
-   * LAS TRES PETICIONES PUEDEN TRAER EL 401. Un solo booleano y un solo efecto:
+   * LAS DOS LECTURAS PUEDEN TRAER EL 401. Un solo booleano y un solo efecto:
    * si cada una empujara por su cuenta, una sesion caducada mandaria al login
-   * varias veces y dejaria entradas basura en el historial.
+   * varias veces y dejaria entradas basura en el historial. La escritura no: a
+   * esa la manda al login el cliente de datos (`lib/query.tsx`).
    */
   const sesionCaducada =
     (salas.error instanceof ErrorDeApi && salas.error.esSesionCaducada) ||
-    (profesoras.error instanceof ErrorDeApi && profesoras.error.esSesionCaducada) ||
-    (crear.error instanceof ErrorDeApi && crear.error.esSesionCaducada);
+    (profesoras.error instanceof ErrorDeApi && profesoras.error.esSesionCaducada);
 
   useEffect(() => {
     if (!sesionCaducada) return;
@@ -136,9 +136,7 @@ export default function PaginaDeTurnoNuevo() {
     }
   }
 
-  // Sin sesion no se enseña el mensaje crudo de la API: la pantalla ya se va al login.
-  const errorDeLaApi =
-    crear.error === null || sesionCaducada ? null : mensajeDeFallo(crear.error, 'ADMIN_OPERATIVO');
+  const errorDeLaApi = crear.error === null ? null : mensajeDeFallo(crear.error, 'ADMIN_OPERATIVO');
 
   return (
     <section className="flex flex-col gap-4">

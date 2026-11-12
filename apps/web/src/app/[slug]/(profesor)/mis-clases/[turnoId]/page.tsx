@@ -6,6 +6,7 @@ import type { AlumnoEnClase } from '@boxadmin/shared';
 import { Confirmar } from '@/componentes/confirmar';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useAlumnosDeLaClase, usePasarLista } from '@/hooks/use-mis-clases';
 
@@ -175,10 +176,10 @@ function presentesIniciales(alumnos: readonly AlumnoEnClase[]): Set<string> {
 }
 
 /**
- * AL LOGIN CUANDO EL TOKEN SE MUERE CON LA PANTALLA ABIERTA.
+ * AL LOGIN CUANDO EL TOKEN SE MUERE ANTES DE PODER LEER LA LISTA.
  *
- * Aqui eso es lo NORMAL y no lo raro: la lista se abre al empezar la clase y
- * se guarda al terminarla, con una hora de por medio. Enseñar el
+ * Es el 401 de la LECTURA, y las lecturas las resuelve cada pantalla (las
+ * escrituras las resuelve el cliente de datos, `lib/query.tsx`). Enseñar el
  * «Unauthorized» crudo de la API seria mandar a mirar la red a alguien que lo
  * unico que tiene que hacer es volver a entrar.
  *
@@ -187,11 +188,13 @@ function presentesIniciales(alumnos: readonly AlumnoEnClase[]): Set<string> {
  * y el nombre existe justamente para que eso sea una decision y no un `''`
  * copiado sin pensar.
  *
- * Es un hook y no una funcion suelta porque lo llaman los dos lados —el fallo
- * al LEER la lista y el fallo al GUARDARLA— y los dos tienen que ir al mismo
- * sitio. Sin exportarlo: Next 15 no deja que un `page.tsx` exporte nada que no
- * sea el `default`, y el error que da habla de `OmitWithTag` y no se parece en
- * nada a la causa.
+ * Solo para el fallo al LEER la lista. El fallo al GUARDARLA no pasa por aqui:
+ * a esa escritura la manda al login el cliente de datos, y empujar tambien
+ * desde la pantalla seria navegar dos veces.
+ *
+ * Sin exportarlo: Next 15 no deja que un `page.tsx` exporte nada que no sea el
+ * `default`, y el error que da habla de `OmitWithTag` y no se parece en nada a
+ * la causa.
  */
 function useAlLoginSiCaduco(sesionCaducada: boolean, slug: string): void {
   const ruta = usePathname();
@@ -202,6 +205,16 @@ function useAlLoginSiCaduco(sesionCaducada: boolean, slug: string): void {
 
     router.push(destinoDeLoginDesde(ruta, SIN_QUERY, slug));
   }, [sesionCaducada, router, ruta, slug]);
+}
+
+/**
+ * QUE SE DICE CUANDO GUARDAR FALLA. Un 401 es la sesion muerta y se dice tal
+ * cual, sin el prefijo: lo que se lee el instante antes de que el cliente de
+ * datos (`lib/query.tsx`) mande al login. Lo demas, el motivo de la API.
+ */
+function textoDelFallo(error: ErrorDeApi): string {
+  const texto = mensajeDeFallo(error, 'PROFESOR');
+  return error.esSesionCaducada ? texto : `No se pudo pasar lista: ${texto}`;
 }
 
 /**
@@ -223,18 +236,13 @@ function useAlLoginSiCaduco(sesionCaducada: boolean, slug: string): void {
 function ListaParaMarcar({
   alumnos,
   turnoId,
-  slug,
 }: {
   alumnos: readonly AlumnoEnClase[];
   turnoId: string;
-  slug: string;
 }) {
   const guardar = usePasarLista(turnoId);
   const [tildados, setTildados] = useState(() => presentesIniciales(alumnos));
   const [confirmando, setConfirmando] = useState(false);
-
-  const sesionCaducada = guardar.error !== null && guardar.error.esSesionCaducada;
-  useAlLoginSiCaduco(sesionCaducada, slug);
 
   /**
    * LOS PRESENTES EN EL ORDEN DE LA LISTA, no en el de los toques.
@@ -329,9 +337,7 @@ function ListaParaMarcar({
           }
           textoDeConfirmar="Marcar a todos ausentes"
           cargando={guardar.isPending}
-          error={
-            guardar.error === null ? undefined : `No se pudo pasar lista: ${guardar.error.message}`
-          }
+          error={guardar.error === null ? undefined : textoDelFallo(guardar.error)}
           alConfirmar={() => guardar.mutate([])}
           alCancelar={() => {
             setConfirmando(false);
@@ -349,13 +355,15 @@ function ListaParaMarcar({
         </div>
       )}
 
-      {guardar.error !== null && !sesionCaducada && !confirmando && (
+      {guardar.error !== null && !confirmando && (
         <div data-fallo-al-guardar>
           {/* EL MOTIVO DE LA API, PALABRA POR PALABRA. Los dos rechazos que
               llegan aqui explican algo que esta pantalla no sabe —que la clase
               no empezo, o a quien le cancelaron la reserva mientras miraba— y
-              cambiarlos por un «no se pudo» tira justo la parte util. */}
-          <Aviso tono="error">No se pudo pasar lista: {guardar.error.message}</Aviso>
+              cambiarlos por un «no se pudo» tira justo la parte util. La
+              sesion caducada y el rol que falta tambien se dicen, pero en
+              castellano: `mensajeDeFallo` los traduce. */}
+          <Aviso tono="error">{textoDelFallo(guardar.error)}</Aviso>
         </div>
       )}
 
@@ -428,7 +436,7 @@ export default function PaginaDePasarLista() {
       {alumnos.data !== undefined && alumnos.data.length > 0 && (
         // `key` por turno: es lo unico que vuelve a sembrar los tildes, y solo
         // cuando de verdad se esta mirando otra clase.
-        <ListaParaMarcar key={turnoId} alumnos={alumnos.data} turnoId={turnoId} slug={slug} />
+        <ListaParaMarcar key={turnoId} alumnos={alumnos.data} turnoId={turnoId} />
       )}
     </section>
   );

@@ -13,7 +13,7 @@ import {
   useCrearPack,
   useDarDeBajaPack,
 } from '@/hooks/use-dinero';
-import { mensajeDeFallo } from '../../usuarios/[id]/errores';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 
 /**

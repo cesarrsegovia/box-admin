@@ -10,8 +10,8 @@ import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { usePacks } from '@/hooks/use-catalogos';
 import { useActualizarUsuario } from '@/hooks/use-usuarios';
-import { AreaDeTexto, Seleccion } from './controles';
-import { mensajeDeFallo, repartirPorCampo } from './errores';
+import { AreaDeTexto, Seleccion } from '@/componentes/controles';
+import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
 
 /**
  * Los datos editables de la persona. `PATCH /usuarios/:id`.

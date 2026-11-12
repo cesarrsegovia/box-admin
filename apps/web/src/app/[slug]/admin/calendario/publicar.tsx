@@ -181,7 +181,7 @@ function textoDelFallo(error: ErrorDeApi): string {
   if (error.esSinConexion)
     return 'La peticion no salio de este navegador: no se encolo nada. Comproba tu red y volve a intentarlo.';
 
-  if (error.esSesionCaducada) return 'Tu sesion caduco. Volve a entrar para seguir.';
+  if (error.esSesionCaducada) return 'Tu sesión caducó. Te llevamos al login.';
 
   if (error.estado === 403) return 'Tu rol no alcanza: esta accion pide ADMIN_SALON.';
 

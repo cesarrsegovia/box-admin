@@ -133,6 +133,7 @@ function LiquidacionDeUna({ perfilId, mes, slug }: { perfilId: string; mes: Mes;
   return (
     <LiquidacionLeida
       liquidacion={liquidacion.data}
+      voz="admin"
       avisoSinTarifa={(minutos) => <AvisoSinTarifa minutos={minutos} slug={slug} />}
     />
   );

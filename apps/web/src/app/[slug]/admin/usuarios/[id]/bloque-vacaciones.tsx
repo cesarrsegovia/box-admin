@@ -16,8 +16,8 @@ import { Confirmar } from '@/componentes/confirmar';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { useBorrarVacacion, useCrearVacacion, useVacaciones } from '@/hooks/use-vacaciones';
+import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
 import { useRolDeQuienMira } from '../../rol-del-panel';
-import { mensajeDeFallo, repartirPorCampo } from './errores';
 
 /**
  * Cuando la persona NO viene. Vive en la ficha, al lado de los dias fijos.

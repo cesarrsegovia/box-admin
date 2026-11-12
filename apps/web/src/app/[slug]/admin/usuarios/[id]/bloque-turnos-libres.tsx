@@ -6,7 +6,7 @@ import type { TurnoLibre, UsuarioDetalle } from '@boxadmin/shared';
 import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { useTurnosLibres } from '@/hooks/use-stats';
-import { Seleccion } from './controles';
+import { Seleccion } from '@/componentes/controles';
 
 /**
  * DONDE HAY LUGAR PARA ESTA PERSONA. `GET /stats/turnos-libres`.

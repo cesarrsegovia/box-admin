@@ -16,7 +16,8 @@ import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { useSalas } from '@/hooks/use-catalogos';
 import { useCrearRutina, useDarDeBajaRutina, useRutinas } from '@/hooks/use-rutinas';
-import { Seleccion } from './controles';
+import { Seleccion } from '@/componentes/controles';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 import {
   conMayuscula,
   descripcionDe,
@@ -26,7 +27,6 @@ import {
   REGLA_DE_HORAS,
 } from './dias-fijos';
 import { EditarRutina } from './editar-rutina';
-import { mensajeDeFallo } from './errores';
 
 /**
  * Los dias fijos de la persona: sus RUTINAS.

@@ -2,9 +2,10 @@ import type { RolAsignable, RolUsuario } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
 
 /**
- * Como se lee un fallo de la API en esta pantalla.
+ * Como se lee un fallo de la API en cualquier pantalla de la app, del panel o
+ * de la profesora.
  *
- * Dos cosas que ningun otro sitio del front necesitaba todavia:
+ * Dos cosas que `pedir` no resuelve por si solo:
  *
  * 1. El ValidationPipe de Nest contesta `message` como un ARRAY de frases, una
  *    por campo invalido. `pedir` lo aplana con `String(...)` para tener algo que
@@ -12,7 +13,7 @@ import { ErrorDeApi } from '@/lib/cliente';
  *    crudo, que viaja en `ErrorDeApi.cuerpo`.
  *
  * 2. Un 403 de la API no es el 403 de la puerta del panel. Aqui hay sesion y el
- *    rol alcanza para entrar; lo que no alcanza es para ESTA accion. Decir
+ *    rol alcanza para entrar a la pantalla; lo que no alcanza es para ESTA accion. Decir
  *    "algo salio mal" manda a quien lo lee a mirar la red cuando lo que tiene
  *    que hacer es llamar al dueño del salon.
  */
@@ -78,12 +79,16 @@ const ROLES_LEGIBLES: Record<RolUsuario, string> = {
 /**
  * El texto que se le enseña a quien no pudo hacer algo.
  *
- * `minimo` es el rol que la RUTA exige, y lo sabe quien llama porque lo sabe la
- * API: `reset-password` pide `ADMIN_SALON` y todo lo demas del area pide
- * `ADMIN_OPERATIVO`.
+ * `minimo` es el rol que la RUTA exige, sea cual sea, y lo sabe quien llama
+ * porque lo sabe la API: `reset-password` pide `ADMIN_SALON`, casi todo lo del
+ * panel pide `ADMIN_OPERATIVO` y la profesora lo usa con `'PROFESOR'`.
  */
 export function mensajeDeFallo(error: unknown, minimo: RolAsignable): string {
   if (!(error instanceof ErrorDeApi)) return 'No se pudo completar la accion.';
+
+  // El cliente de datos ya esta mandando al login (`lib/query.tsx`): esto es lo
+  // que se lee el instante antes de salir.
+  if (error.esSesionCaducada) return 'Tu sesión caducó. Te llevamos al login.';
 
   if (error.estado === 403) {
     return `Para esto hace falta ser ${ROLES_LEGIBLES[minimo]}. Tu rol no alcanza.`;

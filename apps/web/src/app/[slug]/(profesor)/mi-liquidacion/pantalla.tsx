@@ -21,8 +21,8 @@ import type { Mes } from '@/hooks/use-stats';
  *
  * ESTA PANTALLA NO CALCULA NADA, NI UNA SUMA. Todo lo que se pinta lo manda el
  * servidor ya hecho, y la vista es la MISMA que ve el admin
- * (`LiquidacionLeida`): lo unico que cambia es el aviso de los minutos sin
- * tarifa, porque la profesora no puede configurarla.
+ * (`LiquidacionLeida`): cambian el aviso de los minutos sin tarifa, porque la
+ * profesora no puede configurarla, y la voz (`voz="propia"`).
  *
  * La puerta de rol es la del layout de `(profesor)`, que corre en el servidor.
  *
@@ -138,6 +138,7 @@ function PanelDeMiLiquidacion() {
         <section data-bloque="mi-liquidacion" className="flex flex-col gap-3">
           <LiquidacionLeida
             liquidacion={liquidacion.data}
+            voz="propia"
             avisoSinTarifa={(minutos) => <AvisoSinTarifaParaLaProfesora minutos={minutos} />}
           />
         </section>

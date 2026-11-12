@@ -11,10 +11,10 @@ import { ErrorDeApi } from '@/lib/cliente';
 import { destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useSalas } from '@/hooks/use-catalogos';
 import { useAusencias, useBorrarAusencia, useCrearAusencia } from '@/hooks/use-ausencias';
+import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
+import { Seleccion } from '@/componentes/controles';
 import { filtrosDeLaBusqueda } from './filtros';
-import { mensajeDeFallo, repartirPorCampo } from '../usuarios/[id]/errores';
 import { useRolDeQuienMira } from '../rol-del-panel';
-import { Seleccion } from '../usuarios/[id]/controles';
 
 /**
  * LOS CIERRES: una sala —o el salon entero— que no abre esos dias.

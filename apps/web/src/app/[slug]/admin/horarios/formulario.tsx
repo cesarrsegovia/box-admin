@@ -9,7 +9,7 @@ import {
 } from '@boxadmin/shared';
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
-import { Seleccion } from '../usuarios/[id]/controles';
+import { Seleccion } from '@/componentes/controles';
 
 /**
  * EL FORMULARIO DE UN HORARIO FIJO, el de alta y el de edicion.

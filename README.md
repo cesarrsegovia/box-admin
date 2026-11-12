@@ -2522,11 +2522,38 @@ Tampoco:
 
 ### Lo que esta fase NO trae
 
-- **`GET /packs/:id` sigue sin pantalla.** `usePack` existe y ninguna pantalla lo monta: el catálogo ya
-  trae todo. El cruce de cierre da **un endpoint de negocio sin pantalla**, no cero; se le escapó al
-  alcance de la fase. Ver `docs/superpowers/plans/PROGRESO.md`.
+- **`GET /packs/:id` queda sin pantalla, por diseño.** Ninguna pantalla resuelve un pack suelto: la
+  ficha del alumno, las invitaciones y Análisis necesitan el catálogo entero para sus selects, y la
+  edición de packs es un panel dentro de `/admin/configuracion/packs`. `usePack` se deja, probado,
+  para cuando una pantalla lo necesite. Con eso el cruce da **cero endpoints de negocio sin pantalla**.
+  Ver `docs/superpowers/plans/PROGRESO.md`.
 - **Mover reservas al editar una rutina**: es lógica nueva en la API y fase propia.
 - **La deuda `Importe` contra la cadena pelada**, de `packages/shared`, sigue en pie.
+
+## Pulido — Fase 16
+
+Cuatro puntos de la deuda de la Fase 15 que se notan al usar la app o que traban lo que viene. Ninguna
+función nueva: todo es web, la API y `packages/shared` no se tocaron.
+
+- **La sesión vencida al guardar va al login en toda la app**, con la vuelta a donde estaba. Donde el
+  fallo pasa por `mensajeDeFallo`, lo que se lee el instante antes es «Tu sesión caducó. Te llevamos al
+  login.». Lo hace un `MutationCache` en el
+  cliente de datos (`crearClienteDeDatos`, en `lib/query.tsx`) que manda **una sola vez** al login cuando
+  falla **una escritura** con 401. **Las lecturas, como antes**: cada pantalla sigue resolviendo las
+  suyas. Dos pantallas navegaban por su cuenta y ahora usan lo común: «Nuevo turno» y «Pasar lista».
+- **La profesora lee su liquidación en segunda persona**: «Tu liquidación, …», «Se calcula con las horas
+  dictadas.» y «No tenés ninguna franja…». Su nombre no aparece en ningún lado de la pantalla; el admin
+  sigue leyendo el de ella.
+- **El nombre de un día fijo se recorta**: « Funcional » se guarda como «Funcional», y uno de sólo
+  espacios no se acepta.
+- **`mensajeDeFallo` y `Seleccion` viven en `lib/errores-de-api.ts` y `componentes/controles.tsx`**, ya no
+  dentro de la ficha del usuario: «Nuevo turno» dejó de importar de `usuarios/[id]/`.
+
+### Lo que esta fase NO trae
+
+- **Recortar nombres en salas, packs e invitaciones**, ni en la API: sólo el de las rutinas y el de «Nuevo turno».
+- **Cambiar el 401 de las lecturas**: siguen como antes.
+- Ver `docs/superpowers/plans/PROGRESO.md`.
 
 ## Tests
 

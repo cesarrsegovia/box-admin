@@ -1395,6 +1395,38 @@ describe('el bloque de dias fijos', () => {
     expect(pedirEspia).not.toHaveBeenCalled();
   });
 
+  it('un nombre de turno de solo espacios no se manda', async () => {
+    await montar();
+
+    const usuario = userEvent.setup();
+    await usuario.selectOptions(screen.getByLabelText('Sala'), 'sala-b');
+    await escribir('Nombre del turno', '   ');
+    await escribir('Desde', '2026-11-01');
+    await escribir('Hora de inicio', '18:00');
+    await escribir('Hora de fin', '19:00');
+    await clicEn('Agregar dia fijo');
+
+    expect(pedirEspia).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Nombre del turno')).toHaveAccessibleDescription(
+      'El turno necesita un nombre',
+    );
+  });
+
+  it('el nombre del dia fijo nuevo viaja recortado', async () => {
+    await montar({ usuario: unAlumno({ perfilId: 'p1' }) });
+
+    const usuario = userEvent.setup();
+    await usuario.selectOptions(screen.getByLabelText('Sala'), 'sala-b');
+    await escribir('Nombre del turno', '  Funcional  ');
+    await usuario.selectOptions(screen.getByLabelText('Dia'), '3');
+    await escribir('Desde', '2026-11-01');
+    await escribir('Hora de inicio', '18:00');
+    await escribir('Hora de fin', '19:00');
+    await clicEn('Agregar dia fijo');
+
+    expect(escrituras()[0]?.[1].cuerpo).toMatchObject({ nombre: 'Funcional' });
+  });
+
   it('una hora de fin anterior a la de inicio no se manda', async () => {
     await montar();
 

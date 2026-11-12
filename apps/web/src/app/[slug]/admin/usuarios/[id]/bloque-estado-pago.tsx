@@ -6,7 +6,7 @@ import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { type EstadoDePago, useFijarEstadoDePago } from '@/hooks/use-usuarios';
-import { mensajeDeFallo } from './errores';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 
 /**
  * El override del admin sobre el estado de pago. `PATCH /usuarios/:id/estado-pago`.

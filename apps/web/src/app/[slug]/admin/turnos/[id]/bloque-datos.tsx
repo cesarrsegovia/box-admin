@@ -9,7 +9,7 @@ import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { useActualizarTurno } from '@/hooks/use-turnos';
-import { mensajeDeFallo, repartirPorCampo } from '../../usuarios/[id]/errores';
+import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
 
 /**
  * Los datos editables del turno. `PATCH /turnos/:id`.

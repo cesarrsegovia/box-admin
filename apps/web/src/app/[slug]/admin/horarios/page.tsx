@@ -17,9 +17,9 @@ import {
   useCrearHorario,
   useHorarios,
 } from '@/hooks/use-horarios';
+import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
+import { Seleccion } from '@/componentes/controles';
 import { filtrosDeLaBusqueda } from './filtros';
-import { mensajeDeFallo, repartirPorCampo } from '../usuarios/[id]/errores';
-import { Seleccion } from '../usuarios/[id]/controles';
 import { useRolDeQuienMira } from '../rol-del-panel';
 import {
   CAMPOS_DE_HORARIO,

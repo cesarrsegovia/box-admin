@@ -10,7 +10,7 @@ import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
 import { usePacks, useSalas } from '@/hooks/use-catalogos';
 import { useGuardarClave } from '@/hooks/use-invitaciones';
-import { repartirPorCampo } from '../usuarios/[id]/errores';
+import { repartirPorCampo } from '@/lib/errores-de-api';
 import { ErrorDeApi } from '@/lib/cliente';
 
 /**

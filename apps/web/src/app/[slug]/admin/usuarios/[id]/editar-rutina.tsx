@@ -8,7 +8,8 @@ import { type DiaSemana, PATRON_FECHA, type RutinaPublica } from '@boxadmin/shar
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
 import { type CambiosDeRutina, useActualizarRutina } from '@/hooks/use-rutinas';
-import { Seleccion } from './controles';
+import { Seleccion } from '@/componentes/controles';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 import {
   descripcionDe,
   esquemaBase,
@@ -16,7 +17,6 @@ import {
   OPCIONES_DE_DIA,
   REGLA_DE_HORAS,
 } from './dias-fijos';
-import { mensajeDeFallo } from './errores';
 
 /**
  * Editar UN dia fijo, en linea, debajo de su fila.

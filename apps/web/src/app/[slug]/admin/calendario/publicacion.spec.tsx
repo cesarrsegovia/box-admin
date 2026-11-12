@@ -1077,6 +1077,19 @@ describe('cuando publicar falla', () => {
     expect(document.body.innerHTML).not.toContain('Forbidden resource');
   });
 
+  it('un 401 al publicar dice que la sesion caduco, con el mismo texto que el resto', async () => {
+    // La navegacion al login la hace el cliente de datos (`lib/query.tsx`).
+    montar({
+      alPublicar: () => Promise.reject(new ErrorDeApi('Unauthorized', 401)),
+    });
+
+    await esperar();
+    await pulsar(/publicar/i);
+
+    expect(screen.getByText('Tu sesión caducó. Te llevamos al login.')).toBeInTheDocument();
+    expect(screen.queryByText('Unauthorized')).toBeNull();
+  });
+
   it('un 400 muestra el mensaje de la API', async () => {
     montar({
       alPublicar: () =>

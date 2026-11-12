@@ -1,14 +1,12 @@
 import type { SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 /**
- * Los dos controles que `componentes/formulario.tsx` todavia no tiene.
+ * Los dos controles que `componentes/formulario.tsx` no tiene: un `<select>`
+ * (`Seleccion`) y un `<textarea>` (`AreaDeTexto`).
  *
- * `Campo` cubre `<input>`, que es lo unico que necesitaba el login. La ficha
- * necesita ademas un `<select>` (pack, sala, dia de la semana) y un
- * `<textarea>` (la ficha medica, que admite 2000 caracteres y en una linea no se
- * lee). Viven aqui y no en el componente compartido a proposito: el dia que una
- * segunda pantalla los pida, se suben, y entonces se sube UNA version probada y
- * no la primera que alguien escribio.
+ * Nacieron en la ficha del usuario y se subieron aqui en la Fase 16, cuando ya
+ * los usaban ausencias, horarios, comprobantes, turnos y la ficha: una version
+ * probada en todas esas pantallas, no la primera que alguien escribio.
  *
  * El cableado de accesibilidad es el MISMO que el de `Campo` —`aria-invalid` y
  * `aria-describedby` apuntando al parrafo del error— porque es lo que hace que

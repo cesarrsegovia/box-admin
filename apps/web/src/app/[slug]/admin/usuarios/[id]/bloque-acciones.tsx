@@ -5,7 +5,7 @@ import { type RolUsuario, rolAlcanza, type UsuarioDetalle } from '@boxadmin/shar
 import { Confirmar } from '@/componentes/confirmar';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { useDarDeBaja, useResetearPassword } from '@/hooks/use-usuarios';
-import { mensajeDeFallo } from './errores';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 
 /**
  * Las dos acciones destructivas de la ficha.

@@ -10,8 +10,8 @@ import {
   useColaDeComprobantes,
   useRechazarComprobante,
 } from '@/hooks/use-dinero';
-import { Seleccion } from './usuarios/[id]/controles';
-import { mensajeDeFallo } from './usuarios/[id]/errores';
+import { Seleccion } from '@/componentes/controles';
+import { mensajeDeFallo } from '@/lib/errores-de-api';
 
 /**
  * LA COLA DE COMPROBANTES POR REVISAR. `GET /comprobantes?estado=PENDIENTE`.
