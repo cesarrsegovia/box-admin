@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfiguracionSmtpPublica, PlantillaPublica, RolUsuario } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { ProveedorDeRol } from '../../rol-del-panel';
 import PaginaDelEmail from './page';
@@ -146,6 +147,9 @@ const MOTIVOS_DEL_SERVIDOR_DE_CORREO = [
   'No se pudo conectar al servidor SMTP: ECONNREFUSED',
   'No se pudo conectar al servidor SMTP: 535 5.7.8 Error: authentication failed: [redactado]',
 ];
+
+/** La sesion vencida, como la contesta la API: «Unauthorized» es lo que NO se tiene que leer. */
+const NO_AUTORIZADO = new ErrorDeApi('Unauthorized', 401);
 
 interface OpcionesDeMontaje {
   /** `null` se monta SIN proveedor: ver el comentario de `montar`. */
@@ -657,6 +661,17 @@ describe('cuando el servidor de correo rechaza la conexion', () => {
 
       cleanupEntreMontajes();
     }
+  });
+
+  it('un 401 al guardar dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montarYEsperar({ falloAlGuardar: NO_AUTORIZADO });
+
+    await escribirEnElCampo('clave', CENTINELAS.claveSmtp);
+    await pulsarGuardar();
+
+    expect(textoDe('[data-resultado="error"]')).toBe(
+      `No se pudo guardar la configuracion del correo: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
   });
 
   /**

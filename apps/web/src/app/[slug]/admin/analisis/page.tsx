@@ -3,13 +3,15 @@
 import { Suspense, useEffect } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { rolAlcanza, type MetricasOperativas } from '@boxadmin/shared';
+import { SelectorDeMes } from '@/componentes/selector-de-mes';
 import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { destinoDeLoginDesde } from '@/lib/destino-de-login';
-import { useOperativo, type Mes } from '@/hooks/use-stats';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
+import { useOperativo } from '@/hooks/use-stats';
 import { useRolDeQuienMira } from '../rol-del-panel';
-import { mesDelValor, mesDeLaBusqueda, mesesOfrecidos, textoDelMes, valorDelMes } from './filtros';
+import { mesDeLaBusqueda, textoDelMes, type Mes } from './filtros';
 import { LAS_CINCO_METRICAS, Porcentaje, PorcentajeEnCelda } from './porcentaje';
 import { BloqueDeCaja } from './caja';
 import { BloqueDeComposicion } from './composicion';
@@ -64,71 +66,6 @@ import { BloqueDeLiquidacion } from './liquidacion';
  * —«ahora si es el numero de verdad»— seria falsa justo cuando alguien la
  * necesita.
  */
-
-const CLASES_DE_CONTROL =
-  'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
-
-/**
- * EL MES ESCRIBE LA URL, NUNCA `useState`.
- *
- * Un mes en la URL se comparte por chat («mira la ocupacion de marzo»),
- * sobrevive al boton de atras, se puede guardar en favoritos y vuelve puesto
- * desde el login. En estado se pierde al navegar y nadie entiende por que, y
- * encima la pantalla y la barra de direcciones dicen cosas distintas.
- *
- * Las DOS claves se escriben juntas: medio mes en la URL no es media eleccion,
- * es ninguna. Ver `mesDeLaBusqueda`.
- */
-function SelectorDeMes({ elegido, ahora }: { elegido: Mes; ahora: Date }) {
-  const parametros = useSearchParams();
-  const ruta = usePathname();
-  const router = useRouter();
-
-  function cambiar(valor: string): void {
-    const mes = mesDelValor(valor);
-    // Un valor que no se entiende NO navega: dejar la URL como esta es mejor
-    // que escribir en ella un mes que nadie eligio.
-    if (mes === null) return;
-
-    // Se parte de la URL que YA HAY: el mes no puede borrar lo que la Task 3
-    // o un enlace compartido lleven al lado.
-    const siguientes = new URLSearchParams(parametros.toString());
-    siguientes.set('anio', String(mes.anio));
-    siguientes.set('mes', String(mes.mes));
-
-    // UNA sola navegacion por cambio: un `push` de cortesia antes del bueno
-    // deja una entrada basura en el historial y un parpadeo en la pantalla.
-    router.push(`${ruta}?${siguientes.toString()}`);
-  }
-
-  return (
-    // «Filtros» y no «Mes»: con `aria-label="Mes"` el formulario y su
-    // `<select>` tendrian el mismo nombre accesible, y entonces son
-    // indistinguibles para quien navega con lector de pantalla —y para quien
-    // escribe un test—.
-    <form aria-label="Filtros" className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-1">
-        {/* `htmlFor` y no una etiqueta que envuelva al control: envolviendolo,
-            el nombre accesible se lleva por delante el texto de las opciones. */}
-        <label htmlFor="analisis-mes" className="text-xs font-medium text-slate-600">
-          Mes
-        </label>
-        <select
-          id="analisis-mes"
-          value={valorDelMes(elegido)}
-          onChange={(evento) => cambiar(evento.target.value)}
-          className={CLASES_DE_CONTROL}
-        >
-          {mesesOfrecidos(ahora, elegido).map((mes) => (
-            <option key={valorDelMes(mes)} value={valorDelMes(mes)}>
-              {textoDelMes(mes)}
-            </option>
-          ))}
-        </select>
-      </div>
-    </form>
-  );
-}
 
 /**
  * Las columnas del trimestre, derivadas de las cinco y no escritas dos veces.
@@ -281,14 +218,14 @@ function PanelDeAnalisis() {
 
   return (
     <div className="flex flex-col gap-4">
-      <SelectorDeMes elegido={mes} ahora={ahora} />
+      <SelectorDeMes id="analisis-mes" elegido={mes} ahora={ahora} />
 
       {/* Sin sesion no se enseña el «Unauthorized» crudo de la API, que no le
           dice nada a nadie, y tampoco se ofrece reintentar: seria volver a
           fallar mientras la pantalla ya se esta yendo al login. Va UNA vez y
           fuera de los bloques: el 401 es del token, no de un reporte, y tres
           carteles iguales taparian el unico que importa. */}
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {/* Cada reporte en su bloque, con su carga y su error: asi un fallo de la
           caja no borra la ocupacion que ya se leyo bien. */}

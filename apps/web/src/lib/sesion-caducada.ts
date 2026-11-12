@@ -2,6 +2,12 @@ import { ErrorDeApi } from './cliente';
 import { destinoDeLoginDesde } from './destino-de-login';
 
 /**
+ * Lo que se lee cuando la sesion vencio: en el aviso de una lectura y, el
+ * instante antes de salir, en el de una escritura. UNA frase para toda la app.
+ */
+export const TEXTO_DE_SESION_CADUCADA = 'Tu sesión caducó. Te llevamos al login.';
+
+/**
  * A DONDE MANDAR A QUIEN SE LE CADUCO LA SESION AL GUARDAR, o `null` si el
  * error no es eso.
  *

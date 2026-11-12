@@ -12,6 +12,7 @@ import type {
   VacacionPublica,
 } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeUsuarios } from '@/hooks/use-usuarios';
 import { clavesDeCatalogos } from '@/hooks/use-catalogos';
 import { clavesDeDinero } from '@/hooks/use-dinero';
@@ -672,6 +673,19 @@ describe('el bloque de datos', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('Sin conexion');
     expect(errorDelCampo('Telefono')).toBeNull();
+  });
+
+  it('un 401 dice que la sesion caduco, no «Unauthorized»', async () => {
+    // Tampoco nombra ningun campo y llega al cartel por `repartirPorCampo`.
+    await montar();
+    laApiFalla(new ErrorDeApi('Unauthorized', 401));
+
+    await escribir('Telefono', '11 5555-5555');
+    await clicEn('Guardar datos');
+
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(errorDelCampo('Telefono')).toBeNull();
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 
   it('un profesor no ve los campos de alumno', async () => {
@@ -1800,6 +1814,18 @@ describe('lo que dice la API cuando no se pueden cargar', () => {
       screen.getByText('Para esto hace falta ser administrador operativo. Tu rol no alcanza.'),
     ).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain('Forbidden');
+  });
+
+  it('un 401 dice que la sesion caduco, no «Unauthorized»', async () => {
+    // No nombra ningun campo y llega al cartel por `repartirPorCampo`.
+    await montar();
+    laApiFalla(new ErrorDeApi('Unauthorized', 401));
+
+    await completarElAlta();
+    await clicEn('Cargar vacaciones');
+
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 
   it('tras un fallo el formulario sigue ahi, con lo que ya se habia escrito', async () => {

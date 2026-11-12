@@ -11,8 +11,10 @@ import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useSalas } from '@/hooks/use-catalogos';
 import { useCrearSala } from '@/hooks/use-salas-admin';
 import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { useRolDeQuienMira } from '../rol-del-panel';
 import { textoDeAjuste } from './ajuste-heredable';
+import { FALTA_EL_NOMBRE } from './textos';
 
 /**
  * EL LISTADO DE SALAS.
@@ -96,7 +98,7 @@ function AltaDeSala() {
 
     const limpio = nombre.trim();
     if (limpio === '') {
-      setErrorDelNombre('Ponele un nombre.');
+      setErrorDelNombre(FALTA_EL_NOMBRE);
       return;
     }
 
@@ -197,7 +199,7 @@ export default function PaginaDeSalas() {
       {/* Sin sesion no se enseña el «Unauthorized» crudo de la API, que no le
           dice nada a nadie, y tampoco se ofrece reintentar: seria volver a
           fallar mientras la pantalla ya se esta yendo al login. */}
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {error !== null && !sesionCaducada && (
         <div className="flex flex-col items-start gap-2">

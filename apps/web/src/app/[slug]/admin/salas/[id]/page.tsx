@@ -18,6 +18,7 @@ import {
   type FormaDelAjuste,
   type ValorHeredable,
 } from '../ajuste-heredable';
+import { FALTA_EL_NOMBRE } from '../textos';
 
 /**
  * LA FICHA DE UNA SALA: sus OCHO ajustes, y ni uno mas.
@@ -146,7 +147,10 @@ function BloqueDeDatos({ sala }: { sala: SalaPublica }) {
     const original = datosDe(sala);
     const resultado: Partial<DatosEditables> = {};
 
-    if (valores.nombre !== original.nombre) resultado.nombre = valores.nombre;
+    // El nombre viaja RECORTADO, como en el alta: unos espacios de mas no son
+    // un cambio, y no pueden dejar una sala que se lee igual y no se encuentra.
+    const nombre = valores.nombre.trim();
+    if (nombre !== original.nombre) resultado.nombre = nombre;
     if (valores.activa !== original.activa) resultado.activa = valores.activa;
     if (valores.visibleAlumnos !== original.visibleAlumnos) {
       resultado.visibleAlumnos = valores.visibleAlumnos;
@@ -161,6 +165,12 @@ function BloqueDeDatos({ sala }: { sala: SalaPublica }) {
   async function enviar(): Promise<void> {
     setAviso(null);
     setPorCampo({});
+
+    // Solo espacios es vacio, y vacio no se manda: el mismo texto que el alta.
+    if (valores.nombre.trim() === '') {
+      setPorCampo({ nombre: FALTA_EL_NOMBRE });
+      return;
+    }
 
     const aMandar = cambios();
     if (Object.keys(aMandar).length === 0) {

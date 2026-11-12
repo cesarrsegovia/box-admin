@@ -12,6 +12,7 @@ import { destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useSalas } from '@/hooks/use-catalogos';
 import { useAusencias, useBorrarAusencia, useCrearAusencia } from '@/hooks/use-ausencias';
 import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { Seleccion } from '@/componentes/controles';
 import { filtrosDeLaBusqueda } from './filtros';
 import { useRolDeQuienMira } from '../rol-del-panel';
@@ -660,7 +661,7 @@ function PanelDeAusencias() {
       {/* Sin sesion no se enseña el «Unauthorized» crudo de la API, que no le
           dice nada a nadie, y tampoco se ofrece reintentar: seria volver a
           fallar mientras la pantalla ya se esta yendo al login. */}
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {ausencias.error !== null && !sesionCaducada && (
         <div className="flex flex-col items-start gap-2">

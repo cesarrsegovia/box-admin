@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ErrorDeApi } from './cliente';
-import { destinoSiCaducoLaSesion } from './sesion-caducada';
+import { destinoSiCaducoLaSesion, TEXTO_DE_SESION_CADUCADA } from './sesion-caducada';
 
 const CADUCADA = new ErrorDeApi('Unauthorized', 401);
 
@@ -38,5 +38,16 @@ describe('destinoSiCaducoLaSesion', () => {
     expect(
       destinoSiCaducoLaSesion(CADUCADA, { pathname: '/mi-gym/login', search: '?volverA=x' }),
     ).toBeNull();
+  });
+});
+
+describe('TEXTO_DE_SESION_CADUCADA', () => {
+  /**
+   * EL UNICO SITIO DEL REPO donde la frase se escribe a mano fuera de la
+   * constante. Las pantallas y sus specs la importan: asi no pueden volver a
+   * separarse en dos grafias, que es lo que paso hasta la Fase 17.
+   */
+  it('es la frase con tildes', () => {
+    expect(TEXTO_DE_SESION_CADUCADA).toBe('Tu sesión caducó. Te llevamos al login.');
   });
 });

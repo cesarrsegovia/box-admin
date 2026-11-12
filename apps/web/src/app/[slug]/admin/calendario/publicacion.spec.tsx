@@ -14,6 +14,7 @@ import type {
   UsuarioResumen,
 } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeCatalogos } from '@/hooks/use-catalogos';
 import { ESPERA_DEL_SONDEO } from '@/hooks/use-calendario-admin';
 import { ProveedorDeRol } from '../rol-del-panel';
@@ -1086,7 +1087,7 @@ describe('cuando publicar falla', () => {
     await esperar();
     await pulsar(/publicar/i);
 
-    expect(screen.getByText('Tu sesión caducó. Te llevamos al login.')).toBeInTheDocument();
+    expect(screen.getByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
     expect(screen.queryByText('Unauthorized')).toBeNull();
   });
 

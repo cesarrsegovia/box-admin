@@ -4,7 +4,8 @@ import type { ComposicionAlumnos, ComposicionPorPack, ConsumoDeAlumno } from '@b
 import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
-import { useComposicionAlumnos, type Mes } from '@/hooks/use-stats';
+import type { Mes } from '@/lib/mes';
+import { useComposicionAlumnos } from '@/hooks/use-stats';
 import { textoDelMes } from './filtros';
 
 /**

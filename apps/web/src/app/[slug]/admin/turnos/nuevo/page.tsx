@@ -14,6 +14,7 @@ import { useSalas } from '@/hooks/use-catalogos';
 import { useCrearTurno, type TurnoACrear } from '@/hooks/use-turnos';
 import { useUsuarios } from '@/hooks/use-usuarios';
 import { mensajeDeFallo } from '@/lib/errores-de-api';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { Seleccion } from '@/componentes/controles';
 
 /**
@@ -143,7 +144,7 @@ export default function PaginaDeTurnoNuevo() {
       <h1 className="text-2xl font-semibold text-slate-900">Nuevo turno</h1>
 
       <form onSubmit={handleSubmit(enviar)} className="flex max-w-xl flex-col gap-4" noValidate>
-        {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+        {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
         {errorDeLaApi !== null && <Aviso tono="error">{errorDeLaApi}</Aviso>}
 
         {salas.isPending && <p className="text-sm text-slate-500">Cargando salas…</p>}

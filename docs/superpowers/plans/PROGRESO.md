@@ -4600,3 +4600,140 @@ Cuatro comprobaciones que **ningún test puede hacer**: no hay navegador en el e
 - [ ] **Pasar lista** con la sesión vencida: guardar la asistencia va al login **una sola vez**.
 - [ ] Como profesora, «Mi liquidación» dice «Tu liquidación, …» y no muestra su nombre.
 - [ ] Un día fijo con nombre « Funcional » se guarda como «Funcional».
+
+# Progreso Fase 17 — Deuda de la web
+
+**Spec:** `docs/superpowers/specs/2026-11-12-fase17-deuda-web.md`
+**Plan:** `docs/superpowers/plans/2026-11-12-fase17-deuda-web.md` (5 tareas)
+
+La deuda de la Fase 16 que vive sólo en `apps/web`. Ninguna función nueva, **sólo `apps/web`**:
+`apps/api` y `packages/shared` no se tocaron (`git status --short apps/api packages/shared` da vacío).
+
+- [x] T1 — Un solo texto para la sesión vencida
+- [x] T2 — Los guardados que muestran «Unauthorized»
+- [x] T3 — El nombre al editar una sala se recorta
+- [x] T4 — Los meses en un solo sitio
+- [x] T5 — Verificación, README y tracker
+
+## Los números
+
+Punto de partida (Fase 16): web **2004 / 94**.
+
+| Medido al cierre      |                                                                        |
+| --------------------- | ---------------------------------------------------------------------- |
+| `apps/web`            | **2041 tests / 96 suites** (+37 tests, +2 suites), verde               |
+| `tsc --noEmit`        | limpio                                                                 |
+| `build`               | OK                                                                     |
+| `MUTACION TEMPORAL`   | `grep -rn "MUTACION TEMPORAL" apps` da **cero**                        |
+| Grafías viejas        | el grep de `Tu sesion caduco` y `Volve a entrar` da **cero**           |
+| «Tu sesión caducó»    | **dos líneas**: la constante y su spec (`lib/sesion-caducada{,.spec}`) |
+| `apps/api` y `shared` | sin cambios                                                            |
+
+## Lo que la fase hace
+
+- **T1 — Un solo texto.** `TEXTO_DE_SESION_CADUCADA` («Tu sesión caducó. Te llevamos al login.») en
+  `lib/sesion-caducada.ts`. La usan `mensajeDeFallo`, `textoDelFallo` de `admin/calendario/publicar.tsx`
+  y las **15 pantallas** con aviso de lectura. Había **tres grafías, no dos**: `comprobantes-pendientes`
+  decía «Volve a entrar.». **10 specs** pasaron a importar la constante; 3 la buscaban con
+  `/tu sesion caduco/i`, que dejaba de casar. Antes del cambio, **7 tests en rojo en 6 archivos**.
+- **T2 — `textoDelError`.** `textoDelError(error)` en `lib/errores-de-api.ts`: todo tal cual **menos el
+  401**. No es `mensajeDeFallo`, que reescribe también el 403. Fueron **13 escrituras, no 9**: las 4 de
+  más son el alta de pregunta (`web/listas.tsx`), apagar la web (el diálogo), las acciones del alumno en
+  su calendario (`vista-de-semana.tsx`) y el alta de usuario. **Un test de 401 por escritura**; nacieron
+  `subir-comprobante.spec.tsx` y `vista-de-semana.spec.tsx` (doblan los hooks).
+- **T3 — El recorte al editar una sala.** `cambios()` de la ficha de sala compara el nombre recortado:
+  agregar espacios **no es un cambio**, y uno de sólo espacios dice «Ponele un nombre.».
+- **T4 — Los meses.** El tipo `Mes` pasó a `lib/mes.ts`, **sin reexportación** en `hooks/use-stats` (y
+  `use-dinero`, que lo traía de `./use-stats`, también se corrigió). `SelectorDeMes` vive en
+  `componentes/selector-de-mes.tsx`, con prop `id`, y lo usan Análisis y «Mi liquidación». El
+  calendario usa `textoDelMes` de `lib/mes.ts`. Sin test nuevo: los de las dos pantallas ya lo cubren.
+
+## Las mutaciones
+
+| Tarea    | Qué se agregó                                        | Resultado                                  |
+| -------- | ---------------------------------------------------- | ------------------------------------------ |
+| T1       | «Volve a entrar» a mano en `comprobantes-pendientes` | **rojo** el spec **y** el grep             |
+| T2       | `crear.error.message` en el alta de pregunta         | **rojo**                                   |
+| T2       | `textoDelError` reescribiendo también el 403         | **rojo**                                   |
+| T3       | `cambios()` comparando sin recortar                  | **rojo**                                   |
+| T4       | el selector arranca de un `URLSearchParams()` vacío  | **rojo** en Análisis y en «Mi liquidación» |
+| Revisión | quitar la rama del 401 en `frasesDeLaApi`            | **los 8 tests nuevos en rojo**             |
+
+## La revisión de calidad
+
+- **La revisión de la fase entera encontró 8 escrituras más que pintaban «Unauthorized»**, por otro
+  camino: `repartirPorCampo` → `frasesDeLaApi` devolvía `['Unauthorized']`, que no nombra ningún campo y
+  caía al cartel. Eran la ficha y el alta de sala, ausencias, horarios, los datos del turno, los datos y
+  las vacaciones del usuario e invitaciones. **Se arregló en la fuente**: `frasesDeLaApi` devuelve la
+  constante ante un 401, así que lo cubren todas las pantallas que usan `repartirPorCampo`. Un test de
+  401 por escritura (8) y 4 en `lib`.
+- **Docblocks que quedaron falsos** tras la mudanza: `mi-liquidacion/pantalla.tsx`, `lib/mes.ts` y
+  `selector-de-mes.tsx`.
+- **`FALTA_EL_NOMBRE`** en `admin/salas/textos.ts`: la frase estaba escrita dos veces.
+- **Un test que cubría dos escrituras**, partido en dos.
+- **El orden de imports** en unos 10 archivos.
+
+## Trampas nuevas
+
+**`sed -i` desde Git Bash quita los CR de los archivos CRLF.** Pasó en T4 y se restauraron. Para
+reemplazos, la herramienta de edición.
+
+**Los greps de `error.message` no ven el 401 que llega por `repartirPorCampo`.** Las 8 escrituras de la
+revisión no tenían ningún `error.message` a la vista. La red buena es **un test de 401 por escritura**,
+no un grep.
+
+## Deuda anotada
+
+**Cerrada por esta fase:**
+
+- Las dos grafías del mensaje de sesión vencida (eran **tres**).
+- Los guardados que mostraban «Unauthorized»: **13** por `error.message` y **8** por `repartirPorCampo`.
+- El recorte de nombres en la web: sólo faltaba editar una sala.
+- `SelectorDeMes` duplicado.
+- El tipo `Mes` en `hooks/use-stats`.
+- La copia de los nombres de mes del calendario.
+
+**Aceptada, ya no es deuda:** los valores por defecto de `ir` y `donde` en `crearClienteDeDatos` quedan
+sin test, porque probarlos mueve la URL del documento, que el guardián de consola prohíbe.
+
+**Nueva de esta fase:**
+
+- **Escrituras con `pedir` directo, sin `useMutation`**: `componentes/boton-de-push.tsx` (~129 y ~176) y
+  `checkin/pantalla-de-check-in.tsx` (~171). Ante un 401 muestran «Unauthorized» **y no van al login**:
+  el `MutationCache` no las ve. Arreglarlas pide decidir la navegación, no sólo el texto.
+- **Lecturas internas que pueden mostrar «Unauthorized»** si la página no ataja antes el 401 (**sin
+  verificar**):
+  - `bloque-vacaciones`, `bloque-pagos` y `bloque-turnos-libres` (ficha de usuario);
+  - el `useTurnos` de reasignar en `bloque-anotados` (ficha de turno);
+  - la lectura de la ficha de sala (`salas/[id]/page.tsx` ~577);
+  - `disponibles` en `(alumno)/calendario/vista-de-semana.tsx`.
+- **`invitaciones/formulario.tsx` no traduce el 403**, y su test «un 403 de la API se explica por el
+  rol» sólo comprueba `/forbidden/i`: afirma el texto crudo.
+
+**Sigue (Fase 18, API y shared):** el `.trim()` en los DTO; la búsqueda del perfil por `actor.sub`
+repetida en 8 servicios; `Importe` contra la cadena pelada.
+
+**Sigue (grupo D):** la lista de la Fase 13 (`navigator.clipboard`, el contexto de navegación anidado,
+los atributos de los descendientes del `<body>`, partir el dato en trozos y el `.value` de la limpieza
+de un `useEffect`).
+
+## Lo que esta fase NO hace
+
+- Tocar `apps/api` ni `packages/shared` (grupo C, Fase 18).
+- Tocar la infraestructura de tests de la Fase 13 (grupo D).
+- Cambiar **cuándo** navega una pantalla con el 401 de sus lecturas: sólo cambia el texto.
+- Arreglar las escrituras con `pedir` directo (push y check-in).
+
+Comandos: `pnpm --filter @boxadmin/web test`, `… exec tsc --noEmit`, `… build`.
+
+## El checklist a mano (para Cesar)
+
+Cinco comprobaciones que **ningún test puede hacer**: no hay navegador en el entorno.
+
+- [ ] Con la sesión vencida, guardar en Configuración → Web: se lee «Tu sesión caducó…» un instante
+      y va al login.
+- [ ] Con la sesión vencida, guardar los datos de una sala: se lee «Tu sesión caducó…» y va al login.
+- [ ] Una lectura con la sesión vencida (p. ej. Turnos) dice el mismo texto, **con tildes**.
+- [ ] Editar una sala con « Box 2 » la deja como «Box 2».
+- [ ] El selector de mes de Análisis y el de «Mi liquidación» siguen cambiando el mes y conservan el
+      resto de la URL.

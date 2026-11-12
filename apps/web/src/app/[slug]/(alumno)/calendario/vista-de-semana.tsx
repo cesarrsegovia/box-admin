@@ -6,6 +6,7 @@ import { AvisoOffline } from '@/componentes/aviso-offline';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { useAccionesDeTurno } from '@/hooks/use-acciones-de-turno';
 import { useMisClases, useTurnosDisponibles } from '@/hooks/use-calendario';
+import { textoDelError } from '@/lib/errores-de-api';
 import { diasDeLaSemana, semanaDe, sumarSemanas } from '@/lib/semana';
 import { accionDeTurno, textoDeDisponibilidad } from '@/lib/textos-disponibilidad';
 
@@ -61,7 +62,9 @@ export function VistaDeSemana() {
 
       {mutacionFallida !== undefined && (
         <Aviso tono="error">
-          {mutacionFallida.error?.message ?? 'No se pudo completar la accion'}
+          {mutacionFallida.error !== null
+            ? textoDelError(mutacionFallida.error)
+            : 'No se pudo completar la accion'}
         </Aviso>
       )}
 

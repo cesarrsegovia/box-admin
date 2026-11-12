@@ -10,8 +10,10 @@ import type {
   RolUsuario,
 } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import type { Mes } from '@/lib/mes';
 import { rutaDeRetornoSegura } from '@/lib/ruta-de-retorno';
-import { clavesDeStats, type Mes } from '@/hooks/use-stats';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
+import { clavesDeStats } from '@/hooks/use-stats';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { ProveedorDeRol } from '../rol-del-panel';
 import PaginaDeAnalisis from './page';
@@ -1157,7 +1159,7 @@ describe('cuando el reporte no se puede leer', () => {
 
     // Y no se enseña el «Unauthorized» crudo de la API, que no le dice nada a
     // nadie, ni se ofrece reintentar mientras la pantalla ya se esta yendo.
-    expect(screen.getByRole('alert').textContent).toBe('Tu sesion caduco. Te llevamos al login.');
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
     expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
   });
 });
@@ -1289,7 +1291,7 @@ describe('la caja es de ADMIN_SALON y nadie mas', () => {
     await esperar();
 
     expect(screen.getAllByRole('alert')).toHaveLength(1);
-    expect(screen.getByRole('alert').textContent).toBe('Tu sesion caduco. Te llevamos al login.');
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
     expect(empujar).toHaveBeenCalledTimes(1);
   });
 });

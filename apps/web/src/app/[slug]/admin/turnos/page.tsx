@@ -8,6 +8,7 @@ import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { destinoDeLoginDesde } from '@/lib/destino-de-login';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { useSalas } from '@/hooks/use-catalogos';
 import { useTurnos } from '@/hooks/use-turnos';
 import { FiltrosDelListado, filtrosDeLaBusqueda } from './filtros';
@@ -140,7 +141,7 @@ function ListadoDeTurnos() {
           delante del mostrador no le dice nada a nadie, y encima la pantalla ya
           se esta yendo al login. Y reintentar sin sesion es volver a fallar:
           por eso tampoco se ofrece el boton. */}
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {turnos.error !== null && !sesionCaducada && (
         <div className="flex flex-col items-start gap-2">

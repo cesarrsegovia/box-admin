@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PagoPendiente, UsuarioResumen } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
 import { rutaDeRetornoSegura } from '@/lib/ruta-de-retorno';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeStats } from '@/hooks/use-stats';
 import { clavesDeUsuarios } from '@/hooks/use-usuarios';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
@@ -708,7 +709,7 @@ describe('cuando se cae la sesion', () => {
 
     expect(botonesDelDocumento()).not.toContain('Reintentar');
     expect(document.querySelector('[data-fallo-al-leer]')).toBeNull();
-    expect(screen.getByText(/tu sesion caduco/i)).toBeInTheDocument();
+    expect(screen.getByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
     // Y no se enseña el «Unauthorized» crudo de la API, que no le dice nada a
     // nadie.
     expect(elMarcadoEnMinusculas()).not.toContain('sin sesion');

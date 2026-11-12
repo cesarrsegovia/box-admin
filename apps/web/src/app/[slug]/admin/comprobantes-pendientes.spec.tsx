@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ComprobantePublico } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeDinero } from '@/hooks/use-dinero';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import InicioDelPanel from './page';
@@ -733,7 +734,7 @@ describe('una cola vacia y un fallo al leer', () => {
     // dos bloques empujando al mismo destino son dos navegaciones.
     await montar({ errorDeLectura: new ErrorDeApi('Unauthorized', 401) });
 
-    expect(screen.getByText(/tu sesion caduco/i)).toBeInTheDocument();
+    expect(screen.getByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
     expect(elBloque().querySelector('[data-fallo-al-leer]')).toBeNull();
     expect(botonesDelMarcado()).not.toContain('Reintentar');
     expect(elBloque().innerHTML.toLowerCase()).not.toContain('unauthorized');

@@ -8,6 +8,7 @@ import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { usePagosPendientes } from '@/hooks/use-stats';
 import { useUsuarios, type FiltrosDeUsuarios } from '@/hooks/use-usuarios';
 // La ORTOGRAFIA del dinero, en un solo sitio. Ver el comentario de `elTotal`.
@@ -414,7 +415,7 @@ export function PagosPendientes() {
       {/* Sin sesion no se enseña el «Unauthorized» crudo de la API, que no le
           dice nada a nadie, y tampoco se ofrece reintentar: seria volver a
           fallar mientras la pantalla ya se esta yendo al login. */}
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {pendientes.error !== null && !sesionCaducada && (
         <div data-fallo-al-leer className="flex flex-col items-start gap-2">

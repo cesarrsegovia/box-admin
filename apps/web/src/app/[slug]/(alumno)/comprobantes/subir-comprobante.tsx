@@ -2,6 +2,7 @@
 
 import { useRef } from 'react';
 import { Aviso, Boton } from '@/componentes/ui';
+import { textoDelError } from '@/lib/errores-de-api';
 import { useSubirComprobante } from '@/hooks/use-comprobantes';
 
 export function SubirComprobante() {
@@ -22,7 +23,7 @@ export function SubirComprobante() {
         }}
       />
 
-      {subir.isError && <Aviso tono="error">{subir.error.message}</Aviso>}
+      {subir.isError && <Aviso tono="error">{textoDelError(subir.error)}</Aviso>}
       {subir.isSuccess && (
         <Aviso tono="exito">Comprobante subido. Queda pendiente de revision.</Aviso>
       )}

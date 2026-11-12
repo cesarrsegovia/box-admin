@@ -7,6 +7,7 @@ import { type ConfiguracionWebSalon, rolAlcanza } from '@boxadmin/shared';
 import { Confirmar } from '@/componentes/confirmar';
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
+import { textoDelError } from '@/lib/errores-de-api';
 import { useConfigWebSalon, useGuardarWebSalon } from '@/hooks/use-configuracion';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 import { CampoLargo, ListaDePreguntas, ListaDeTestimonios } from './listas';
@@ -441,7 +442,7 @@ function PantallaDeLaWeb() {
             }
             textoDeConfirmar={TEXTO_DE_APAGAR}
             cargando={interruptor.isPending}
-            error={interruptor.isError ? interruptor.error.message : undefined}
+            error={interruptor.isError ? textoDelError(interruptor.error) : undefined}
             alConfirmar={() => cambiarLaWeb(false)}
             alCancelar={() => setApagando(false)}
           />
@@ -589,7 +590,7 @@ function PantallaDeLaWeb() {
         <Aviso tono="error">
           <span data-resultado="error">
             {PRINCIPIO_DEL_FALLO_DE_GUARDADO}
-            {guardar.error.message}
+            {textoDelError(guardar.error)}
           </span>
         </Aviso>
       )}

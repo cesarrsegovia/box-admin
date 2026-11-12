@@ -12,6 +12,7 @@ import {
 } from '@/hooks/use-dinero';
 import { Seleccion } from '@/componentes/controles';
 import { mensajeDeFallo } from '@/lib/errores-de-api';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 
 /**
  * LA COLA DE COMPROBANTES POR REVISAR. `GET /comprobantes?estado=PENDIENTE`.
@@ -658,7 +659,7 @@ export function ComprobantesPendientes() {
 
       {cola.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
 
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Volve a entrar.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {cola.error !== null && !sesionCaducada && (
         <div data-fallo-al-leer className="flex flex-col items-start gap-2">

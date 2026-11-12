@@ -8,6 +8,7 @@ import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { mensajeDeFallo } from '@/lib/errores-de-api';
 import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { useAlumnosDeLaClase, usePasarLista } from '@/hooks/use-mis-clases';
 
 /**
@@ -411,7 +412,7 @@ export default function PaginaDePasarLista() {
         {COMO_FUNCIONA}
       </p>
 
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {alumnos.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
 

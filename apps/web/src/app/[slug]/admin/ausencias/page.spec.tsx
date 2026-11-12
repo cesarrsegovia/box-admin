@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AusenciaPublica, RolUsuario, SalaPublica } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeCatalogos } from '@/hooks/use-catalogos';
 import { clavesDeAusencias } from '@/hooks/use-ausencias';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
@@ -1005,6 +1006,18 @@ describe('lo que dice la API cuando no', () => {
       screen.getByText('Para esto hace falta ser administrador del salon. Tu rol no alcanza.'),
     ).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain('Forbidden');
+  });
+
+  it('un 401 dice que la sesion caduco, no «Unauthorized»', async () => {
+    // Tampoco nombra ningun campo y llega al cartel por `repartirPorCampo`.
+    montar({ errorAlEscribir: new ErrorDeApi('Unauthorized', 401) });
+
+    await completarElAlta();
+    await enviarElAlta();
+
+    const formulario = screen.getByRole('form', { name: 'Nuevo cierre' });
+    expect(within(formulario).getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 
   it('tras un fallo el formulario sigue ahi, con lo que ya se habia escrito', async () => {

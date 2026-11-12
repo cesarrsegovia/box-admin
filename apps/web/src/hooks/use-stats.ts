@@ -10,6 +10,7 @@ import type {
   ReporteTurnosLibres,
 } from '@boxadmin/shared';
 import { pedir } from '@/lib/cliente';
+import type { Mes } from '@/lib/mes';
 
 /**
  * Los seis reportes de la Fase 6A, que hasta hoy solo se leian con un `curl`.
@@ -40,12 +41,6 @@ import { pedir } from '@/lib/cliente';
  * `?tenantId=` seria la unica forma de ver los numeros de otro gimnasio, y por
  * eso no existe.
  */
-
-/** Los tres reportes que se piden por mes calendario. */
-export interface Mes {
-  anio: number;
-  mes: number;
-}
 
 export interface RangoDeAsistencia {
   desde: string;

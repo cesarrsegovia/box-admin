@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigCheckIn, RolUsuario } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { ProveedorDeRol } from '../../rol-del-panel';
 import PaginaDeCheckIn from './page';
@@ -49,6 +50,9 @@ const RUTA_DE_LA_IMAGEN = '/api/bx/config/checkin-qr/imagen';
 
 /** Lo que dice la API cuando la lectura o el guardado fallan. Palabra por palabra. */
 const MENSAJE_DE_LA_API = 'La base de datos del gimnasio no contesta';
+
+/** La sesion vencida, como la contesta la API: «Unauthorized» es lo que NO se tiene que leer. */
+const NO_AUTORIZADO = new ErrorDeApi('Unauthorized', 401);
 
 /**
  * EL UNICO CENTINELA POSIBLE DE ESTA PANTALLA, Y POR QUE ES UNO SOLO.
@@ -415,6 +419,17 @@ describe('guardar la ventana', () => {
     expect(textoDe('[data-resultado="exito"]')).toBeNull();
     expect(textoDe('[data-resultado="error"]')).toBe(
       `No se pudo guardar la ventana: ${MENSAJE_DE_LA_API}`,
+    );
+  });
+
+  it('un 401 al guardar dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montarYEsperar({ falloAlGuardar: NO_AUTORIZADO });
+
+    await escribirEnElCampo('minutos-antes', '45');
+    await pulsarGuardar();
+
+    expect(textoDe('[data-resultado="error"]')).toBe(
+      `No se pudo guardar la ventana: ${TEXTO_DE_SESION_CADUCADA}`,
     );
   });
 });

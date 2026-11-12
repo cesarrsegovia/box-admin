@@ -3,6 +3,7 @@
 import { type FormEvent, useRef, useState } from 'react';
 import type { PlantillaPublica, TipoPlantilla } from '@boxadmin/shared';
 import { Aviso, Boton } from '@/componentes/ui';
+import { textoDelError } from '@/lib/errores-de-api';
 import { useGuardarPlantilla, usePlantillas } from '@/hooks/use-configuracion';
 
 /**
@@ -474,7 +475,7 @@ function UnaPlantilla({ plantilla, marcadores }: PropsDeUnaPlantilla) {
         <Aviso tono="error">
           <span data-resultado="error">
             {PRINCIPIO_DEL_FALLO_DE_GUARDADO}
-            {guardar.error.message}
+            {textoDelError(guardar.error)}
           </span>
         </Aviso>
       )}

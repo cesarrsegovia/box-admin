@@ -8,6 +8,7 @@ import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { destinoDeLoginDesde } from '@/lib/destino-de-login';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { useAsistencia, type RangoDeAsistencia } from '@/hooks/use-stats';
 import { textoDeLaFraccion, textoDelNumero } from '../porcentaje';
 import {
@@ -394,7 +395,7 @@ function PanelDeAsistencia() {
       {/* Sin sesion no se enseña el «Unauthorized» crudo de la API, que no le
           dice nada a nadie, y tampoco se ofrece reintentar: seria volver a
           fallar mientras la pantalla ya se esta yendo al login. */}
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {/* `ElReporte` vuelve a llamar a `useAsistencia` con el MISMO rango: es
           la misma clave de TanStack, o sea la misma consulta y una sola

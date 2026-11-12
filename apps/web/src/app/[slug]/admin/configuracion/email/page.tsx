@@ -5,6 +5,7 @@ import { rolAlcanza } from '@boxadmin/shared';
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
+import { textoDelError } from '@/lib/errores-de-api';
 import { useConfigSmtp, useGuardarSmtp } from '@/hooks/use-configuracion';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 import { LasPlantillas } from './plantillas';
@@ -647,7 +648,7 @@ function ElServidorDeCorreo() {
         <Aviso tono="error">
           <span data-resultado="error">
             {PRINCIPIO_DEL_FALLO_DE_GUARDADO}
-            {guardar.error.message}
+            {textoDelError(guardar.error)}
           </span>
         </Aviso>
       )}

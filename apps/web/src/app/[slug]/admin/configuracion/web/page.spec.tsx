@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfiguracionWebSalon, RolUsuario } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { ProveedorDeRol } from '../../rol-del-panel';
 import PaginaDeLaWeb from './page';
@@ -54,6 +55,9 @@ const RUTA_DE_LAS_PREGUNTAS = '/config/web-salon/faq';
 
 /** Lo que dice la API cuando algo falla. Palabra por palabra. */
 const MENSAJE_DE_LA_API = 'La base de datos del gimnasio no contesta';
+
+/** La sesion vencida, como la contesta la API: «Unauthorized» es lo que NO se tiene que leer. */
+const NO_AUTORIZADO = new ErrorDeApi('Unauthorized', 401);
 
 // ---------------------------------------------------------------------------
 // El fixture
@@ -1093,6 +1097,87 @@ describe('guardar el formulario', () => {
 
     expect(textoDe('[data-resultado="error"]')).toBeNull();
     expect(textoDe('[data-resultado="exito"]')).toBe('Cambios guardados.');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// La sesion vencida en una escritura
+// ---------------------------------------------------------------------------
+
+/**
+ * UN 401 NO SE LEE COMO «Unauthorized», EN NINGUNA DE LAS SEIS ESCRITURAS.
+ *
+ * El cliente de datos ya esta mandando al login, pero eso aqui no pasa: el
+ * spec monta un `QueryClient` pelado. Lo que queda es justo lo que se prueba,
+ * el texto que se lee el instante antes de salir. Uno por escritura, porque
+ * cada una pinta SU error en SU sitio y arreglar cinco deja la sexta igual.
+ */
+describe('un 401 en una escritura dice que la sesion caduco, no «Unauthorized»', () => {
+  it('al guardar el formulario', async () => {
+    await montarYEsperar({ web: WEB_COMPLETA, falloAlGuardar: NO_AUTORIZADO });
+
+    await escribirEnElCampo('tagline', 'Otra cosa');
+    await guardarElFormulario();
+
+    expect(textoDe('[data-resultado="error"]')).toBe(
+      `No se pudo guardar la web: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+  });
+
+  it('al apagar la web, dentro del dialogo', async () => {
+    await montarYEsperar({ web: WEB_COMPLETA, falloAlGuardar: NO_AUTORIZADO });
+
+    await pulsar('Apagar la web publica');
+    await pulsar('Apagar la web');
+
+    // El aviso entero por igualdad: el dialogo lleva ademas la pregunta y el
+    // detalle, y un `toContain` pasaria con el texto comun Y «Unauthorized».
+    expect(textoDe('[role="dialog"] [role="alert"]')).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(textoDe('[role="dialog"]')).not.toContain('Unauthorized');
+  });
+
+  it('al borrar un testimonio', async () => {
+    await montarYEsperar({ web: WEB_COMPLETA, falloEnLasListas: NO_AUTORIZADO });
+
+    await pulsar(`Borrar el testimonio de ${NOMBRE_DEL_PRIMER_TESTIMONIO}`);
+
+    expect(textoDe('[data-fallo="borrar-testimonio"]')).toBe(
+      `No se pudo borrar el testimonio: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+  });
+
+  it('al agregar un testimonio', async () => {
+    await montarYEsperar({ web: WEB_COMPLETA, falloEnLasListas: NO_AUTORIZADO });
+
+    await escribirEnElCampo('testimonio-nombre', 'Ana Quiroga');
+    await escribirEnElCampo('testimonio-texto', 'Vengo hace dos años.');
+    await pulsar('Agregar el testimonio');
+
+    expect(textoDe('[data-fallo="crear-testimonio"]')).toBe(
+      `No se pudo agregar el testimonio: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+  });
+
+  it('al borrar una pregunta', async () => {
+    await montarYEsperar({ web: WEB_COMPLETA, falloEnLasListas: NO_AUTORIZADO });
+
+    await pulsar(`Borrar la pregunta: ${LA_SEGUNDA_PREGUNTA}`);
+
+    expect(textoDe('[data-fallo="borrar-pregunta"]')).toBe(
+      `No se pudo borrar la pregunta: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+  });
+
+  it('al agregar una pregunta', async () => {
+    await montarYEsperar({ web: WEB_COMPLETA, falloEnLasListas: NO_AUTORIZADO });
+
+    await escribirEnElCampo('pregunta-pregunta', 'Hay duchas?');
+    await escribirEnElCampo('pregunta-respuesta', 'Si, cuatro.');
+    await pulsar('Agregar la pregunta');
+
+    expect(textoDe('[data-fallo="crear-pregunta"]')).toBe(
+      `No se pudo agregar la pregunta: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
   });
 });
 

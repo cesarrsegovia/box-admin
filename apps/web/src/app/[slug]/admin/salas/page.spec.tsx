@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { RolUsuario, SalaPublica } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeCatalogos } from '@/hooks/use-catalogos';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { ProveedorDeRol } from '../rol-del-panel';
@@ -389,6 +390,23 @@ describe('el alta de una sala', () => {
     await esperar();
 
     expect(screen.getByText(/administrador del salon/i)).toBeInTheDocument();
+  });
+
+  /**
+   * Un 401 tampoco nombra ningun campo y llega al cartel por
+   * `repartirPorCampo`: lo que se lee ahi es el texto comun, no «Unauthorized».
+   */
+  it('un 401 en el alta dice que la sesion caduco, no «Unauthorized»', async () => {
+    montar();
+    pedirEspia.mockRejectedValueOnce(new ErrorDeApi('Unauthorized', 401));
+
+    await userEvent.type(screen.getByLabelText('Nombre de la sala'), 'Sala 2');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear sala' }));
+    await esperar();
+
+    const formulario = screen.getByRole('form', { name: 'Nueva sala' });
+    expect(within(formulario).getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 });
 

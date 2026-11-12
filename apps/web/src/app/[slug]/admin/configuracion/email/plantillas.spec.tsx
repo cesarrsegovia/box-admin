@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlantillaPublica, TipoPlantilla } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { LasPlantillas } from './plantillas';
 
@@ -148,6 +149,9 @@ const MOTIVOS_DE_LA_API = [
   "La plantilla no es valida: Parse error on line 1:\n{{#if x}}sin cerrar\n--^\nExpecting 'OPEN_INVERSE_CHAIN', 'INVERSE', 'OPEN_ENDBLOCK', got 'EOF'",
   "La plantilla no es valida: Parse error on line 1:\n{{alumno\n--^\nExpecting 'CLOSE', got 'INVALID'",
 ];
+
+/** La sesion vencida, como la contesta la API: «Unauthorized» es lo que NO se tiene que leer. */
+const NO_AUTORIZADO = new ErrorDeApi('Unauthorized', 401);
 
 interface OpcionesDeMontaje {
   /** Lo que contesta `GET /config/plantillas`. */
@@ -741,6 +745,17 @@ describe('guardar una plantilla', () => {
 
       cleanupEntreMontajes();
     }
+  });
+
+  it('un 401 al guardar dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montarYEsperar({ falloAlGuardar: NO_AUTORIZADO });
+
+    escribir('#cuerpo-CONFIRMACION', '<p>Hola</p>');
+    await pulsarGuardar('CONFIRMACION');
+
+    expect(textoDe('CONFIRMACION', '[data-resultado="error"]')).toBe(
+      `No se pudo guardar la plantilla: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
   });
 
   /**

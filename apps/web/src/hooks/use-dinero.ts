@@ -10,10 +10,10 @@ import type {
   PagoPublico,
 } from '@boxadmin/shared';
 import { type ErrorDeApi, pedir } from '@/lib/cliente';
+import type { Mes } from '@/lib/mes';
 import { claves } from './use-calendario';
 import { clavesDeCatalogos } from './use-catalogos';
 import { clavesDeUsuarios } from './use-usuarios';
-import type { Mes } from './use-stats';
 
 /**
  * EL DINERO: LOS NUEVE ENDPOINTS QUE QUEDABAN SIN PANTALLA EN TODO EL PROYECTO.

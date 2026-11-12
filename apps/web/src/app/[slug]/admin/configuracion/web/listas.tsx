@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import type { PreguntaAdmin, TestimonioAdmin } from '@boxadmin/shared';
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
+import { textoDelError } from '@/lib/errores-de-api';
 import {
   useBorrarPregunta,
   useBorrarTestimonio,
@@ -248,7 +249,7 @@ export function ListaDeTestimonios({ testimonios }: { testimonios: TestimonioAdm
         <Aviso tono="error">
           <span data-fallo="borrar-testimonio">
             {'No se pudo borrar el testimonio: '}
-            {borrar.error.message}
+            {textoDelError(borrar.error)}
           </span>
         </Aviso>
       )}
@@ -293,7 +294,7 @@ export function ListaDeTestimonios({ testimonios }: { testimonios: TestimonioAdm
         <Aviso tono="error">
           <span data-fallo="crear-testimonio">
             {'No se pudo agregar el testimonio: '}
-            {crear.error.message}
+            {textoDelError(crear.error)}
           </span>
         </Aviso>
       )}
@@ -400,7 +401,7 @@ export function ListaDePreguntas({ preguntas }: { preguntas: PreguntaAdmin[] }) 
         <Aviso tono="error">
           <span data-fallo="borrar-pregunta">
             {'No se pudo borrar la pregunta: '}
-            {borrar.error.message}
+            {textoDelError(borrar.error)}
           </span>
         </Aviso>
       )}
@@ -445,7 +446,7 @@ export function ListaDePreguntas({ preguntas }: { preguntas: PreguntaAdmin[] }) 
         <Aviso tono="error">
           <span data-fallo="crear-pregunta">
             {'No se pudo agregar la pregunta: '}
-            {crear.error.message}
+            {textoDelError(crear.error)}
           </span>
         </Aviso>
       )}

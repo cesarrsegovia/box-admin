@@ -1,5 +1,6 @@
 import type { RolAsignable, RolUsuario } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 
 /**
  * Como se lee un fallo de la API en cualquier pantalla de la app, del panel o
@@ -20,6 +21,12 @@ import { ErrorDeApi } from '@/lib/cliente';
 
 /** Las frases que mando la API, ya desenvueltas del array de Nest. */
 export function frasesDeLaApi(error: ErrorDeApi): string[] {
+  // El 401 dice «Unauthorized», que no nombra ningun campo: `repartirPorCampo`
+  // lo dejaria suelto y acabaria en el cartel tal cual. El cliente de datos ya
+  // esta mandando al login (`lib/query.tsx`), y lo que se lee el instante antes
+  // de salir es el texto comun. Se cambia aqui, una vez, y no en cada pantalla.
+  if (error.esSesionCaducada) return [TEXTO_DE_SESION_CADUCADA];
+
   const cuerpo = error.cuerpo;
 
   if (typeof cuerpo === 'object' && cuerpo !== null && 'message' in cuerpo) {
@@ -88,7 +95,7 @@ export function mensajeDeFallo(error: unknown, minimo: RolAsignable): string {
 
   // El cliente de datos ya esta mandando al login (`lib/query.tsx`): esto es lo
   // que se lee el instante antes de salir.
-  if (error.esSesionCaducada) return 'Tu sesión caducó. Te llevamos al login.';
+  if (error.esSesionCaducada) return TEXTO_DE_SESION_CADUCADA;
 
   if (error.estado === 403) {
     return `Para esto hace falta ser ${ROLES_LEGIBLES[minimo]}. Tu rol no alcanza.`;
@@ -97,5 +104,20 @@ export function mensajeDeFallo(error: unknown, minimo: RolAsignable): string {
   // Para todo lo demas, el mensaje de la API tal cual: se escribio para quien
   // esta mirando ("Un profesor no tiene packId...") y cambiarlo por uno generico
   // seria tirar la parte util.
+  return error.message;
+}
+
+/**
+ * El `message` de un fallo, SALVO el 401.
+ *
+ * Para las escrituras que pintan el mensaje de la API tal cual («No se pudo
+ * guardar la ventana: Redis no contesta»). Ante un 401 el cliente de datos ya
+ * esta mandando al login (`lib/query.tsx`), y lo que se lee el instante antes
+ * de salir no puede ser «Unauthorized». No es `mensajeDeFallo`: ese reescribe
+ * tambien el 403 y pide el rol minimo de la ruta.
+ */
+export function textoDelError(error: Error): string {
+  if (error instanceof ErrorDeApi && error.esSesionCaducada) return TEXTO_DE_SESION_CADUCADA;
+
   return error.message;
 }

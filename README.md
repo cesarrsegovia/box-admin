@@ -2555,6 +2555,36 @@ función nueva: todo es web, la API y `packages/shared` no se tocaron.
 - **Cambiar el 401 de las lecturas**: siguen como antes.
 - Ver `docs/superpowers/plans/PROGRESO.md`.
 
+## Deuda de la web — Fase 17
+
+La deuda de la Fase 16 que vive sólo en `apps/web`. Ninguna función nueva: la API y `packages/shared`
+no se tocaron.
+
+- **El texto de la sesión vencida es uno**: `TEXTO_DE_SESION_CADUCADA` («Tu sesión caducó. Te llevamos
+  al login.»), en `lib/sesion-caducada.ts`, **con tildes**, igual en las lecturas y en las escrituras.
+  Los specs de pantalla lo importan; el texto literal se fija una sola vez, en
+  `sesion-caducada.spec.ts`.
+- **Ningún guardado muestra «Unauthorized»** el instante antes de ir al login. Hay dos caminos:
+  - Las escrituras que pintan el mensaje de la API tal cual usan `textoDelError(error)`
+    (`lib/errores-de-api.ts`): deja todo como viene **menos el 401**, que pasa a ser el texto común.
+  - `frasesDeLaApi` también devuelve la constante ante un 401, así que lo cubren **todas las pantallas
+    que reparten el error con `repartirPorCampo`** sin tocar cada una.
+  - **Cuándo cuál:** `textoDelError` cuando la pantalla mostraba `error.message` y lo único que hay que
+    cambiar es el 401; `mensajeDeFallo` cuando además el 403 tiene que explicarse por el rol (reescribe
+    los dos).
+- **El nombre de una sala se recorta también al editar**: agregar espacios no es un cambio, y uno de
+  sólo espacios no se acepta («Ponele un nombre.»).
+- **Los meses, en un solo sitio**: el tipo `Mes` y los nombres de mes viven en `lib/mes.ts` (el
+  calendario usa `textoDelMes` de ahí), y `SelectorDeMes` en `componentes/selector-de-mes.tsx`, que usan
+  Análisis y «Mi liquidación».
+
+### Lo que esta fase NO trae
+
+- **Las escrituras con `pedir` directo** (el botón de push y el check-in): ante un 401 siguen diciendo
+  «Unauthorized» y no van al login.
+- **Cambiar cuándo navega una lectura con el 401**: sólo cambió el texto.
+- Ver `docs/superpowers/plans/PROGRESO.md`.
+
 ## Tests
 
 Unitarios:

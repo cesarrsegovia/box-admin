@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ClaveInvitacionPublica, PackPublico, SalaPublica } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
 import { CAMPOS_DE_LA_CLAVE } from './formulario';
 import PaginaDeInvitaciones from './page';
@@ -671,6 +672,20 @@ describe('crear una clave', () => {
     // El reparto por campo manda las frases que nombran un campo a su campo; el
     // 403 no nombra ninguno y queda suelto, en el cartel de arriba.
     expect(screen.getByText(/forbidden/i)).toBeInTheDocument();
+  });
+
+  it('un 401 de la API dice que la sesion caduco, no «Unauthorized»', async () => {
+    const { sesion } = await montarYEsperar({
+      errorAlGuardar: new ErrorDeApi('Unauthorized', 401),
+    });
+    await abrirElAlta(sesion);
+
+    await rellenar(sesion);
+    await enviar(sesion, 'Crear clave');
+
+    // Tampoco nombra ningun campo: queda suelto, en el cartel de arriba.
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 });
 

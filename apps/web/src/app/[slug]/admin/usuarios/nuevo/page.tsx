@@ -10,6 +10,7 @@ import { PATRON_FECHA } from '@boxadmin/shared';
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
+import { textoDelError } from '@/lib/errores-de-api';
 import { usePacks, useSalas } from '@/hooks/use-catalogos';
 import { useCrearPersona } from '@/hooks/use-usuarios';
 import { ClaveTemporal } from './clave-temporal';
@@ -276,7 +277,7 @@ function AltaDePersona() {
   // El marcador sigue en la URL pero el estado ya no: es una recarga.
   if (parametros.get('alta') === 'hecha') return <ClavePerdida slug={slug} />;
 
-  const errorDelAlta = crear.error instanceof ErrorDeApi ? crear.error.message : null;
+  const errorDelAlta = crear.error instanceof ErrorDeApi ? textoDelError(crear.error) : null;
 
   return (
     <form onSubmit={handleSubmit(enviar)} className="flex max-w-xl flex-col gap-4" noValidate>

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RolUsuario } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
 import type { JobEncolado } from '@/hooks/use-configuracion';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { ProveedorDeRol } from '../rol-del-panel';
 import PaginaDeConfiguracion from './page';
@@ -40,6 +41,9 @@ const JOB_ID = 'job-7f3a9c21';
 
 /** Lo que dice la API cuando la cola no contesta. Palabra por palabra. */
 const MENSAJE_DE_LA_API = 'Redis no contesta';
+
+/** La sesion vencida, como la contesta la API: «Unauthorized» es lo que NO se tiene que leer. */
+const NO_AUTORIZADO = new ErrorDeApi('Unauthorized', 401);
 
 /**
  * LOS DOS DATOS DE ESTA PANTALLA, REGISTRADOS COMO CENTINELAS.
@@ -360,6 +364,15 @@ describe('el health-check, nombrado por lo que prueba', () => {
     expect(textoDe('[data-resultado="exito"]')).toBeNull();
     expect(textoDe('[data-resultado="error"]')).toBe(
       `No se pudo encolar el ping: ${MENSAJE_DE_LA_API}`,
+    );
+  });
+
+  it('un 401 dice que la sesion caduco, no «Unauthorized»', async () => {
+    montar({ fallo: NO_AUTORIZADO });
+    await pulsarElBoton();
+
+    expect(textoDe('[data-resultado="error"]')).toBe(
+      `No se pudo encolar el ping: ${TEXTO_DE_SESION_CADUCADA}`,
     );
   });
 

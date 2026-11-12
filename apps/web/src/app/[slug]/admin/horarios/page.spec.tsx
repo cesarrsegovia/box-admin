@@ -9,6 +9,7 @@ import type {
   UsuarioResumen,
 } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeCatalogos } from '@/hooks/use-catalogos';
 import { clavesDeUsuarios } from '@/hooks/use-usuarios';
 import { clavesDeHorarios } from '@/hooks/use-horarios';
@@ -827,6 +828,17 @@ describe('las vigencias', () => {
 
     expect(screen.getByText(/administrador operativo/i)).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain('Forbidden');
+  });
+
+  it('un 401 dice que la sesion caduco, no «Unauthorized»', async () => {
+    // Tampoco nombra ningun campo y llega al cartel por `repartirElFallo`.
+    montar({ errorAlEscribir: new ErrorDeApi('Unauthorized', 401) });
+
+    await completarElAlta();
+    await enviarElAlta();
+
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 });
 

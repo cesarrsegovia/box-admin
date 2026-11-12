@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AltaUsuarioRespuesta, PackPublico, SalaPublica } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import PaginaDeAlta from './page';
 import { SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
 
@@ -23,6 +24,9 @@ const CLAVE = SECRETOS_DEL_PANEL.claveDelAlta;
  * `claveDelAlta` estas aserciones dejan de cubrir nada EN SILENCIO.
  */
 const PREFIJO_DE_LA_CLAVE = 'Temp0ral';
+
+/** La sesion vencida, como la contesta la API: «Unauthorized» es lo que NO se tiene que leer. */
+const NO_AUTORIZADO = new ErrorDeApi('Unauthorized', 401);
 
 describe('los centinelas', () => {
   it('el prefijo ancho sigue siendo parte de la clave sembrada', () => {
@@ -634,6 +638,17 @@ describe('validacion y fallos', () => {
     await completarYEnviar(sesion);
 
     expect(screen.getByText(/ese email ya existe/i)).toBeInTheDocument();
+  });
+
+  it('un 401 en el alta dice que la sesion caduco, no «Unauthorized»', async () => {
+    const { sesion } = montar({ errorDelAlta: NO_AUTORIZADO });
+    await esperar();
+    await completarYEnviar(sesion);
+
+    // `getByText` con una cadena compara el texto ENTERO del nodo: un aviso que
+    // dijera el texto comun y algo mas al lado no casaria.
+    expect(screen.getByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
+    expect(screen.queryByText(/unauthorized/i)).toBeNull();
   });
 
   it('tras un fallo el formulario sigue ahi, con lo que ya se habia escrito', async () => {

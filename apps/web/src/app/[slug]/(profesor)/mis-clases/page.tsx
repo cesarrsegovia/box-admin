@@ -7,6 +7,7 @@ import type { ClaseDelProfesor } from '@boxadmin/shared';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { destinoDeLoginDesde } from '@/lib/destino-de-login';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { useAlumnosDeLaClase, useMisClases, type RangoDeClases } from '@/hooks/use-mis-clases';
 import {
   conteoDeLaLista,
@@ -438,7 +439,7 @@ function PanelDeMisClases() {
       {/* Sin sesion no se enseña el «Unauthorized» crudo de la API, y tampoco se
           ofrece reintentar: seria volver a fallar mientras la pantalla ya se
           esta yendo al login. */}
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       <Agenda
         rango={rango}

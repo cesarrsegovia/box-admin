@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { MesCalendarioPublico, PlanDeMes, SalaPublica } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
 import { rutaDeRetornoSegura } from '@/lib/ruta-de-retorno';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeCatalogos } from '@/hooks/use-catalogos';
 import { mesesOfrecidos } from './meses';
 import PaginaDeCalendario from './page';
@@ -634,7 +635,7 @@ describe('cuando la peticion falla', () => {
 
     await esperar();
 
-    expect(screen.getByText(/tu sesion caduco/i)).toBeInTheDocument();
+    expect(screen.getByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain('Unauthorized');
   });
 });

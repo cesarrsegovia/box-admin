@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { rolAlcanza } from '@boxadmin/shared';
 import { Aviso, Boton } from '@/componentes/ui';
+import { textoDelError } from '@/lib/errores-de-api';
 import { useEncolarHealthCheck } from '@/hooks/use-configuracion';
 import { useRolDeQuienMira } from '../rol-del-panel';
 
@@ -210,7 +211,7 @@ function LaColaDeTrabajos() {
         <Aviso tono="error">
           <span data-resultado="error">
             {PRINCIPIO_DEL_FALLO}
-            {encolar.error.message}
+            {textoDelError(encolar.error)}
           </span>
         </Aviso>
       )}

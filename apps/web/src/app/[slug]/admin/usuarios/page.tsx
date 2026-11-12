@@ -7,6 +7,7 @@ import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { destinoDeLoginDesde } from '@/lib/destino-de-login';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { useUsuarios } from '@/hooks/use-usuarios';
 import { FiltrosDePersonas, filtrosDeLaBusqueda } from './filtros';
 
@@ -78,7 +79,7 @@ function ListadoDePersonas() {
       {isPending && <p className="text-sm text-slate-500">Cargando…</p>}
 
       {/* Sin sesion, reintentar es volver a fallar: no se ofrece el boton. */}
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {error !== null && !sesionCaducada && (
         <div className="flex flex-col items-start gap-2">

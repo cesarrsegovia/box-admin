@@ -5,6 +5,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { Aviso } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { destinoDeLoginDesde } from '@/lib/destino-de-login';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { useMesDelCalendario, usePlanDelMes } from '@/hooks/use-calendario-admin';
 import { mesesOfrecidos } from './meses';
 import { PlanDelMes } from './plan';
@@ -96,7 +97,7 @@ function PantallaDelCalendario() {
           {/* Sin sesion no se enseña el mensaje crudo de la API: «Unauthorized»
               delante del mostrador no le dice nada a nadie, y encima la
               pantalla ya se esta yendo al login. */}
-          {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+          {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
           {plan.error !== null && !sesionCaducada && (
             <Aviso tono="error">{plan.error.message}</Aviso>

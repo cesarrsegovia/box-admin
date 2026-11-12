@@ -5,8 +5,8 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { LiquidacionLeida } from '@/componentes/liquidacion-leida';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
+import type { Mes } from '@/lib/mes';
 import { useLiquidacion } from '@/hooks/use-dinero';
-import type { Mes } from '@/hooks/use-stats';
 import { useUsuarios } from '@/hooks/use-usuarios';
 
 /**

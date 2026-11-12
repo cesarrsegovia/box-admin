@@ -10,6 +10,7 @@ import { ErrorDeApi } from '@/lib/cliente';
 import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useCambiarActiva, useInvitaciones } from '@/hooks/use-invitaciones';
 import { mensajeDeFallo } from '@/lib/errores-de-api';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import {
   ETIQUETAS_DE_ESTADO,
   TONOS_DE_ESTADO,
@@ -228,7 +229,7 @@ function ListadoDeInvitaciones() {
       {isPending && <p className="text-sm text-slate-500">Cargando…</p>}
 
       {/* Sin sesion, reintentar es volver a fallar: no se ofrece el boton. */}
-      {sesionCaducada && <Aviso tono="error">Tu sesion caduco. Te llevamos al login.</Aviso>}
+      {sesionCaducada && <Aviso tono="error">{TEXTO_DE_SESION_CADUCADA}</Aviso>}
 
       {error !== null && !sesionCaducada && (
         <div className="flex flex-col items-start gap-2">

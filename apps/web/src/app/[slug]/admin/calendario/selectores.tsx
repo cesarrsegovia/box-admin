@@ -3,38 +3,12 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { MesElegido } from '@/hooks/use-calendario-admin';
 import { useSalas } from '@/hooks/use-catalogos';
+import { textoDelMes } from '@/lib/mes';
 import type { MesOfrecido } from './meses';
-
-/**
- * Los meses en castellano, escritos y no formateados.
- *
- * `Intl.DateTimeFormat` daria el nombre segun la configuracion regional de la
- * maquina: el mismo enlace compartido diria "November" en la computadora del
- * mostrador si alguien le cambio el idioma al sistema, y el test que fija los
- * textos pasaria o fallaria segun donde corra.
- */
-const NOMBRES_DE_MES: readonly string[] = [
-  'enero',
-  'febrero',
-  'marzo',
-  'abril',
-  'mayo',
-  'junio',
-  'julio',
-  'agosto',
-  'septiembre',
-  'octubre',
-  'noviembre',
-  'diciembre',
-];
 
 /** Lo que el mes vale EN LA URL. Las dos partes van juntas o no van. */
 function valorDelMes(mes: MesOfrecido): string {
   return `${mes.anio}-${mes.mes}`;
-}
-
-function textoDelMes(mes: MesOfrecido): string {
-  return `${NOMBRES_DE_MES[mes.mes - 1] ?? String(mes.mes)} ${mes.anio}`;
 }
 
 /**

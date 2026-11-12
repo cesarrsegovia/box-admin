@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { rolAlcanza } from '@boxadmin/shared';
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
+import { textoDelError } from '@/lib/errores-de-api';
 import {
   RUTA_DE_LA_IMAGEN_DEL_QR,
   useConfigCheckIn,
@@ -255,7 +256,7 @@ function PantallaDeCheckIn() {
         <Aviso tono="error">
           <span data-resultado="error">
             {PRINCIPIO_DEL_FALLO_DE_GUARDADO}
-            {guardar.error.message}
+            {textoDelError(guardar.error)}
           </span>
         </Aviso>
       )}

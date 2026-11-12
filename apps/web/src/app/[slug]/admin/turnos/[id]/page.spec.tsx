@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReservaEnTurno, TurnoPublico, UsuarioResumen } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeTurnos } from '@/hooks/use-turnos';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import PaginaDeFichaDeTurno from './page';
@@ -564,6 +565,22 @@ describe('el bloque de datos', () => {
     await clicEn('Guardar datos');
 
     expect(errorDelCampo('Cupo')).toMatch(/3 reserva\(s\) activa\(s\)/);
+  });
+
+  /**
+   * Un 401 no nombra ningun campo y llega al cartel por `repartirPorCampo`: lo
+   * que se lee ahi es el texto comun, no «Unauthorized».
+   */
+  it('un 401 al guardar dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montar();
+    laApiFalla(new ErrorDeApi('Unauthorized', 401));
+
+    await escribir('Cupo', '12');
+    await clicEn('Guardar datos');
+
+    const formulario = screen.getByRole('form', { name: 'Datos del turno' });
+    expect(within(formulario).getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 
   /**

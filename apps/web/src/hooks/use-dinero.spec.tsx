@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 import type { QueryClient } from '@tanstack/react-query';
+import type { Mes } from '@/lib/mes';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { vigilarUnaConsultaAjena } from '@/test/consulta-ajena';
 import {
@@ -13,7 +14,6 @@ import {
 import { claves } from './use-calendario';
 import { clavesDeCatalogos } from './use-catalogos';
 import { clavesDeUsuarios } from './use-usuarios';
-import type { Mes } from './use-stats';
 import {
   clavesDeDinero,
   queryDeComprobantes,

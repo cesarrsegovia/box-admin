@@ -1,17 +1,22 @@
-import type { Mes } from '@/hooks/use-stats';
-
 /**
  * LOS MESES DE LOS REPORTES MENSUALES: el mes que dice la URL, los que ofrece
  * el selector y como se escribe uno.
  *
  * Los usan Analisis (caja, composicion, operativo y liquidacion: los cuatro se
- * piden con el MISMO mes) y el area de la profesora. Viven en `lib` porque
- * ninguna area importa de otra.
+ * piden con el MISMO mes), el area de la profesora y el calendario, que escribe
+ * sus meses con `textoDelMes`. Viven en `lib` porque ninguna area importa de
+ * otra.
  *
  * La pantalla usa estas funciones para armar la consulta y el spec las usa
  * para saber con que clave sembrar la cache. Que las dos cosas salgan de la
  * MISMA funcion es lo que impide que un test pase con una lectura equivocada.
  */
+
+/** Un mes calendario: lo que piden los reportes mensuales y ofrece el selector. */
+export interface Mes {
+  anio: number;
+  mes: number;
+}
 
 /**
  * Los limites del mes, COPIADOS DEL DTO porque es el DTO quien los decide.
@@ -43,8 +48,7 @@ const CUANTOS_SE_OFRECEN = 12;
  * mostrador si alguien le cambio el idioma al sistema, y el test que fija los
  * textos pasaria o fallaria segun donde corra.
  *
- * `calendario/selectores.tsx` todavia tiene su propia copia; ya puede importar
- * `textoDelMes` de aqui.
+ * Los usan Analisis, «Mi liquidacion» y el calendario.
  */
 const NOMBRES_DE_MES: readonly string[] = [
   'enero',

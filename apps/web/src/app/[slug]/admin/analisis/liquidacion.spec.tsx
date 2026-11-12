@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FranjaDeLiquidacion, LiquidacionProfesor, UsuarioResumen } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
-import type { Mes } from '@/hooks/use-stats';
+import type { Mes } from '@/lib/mes';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { BloqueDeLiquidacion } from './liquidacion';
 

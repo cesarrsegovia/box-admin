@@ -6,6 +6,7 @@ import type { EstadoJob, EstadoPublicacion, MesCalendarioPublico } from '@boxadm
 import { rolAlcanza } from '@boxadmin/shared';
 import { Aviso, Boton } from '@/componentes/ui';
 import type { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDelCalendario, type MesElegido, usePublicarMes } from '@/hooks/use-calendario-admin';
 import { useRolDeQuienMira } from '../rol-del-panel';
 
@@ -181,7 +182,7 @@ function textoDelFallo(error: ErrorDeApi): string {
   if (error.esSinConexion)
     return 'La peticion no salio de este navegador: no se encolo nada. Comproba tu red y volve a intentarlo.';
 
-  if (error.esSesionCaducada) return 'Tu sesión caducó. Te llevamos al login.';
+  if (error.esSesionCaducada) return TEXTO_DE_SESION_CADUCADA;
 
   if (error.estado === 403) return 'Tu rol no alcanza: esta accion pide ADMIN_SALON.';
 

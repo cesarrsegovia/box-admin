@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AlumnoEnClase } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import PaginaDePasarLista from './page';
 
@@ -719,7 +720,7 @@ describe('los rechazos de la API se mandan a buscar y se pintan enteros', () => 
     await esperar();
 
     expect(empujar).not.toHaveBeenCalled();
-    expect(screen.getByText('Tu sesión caducó. Te llevamos al login.')).toBeInTheDocument();
+    expect(screen.getByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('Unauthorized');
   });
 
@@ -744,7 +745,7 @@ describe('los rechazos de la API se mandan a buscar y se pintan enteros', () => 
     // SIN query: esta pantalla no lee nada de la barra de direcciones, asi que
     // no se cuela un `?` pelado que cambiaria la cadena del destino.
     expect(empujar.mock.calls).toEqual([[`/${SLUG}/login?volverA=${encodeURIComponent(RUTA)}`]]);
-    expect(screen.getByText('Tu sesion caduco. Te llevamos al login.')).toBeInTheDocument();
+    expect(screen.getByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
   });
 });
 

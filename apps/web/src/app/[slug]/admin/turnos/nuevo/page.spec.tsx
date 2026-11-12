@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { SalaPublica, TurnoPublico, UsuarioResumen } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeCatalogos } from '@/hooks/use-catalogos';
 import { clavesDeUsuarios } from '@/hooks/use-usuarios';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
@@ -489,7 +490,7 @@ describe('crear un turno a mano: cuando algo falla', () => {
 
     expect(empujar).not.toHaveBeenCalled();
     expect(screen.queryByText('Unauthorized')).toBeNull();
-    expect(screen.getByText('Tu sesión caducó. Te llevamos al login.')).toBeInTheDocument();
+    expect(screen.getByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
   });
 
   it('un 401 SOLO al cargar las salas manda al login, UNA sola vez', async () => {

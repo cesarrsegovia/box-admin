@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { aFechaISO, type RolUsuario, type SalaPublica, type TurnoPublico } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeSalas } from '@/hooks/use-salas-admin';
 import { clavesDeTurnos } from '@/hooks/use-turnos';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { ProveedorDeRol } from '../../rol-del-panel';
+import { FALTA_EL_NOMBRE } from '../textos';
 import PaginaDeFichaDeSala from './page';
 
 /**
@@ -448,6 +450,50 @@ describe('los datos de la sala', () => {
     expect(() => cuerpoEnviado()).toThrow();
     expect(screen.getByText(/no cambiaste nada/i)).toBeInTheDocument();
   });
+
+  /**
+   * EL NOMBRE VIAJA RECORTADO, como en el alta (`salas/page.tsx`): un espacio
+   * de mas al final no puede dejar una sala que se lee igual y no se encuentra.
+   */
+  it('el nombre viaja sin los espacios de los bordes', async () => {
+    montar({ sala: unaSala({ nombre: 'Sala 1' }) });
+
+    const nombre = screen.getByLabelText('Nombre');
+    await userEvent.clear(nombre);
+    await userEvent.type(nombre, '  Box 2  ');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar datos' }));
+    await esperar();
+
+    expect(cuerpoEnviado()).toEqual({ nombre: 'Box 2' });
+  });
+
+  it('agregar espacios al nombre no es un cambio', async () => {
+    montar({ sala: unaSala({ nombre: 'Sala 1' }) });
+
+    await userEvent.type(screen.getByLabelText('Nombre'), '   ');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar datos' }));
+    await esperar();
+
+    expect(() => cuerpoEnviado()).toThrow();
+    expect(screen.getByText(/no cambiaste nada/i)).toBeInTheDocument();
+  });
+
+  /**
+   * SOLO ESPACIOS ES VACIO, y vacio no se manda. El texto es el MISMO que el
+   * del alta: la misma regla no puede tener dos frases.
+   */
+  it('un nombre de solo espacios no se manda y lo dice en el campo', async () => {
+    montar({ sala: unaSala({ nombre: 'Sala 1' }) });
+
+    const nombre = screen.getByLabelText('Nombre');
+    await userEvent.clear(nombre);
+    await userEvent.type(nombre, '   ');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar datos' }));
+    await esperar();
+
+    expect(() => cuerpoEnviado()).toThrow();
+    expect(nombre).toHaveAccessibleDescription(FALTA_EL_NOMBRE);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -615,6 +661,24 @@ describe('dar de baja la sala', () => {
 
     expect(cuerpoEnviado()).toEqual({ activa: false });
     expect(screen.getByText(mensaje)).toBeInTheDocument();
+  });
+
+  /**
+   * UN 401 AL GUARDAR LOS DATOS no nombra ningun campo y llega al cartel por
+   * `repartirPorCampo`: lo que se lee ahi es el texto comun, no «Unauthorized».
+   */
+  it('un 401 al guardar los datos dice que la sesion caduco, no «Unauthorized»', async () => {
+    montar({ turnos: [] });
+
+    pedirEspia.mockRejectedValueOnce(new ErrorDeApi('Unauthorized', 401));
+
+    await userEvent.selectOptions(screen.getByLabelText('Activa'), 'false');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar datos' }));
+    await esperar();
+
+    const formulario = screen.getByRole('form', { name: 'Datos de la sala' });
+    expect(within(formulario).getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 
   /**

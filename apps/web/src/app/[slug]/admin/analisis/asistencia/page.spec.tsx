@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AsistenciaDeAlumno, ReporteAsistencia } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
 import { rutaDeRetornoSegura } from '@/lib/ruta-de-retorno';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { clavesDeStats } from '@/hooks/use-stats';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import PaginaDeAsistencia from './page';
@@ -740,7 +741,7 @@ describe('lo que dice la API cuando no se puede leer', () => {
     // nadie, ni se ofrece reintentar mientras la pantalla ya se esta yendo.
     expect(elBloque().querySelector('[data-fallo-al-leer]')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
-    expect(screen.getByText('Tu sesion caduco. Te llevamos al login.')).toBeInTheDocument();
+    expect(screen.getByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
   });
 
   it('el query que se conserva al caducar es el de la URL, entero', async () => {
