@@ -1,7 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render as renderSinProveedor, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement, ReactNode } from 'react';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { BotonDePush } from './boton-de-push';
+
+/**
+ * Las escrituras del boton son `useMutation`: hace falta un `QueryClient`.
+ *
+ * Uno nuevo por cada `render`, sin el `MutationCache` de `lib/query.tsx`: ese
+ * navega al login, y un spec no puede mover la URL (ver
+ * `src/test/espia-de-consola.ts`). En su lugar va un `MutationCache` con un
+ * espia que no navega: si la pantalla escribiera con un `pedir` suelto, el
+ * espia no se enteraria del 401 y el alumno no saldria nunca hacia el login.
+ */
+function render(ui: ReactElement) {
+  const alFallarLaEscritura = vi.fn();
+  const cliente = new QueryClient({
+    mutationCache: new MutationCache({ onError: alFallarLaEscritura }),
+    defaultOptions: { mutations: { retry: false } },
+  });
+  const envoltorio = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={cliente}>{children}</QueryClientProvider>
+  );
+  return { ...renderSinProveedor(ui, { wrapper: envoltorio }), alFallarLaEscritura };
+}
 
 /** Una clave VAPID cualquiera en base64url; solo tiene que decodificar. */
 const CLAVE = 'TWFuTWFuTWFu';
@@ -281,6 +305,39 @@ describe('BotonDePush: activar', () => {
     expect(screen.getByText('Se cayo la base')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^activar notificaciones$/i })).toBeInTheDocument();
   });
+
+  it('un 401 al activar dice que la sesion caduco, no «Unauthorized»', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta(401, { message: 'Unauthorized' })));
+    const { nueva } = conSoporte({});
+    const usuario = userEvent.setup();
+
+    render(<BotonDePush />);
+    await usuario.click(await screen.findByRole('button', { name: /^activar notificaciones$/i }));
+
+    expect(await screen.findByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('Unauthorized');
+    // El servidor no se quedo la suscripcion: el navegador tampoco.
+    expect(nueva.unsubscribe).toHaveBeenCalled();
+  });
+
+  it('un 401 al activar pasa por el MutationCache, que es quien manda al login', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta(401, { message: 'Unauthorized' })));
+    conSoporte({});
+    const usuario = userEvent.setup();
+
+    const { alFallarLaEscritura } = render(<BotonDePush />);
+    await usuario.click(await screen.findByRole('button', { name: /^activar notificaciones$/i }));
+
+    expect(await screen.findByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
+    expect(alFallarLaEscritura).toHaveBeenCalledTimes(1);
+    expect(alFallarLaEscritura).toHaveBeenCalledWith(
+      expect.objectContaining({ estado: 401 }),
+      expect.anything(),
+      undefined,
+      expect.anything(),
+      expect.anything(),
+    );
+  });
 });
 
 describe('BotonDePush: desactivar', () => {
@@ -355,5 +412,42 @@ describe('BotonDePush: desactivar', () => {
     expect(
       screen.getByRole('button', { name: /^desactivar notificaciones$/i }),
     ).toBeInTheDocument();
+  });
+
+  it('un 401 al desactivar dice que la sesion caduco, no «Unauthorized»', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta(401, { message: 'Unauthorized' })));
+    const existente = suscripcionFalsa();
+    conSoporte({ yaSuscrito: existente });
+    const usuario = userEvent.setup();
+
+    render(<BotonDePush />);
+    await usuario.click(
+      await screen.findByRole('button', { name: /^desactivar notificaciones$/i }),
+    );
+
+    expect(await screen.findByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('Unauthorized');
+    expect(existente.unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('un 401 al desactivar pasa por el MutationCache, que es quien manda al login', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta(401, { message: 'Unauthorized' })));
+    conSoporte({ yaSuscrito: suscripcionFalsa() });
+    const usuario = userEvent.setup();
+
+    const { alFallarLaEscritura } = render(<BotonDePush />);
+    await usuario.click(
+      await screen.findByRole('button', { name: /^desactivar notificaciones$/i }),
+    );
+
+    expect(await screen.findByText(TEXTO_DE_SESION_CADUCADA)).toBeInTheDocument();
+    expect(alFallarLaEscritura).toHaveBeenCalledTimes(1);
+    expect(alFallarLaEscritura).toHaveBeenCalledWith(
+      expect.objectContaining({ estado: 401 }),
+      'https://push.example/abc',
+      undefined,
+      expect.anything(),
+      expect.anything(),
+    );
   });
 });

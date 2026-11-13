@@ -3,6 +3,7 @@
 import type { EstadoComprobante } from '@boxadmin/shared';
 import { Aviso, Tarjeta } from '@/componentes/ui';
 import { useComprobantes } from '@/hooks/use-comprobantes';
+import { textoDelError } from '@/lib/errores-de-api';
 import { SubirComprobante } from './subir-comprobante';
 
 const TEXTO_DE_ESTADO: Record<EstadoComprobante, string> = {
@@ -23,7 +24,7 @@ export default function PaginaDeComprobantes() {
       {isPending && <p className="text-sm text-slate-500">Cargando…</p>}
       {isError && (
         <Aviso tono="error">
-          {error instanceof Error ? error.message : 'No se pudieron cargar tus comprobantes'}
+          {error instanceof Error ? textoDelError(error) : 'No se pudieron cargar tus comprobantes'}
         </Aviso>
       )}
 

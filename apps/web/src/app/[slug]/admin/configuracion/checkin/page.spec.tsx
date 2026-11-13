@@ -468,6 +468,15 @@ describe('cuando no se puede leer la ventana', () => {
     expect(botonesDelDocumento()).toEqual([]);
   });
 
+  it('un 401 al leer la ventana dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montarYEsperar({ falloAlLeer: NO_AUTORIZADO });
+
+    expect(textoDe('[data-fallo="lectura"]')).toBe(
+      `No se pudo leer la ventana del check-in: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+    expect(document.body.textContent).not.toContain('Unauthorized');
+  });
+
   /** La otra mitad del par: una ventana en cero DE VERDAD si se dibuja. */
   it('y una ventana en cero de verdad si se dibuja', async () => {
     await montarYEsperar({ ventana: { minutosAntes: 0, minutosDespues: 0 } });

@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import type { CheckInRechazado, MotivoDeRechazoDeCheckIn, PresenteMarcado } from '@boxadmin/shared';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import PaginaDeCheckIn from './page';
 
 /**
@@ -70,7 +73,22 @@ async function montar({
     searchParams: Promise.resolve(f === null ? {} : { f }),
   });
 
-  render(elemento);
+  // El POST es un `useMutation`: hace falta un `QueryClient`. Uno nuevo por
+  // test, sin el `MutationCache` de `lib/query.tsx`, que navega al login y un
+  // spec no puede mover la URL. En su lugar, un `MutationCache` con un espia
+  // que no navega: si la pantalla escribiera con un `pedir` suelto, el espia no
+  // se enteraria del 401 y el alumno no saldria nunca hacia el login.
+  const alFallarLaEscritura = vi.fn();
+  const cliente = new QueryClient({
+    mutationCache: new MutationCache({ onError: alFallarLaEscritura }),
+    defaultOptions: { mutations: { retry: false } },
+  });
+  const envoltorio = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={cliente}>{children}</QueryClientProvider>
+  );
+
+  render(elemento, { wrapper: envoltorio });
+  return { alFallarLaEscritura };
 }
 
 let fetchFalso: ReturnType<typeof vi.fn>;
@@ -299,6 +317,55 @@ describe('PaginaDeCheckIn · lo que no es un rechazo', () => {
     await montar();
 
     expect(await screen.findByText(/no pudimos marcar/i)).toBeInTheDocument();
+  });
+
+  it('un 401 dice que la sesion caduco, no «Unauthorized»', async () => {
+    vi.stubGlobal('fetch', (fetchFalso = fetchQueDevuelve({ message: 'Unauthorized' }, 401)));
+    await montar({ f: 'firma-del-cartel' });
+
+    expect((await screen.findByText(/no pudimos marcar/i)).textContent).toBe(
+      `No pudimos marcar tu asistencia. ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+    expect(document.body.textContent).not.toContain('Unauthorized');
+  });
+
+  it('un 401 pasa por el MutationCache, que es quien manda al login', async () => {
+    vi.stubGlobal('fetch', (fetchFalso = fetchQueDevuelve({ message: 'Unauthorized' }, 401)));
+    const { alFallarLaEscritura } = await montar({ f: 'firma-del-cartel' });
+
+    expect(await screen.findByText(/no pudimos marcar/i)).toBeInTheDocument();
+    expect(alFallarLaEscritura).toHaveBeenCalledTimes(1);
+    expect(alFallarLaEscritura).toHaveBeenCalledWith(
+      expect.objectContaining({ estado: 401 }),
+      'firma-del-cartel',
+      undefined,
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('sale UN solo POST por firma, aunque React monte dos veces', async () => {
+    // El guardia `firmaYaEnviada` de la pantalla, en StrictMode: React monta,
+    // desmonta y vuelve a montar, el efecto corre dos veces y es el guardia el
+    // que corta el segundo POST, que seria un `ya-marcada` falso. NO prueba que
+    // `mutateAsync` sea estable: si no lo fuera, el efecto volveria a correr,
+    // pero el mismo guardia lo cortaria igual y este test seguiria verde.
+    leerSesion.mockResolvedValue({ access: 'tok', slug: 'mi-gym' });
+    sesionValidaPara.mockReturnValue(true);
+    const elemento = await PaginaDeCheckIn({
+      params: Promise.resolve({ slug: 'mi-gym' }),
+      searchParams: Promise.resolve({ f: 'firma-del-cartel' }),
+    });
+    const cliente = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    render(elemento, {
+      reactStrictMode: true,
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={cliente}>{children}</QueryClientProvider>
+      ),
+    });
+
+    expect(await screen.findByText(/quedaste presente/i)).toBeInTheDocument();
+    expect(fetchFalso).toHaveBeenCalledTimes(1);
   });
 
   it('se puede reintentar sin volver a escanear', async () => {

@@ -10,7 +10,7 @@ import { ErrorDeApi } from '@/lib/cliente';
 import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
 import { useActualizarSala, useBorrarSala, useSala } from '@/hooks/use-salas-admin';
 import { useTurnos } from '@/hooks/use-turnos';
-import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
+import { mensajeDeFallo, repartirPorCampo, textoDelError } from '@/lib/errores-de-api';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 import {
   AjusteHeredable,
@@ -576,7 +576,7 @@ export default function PaginaDeFichaDeSala() {
   if (error !== null) {
     return (
       <div className="flex flex-col items-start gap-2">
-        <Aviso tono="error">{error.message}</Aviso>
+        <Aviso tono="error">{textoDelError(error)}</Aviso>
         {/* Sin sesion, reintentar es volver a fallar. */}
         {!sesionCaducada && (
           <Boton tono="secundario" onClick={() => void refetch()}>

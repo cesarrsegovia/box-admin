@@ -5,6 +5,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { destinoDeLoginDesde } from '@/lib/destino-de-login';
+import { textoDelError } from '@/lib/errores-de-api';
 import { useTurno } from '@/hooks/use-turnos';
 import { BloqueDeAnotados } from './bloque-anotados';
 import { BloqueDeBorrar } from './bloque-borrar';
@@ -56,7 +57,7 @@ function FichaDelTurno() {
   if (error !== null) {
     return (
       <div className="flex flex-col items-start gap-2">
-        <Aviso tono="error">{error.message}</Aviso>
+        <Aviso tono="error">{textoDelError(error)}</Aviso>
         {/* Sin sesion, reintentar es volver a fallar. */}
         {!sesionCaducada && (
           <Boton tono="secundario" onClick={() => void refetch()}>

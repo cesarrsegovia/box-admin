@@ -10,7 +10,7 @@ import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
 import { usePacks, useSalas } from '@/hooks/use-catalogos';
 import { useGuardarClave } from '@/hooks/use-invitaciones';
-import { repartirPorCampo } from '@/lib/errores-de-api';
+import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
 import { ErrorDeApi } from '@/lib/cliente';
 
 /**
@@ -141,7 +141,11 @@ export function FormularioDeClave({
   } = useForm<Datos>({ resolver: zodResolver(esquema), defaultValues: valoresIniciales(clave) });
 
   const fallo = guardar.error instanceof ErrorDeApi ? guardar.error : null;
-  const repartido = fallo === null ? null : repartirPorCampo(fallo, CAMPOS_DE_LA_CLAVE);
+  // EL 403 SE TRADUCE, antes de repartir: «Forbidden» no nombra ningun campo,
+  // asi que `repartirPorCampo` lo dejaria suelto y en ingles en el cartel.
+  const sinPermiso = fallo !== null && fallo.estado === 403;
+  const repartido =
+    fallo === null || sinPermiso ? null : repartirPorCampo(fallo, CAMPOS_DE_LA_CLAVE);
 
   async function enviar(datos: Datos): Promise<void> {
     /**
@@ -185,6 +189,7 @@ export function FormularioDeClave({
           : `Editar la clave "${clave.nombre}"`}
       </h2>
 
+      {sinPermiso && <Aviso tono="error">{mensajeDeFallo(fallo, 'ADMIN_OPERATIVO')}</Aviso>}
       {repartido !== null && repartido.sueltas.length > 0 && (
         <Aviso tono="error">{repartido.sueltas.join(' ')}</Aviso>
       )}

@@ -858,6 +858,16 @@ describe('cuando la lectura falla', () => {
     expect(document.querySelectorAll('iframe')).toHaveLength(0);
     expect(screen.queryAllByRole('button')).toEqual([]);
   });
+
+  it('un 401 al leer las plantillas dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montarYEsperar({ falloAlLeer: NO_AUTORIZADO });
+
+    const fallo = document.querySelector('[data-fallo="lectura-de-plantillas"]');
+    expect((fallo?.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe(
+      `No se pudieron leer las plantillas: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+    expect(document.body.textContent).not.toContain('Unauthorized');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Aviso, Boton } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { SIN_QUERY, destinoDeLoginDesde } from '@/lib/destino-de-login';
+import { textoDelError } from '@/lib/errores-de-api';
 import { useUsuario } from '@/hooks/use-usuarios';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 import { BloqueDeAcciones } from './bloque-acciones';
@@ -58,7 +59,7 @@ export default function PaginaDeFicha() {
   if (error !== null) {
     return (
       <div className="flex flex-col items-start gap-2">
-        <Aviso tono="error">{error.message}</Aviso>
+        <Aviso tono="error">{textoDelError(error)}</Aviso>
         {/* Sin sesion, reintentar es volver a fallar. */}
         {!sesionCaducada && (
           <Boton tono="secundario" onClick={() => void refetch()}>

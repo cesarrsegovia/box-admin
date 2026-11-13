@@ -4903,3 +4903,209 @@ Dos comprobaciones que **ningún test puede hacer**: no hay navegador en el ento
 - [ ] Crear una sala con « Box 2 » desde la pantalla (que ya recorta) **y** desde un `curl` con
       espacios: las dos quedan «Box 2».
 - [ ] Un admin sin perfil que abre «Mis clases» lee el mismo 404 de siempre.
+
+# Progreso Fase 19 — La deuda que queda
+
+**Spec:** `docs/superpowers/specs/2026-11-12-fase19-deuda-restante.md`
+**Plan:** `docs/superpowers/plans/2026-11-12-fase19-deuda-restante.md` (7 tareas)
+
+Lo que las Fases 17 y 18 dejaron como «sigue»: el 401 de las lecturas, las dos escrituras con `pedir`
+directo, el 403 de invitaciones, los tests con fecha fija de la API y el grupo D. Ninguna función nueva
+y ningún endpoint cambia. `packages/shared` no se tocó; de `apps/api` sólo cambian
+`test/reloj-adelantado.ts` (nuevo) y un script de `package.json`.
+
+- [x] T1 — El 401 de las lecturas va al login (`lib/query.tsx`)
+- [x] T2 — `textoDelError` en las lecturas que pintaban el `.message` crudo
+- [x] T3 — Push y check-in con `useMutation`
+- [x] T4 — El 403 de invitaciones
+- [x] T5 — Grupo D: el portapapeles y los atributos
+- [x] T6 — El reloj adelantado de la API
+- [x] T7 — Verificación, README y tracker
+
+## Los números
+
+Punto de partida (el de las Fases 17 y 18): web **2041 / 96**, api **1435 / 71**, e2e **223 / 13**.
+
+| Medido al cierre       |                                                               |
+| ---------------------- | ------------------------------------------------------------- |
+| `apps/web`             | **2100 tests / 101 archivos** (+59 tests, +5 archivos), verde |
+| `apps/api`             | **1435 tests / 71 suites** (sin cambios), verde               |
+| `test:reloj` (+1 año)  | **1435 / 71**, verde                                          |
+| `test:reloj` (+5 años) | **1435 / 71**, verde                                          |
+| e2e                    | **223 tests / 13 suites** (sin cambios), verde                |
+| `tsc --noEmit`         | limpio en web y en api                                        |
+| `build` de la web      | OK                                                            |
+| `MUTACION TEMPORAL`    | `grep -rn "MUTACION TEMPORAL" apps` da **cero**               |
+| `prettier --check`     | limpio sobre todo el código tocado                            |
+
+Por tarea, la web: T1 **2047 / 96**, T2 **2065 / 98**, T3 **2076 / 100**, T4 **2076 / 100**, T5
+**2094 / 101**; los arreglos de la revisión, **2100 / 101**. Los 5 archivos nuevos son `(alumno)/comprobantes/page.spec.tsx`,
+`(alumno)/mi-pack/page.spec.tsx`, `hooks/use-push.spec.tsx`, `hooks/use-check-in.spec.tsx` y
+`test/portapapeles.spec.ts`.
+
+## Lo que la fase hace
+
+- **T1 — El 401 de las lecturas.** `crearClienteDeDatos` gana un `QueryCache.onError` que comparte
+  `alFallar` y **un único `saliendo`** con el `MutationCache`: una lectura con 401 va al login, y una
+  lectura y una escritura que fallan juntas navegan una vez.
+  - En `query.spec.tsx`, el test viejo «una LECTURA con 401 no lo dispara» pasa a decir que sí manda.
+  - Se suman los de control: 403, 404, sin conexión y un `Error` común no navegan; lectura y
+    escritura juntas navegan una vez; en `/login` no navega.
+  - El caso del `Error` común tardaba ~3 s por los reintentos por defecto de React Query. En la
+    revisión, `leerConFallo` pasa `retry: false` al `fetchQuery`: lo que se prueba es el fallo final,
+    no la política de reintentos, y el caso baja a ~5 ms.
+- **T2 — `textoDelError` en 16 lugares**, cada uno con su prefijo:
+  - `usuarios/[id]`: bloque-vacaciones, bloque-pagos, bloque-turnos-libres y la página;
+  - `bloque-anotados`: anotados y reasignar;
+  - `turnos/[id]/page` y `salas/[id]/page`;
+  - configuración: checkin, web, packs, email/page y email/plantillas;
+  - alumno: comprobantes, mi-pack y vista-de-semana.
+
+  El grep de antes de tocar no encontró ningún lugar fuera de la tabla del spec. El login y el
+  registro quedan fuera: ahí un 401 no es una sesión caducada.
+  - **18 tests nuevos.** Dos son de control y van en specs que no existían:
+    `(alumno)/comprobantes/page.spec.tsx` y `(alumno)/mi-pack/page.spec.tsx`.
+
+- **T3 — Push y check-in con `useMutation`.**
+  - Hooks nuevos con `gcTime: 0`, cada uno con su spec, que prueba que el 401 llega al
+    `MutationCache`:
+    - `hooks/use-push.ts`: `useGuardarSuscripcion` y `useBorrarSuscripcion`;
+    - `hooks/use-check-in.ts`: `useMarcarPresente`.
+  - `boton-de-push.tsx` y `pantalla-de-check-in.tsx` llaman con `mutateAsync` y pintan
+    `textoDelError`.
+  - Sus specs ganan un `wrapper` con `QueryClientProvider` y tests del 401. El check-in suma además
+    «un solo POST por firma con StrictMode», que prueba el guardia `firmaYaEnviada`, no que
+    `mutateAsync` sea estable.
+  - **Arreglo de la revisión:** el `unsubscribe` de push si el POST falla pasa al `mutationFn` de
+    `useGuardarSuscripcion`, que ahora recibe la `PushSubscription`. En TanStack v5 el `onError` del
+    `MutationCache` —el que navega ante un 401— corre **antes** de que `mutateAsync` rechace: desde la
+    pantalla, el deshacer competía con la descarga de la página. El spec del hook lo fija por orden
+    de llamadas (`unsubscribe` antes que el cache).
+  - **Arreglo de la revisión:** cada pantalla monta un `MutationCache` con un espía que no navega y
+    afirma que un 401 llega una vez (push: al activar y al desactivar).
+- **T4 — El 403 de invitaciones.** `formulario.tsx` traduce el 403 a «Para esto hace falta ser
+  administrador operativo. Tu rol no alcanza.». El test afirma el texto entero y que no aparece
+  «Forbidden».
+- **T5 — Grupo D** (ver «Deuda anotada»):
+  - **5b, el portapapeles (46b):** el canal vigésimo primero; los canales pasan de dieciocho a
+    diecinueve.
+    - El guardián monta **un único doble de `navigator.clipboard`**, con `reclamarLoCopiado()` y
+      `escrituraDelPortapapeles()`. Un centinela copiado que nadie reclama pone rojo el test.
+    - Los 3 specs que copian (clave-temporal, `usuarios/nuevo/page`, `invitaciones/page`) ya no
+      pisan el portapapeles.
+    - Spec nuevo: `src/test/portapapeles.spec.ts`, con 10 tests (el décimo, de la revisión: un
+      `mockImplementation` que lanza en el acto también borra la copia del registro).
+  - **5a, los atributos de los descendientes del `<body>` (42).**
+    - El barrido que pedía el plan no servía: un atributo siempre está en el `innerHTML` y se
+      restaba contra el marcado. La mutación daba 29/29 verde.
+    - Ahora los atributos se restan contra el **`textContent`**. Las excepciones son `value`,
+      `href` y `data-*`, que se restan contra el marcado.
+    - 9 tests nuevos en `lo-que-el-marcado-no-serializa.spec.ts`.
+  - **5c:**
+    - La 44 (el contexto de navegación anidado) sigue por diseño: se midió, y hay un solo
+      `<iframe>`, con `sandbox`.
+    - Partir el dato en trozos y el `.value` de la limpieza de un `useEffect` pasan a «por diseño».
+- **T6 — El reloj adelantado.** `apps/api/test/reloj-adelantado.ts` adelanta `Date` (`new Date()` sin
+  argumentos y `Date.now()`), no los timers. `RELOJ_ANIOS` elige cuántos años y por defecto es 1.
+  - El script: `"test:reloj": "jest --setupFiles=../test/reloj-adelantado.ts"`.
+  - Para filtrar se usa `--testPathPattern`: `--setupFiles` es una lista y se come una ruta suelta.
+  - Se comprobó con un spec temporal, ya borrado: el reloj adelanta (2027 / 2031) y una fecha
+    escrita no se mueve.
+
+## Las bombas del reloj
+
+**Ninguna.** La suite de la API dio **1435 / 71 en verde** a +0,14, +0,5, +1, +5, +20 y +50 años. La
+única bomba conocida era la de `stats`, y la Fase 18 ya la había desactivado pasándole `ahora`.
+
+## Las mutaciones
+
+| Tarea | Qué se cambió                                                   | Resultado                                             |
+| ----- | --------------------------------------------------------------- | ----------------------------------------------------- |
+| T1    | un `saliendo` propio para las lecturas                          | **rojo**                                              |
+| T2    | `bloque-turnos-libres` vuelve a `error.message`                 | **rojo**                                              |
+| T3    | los hooks sin `gcTime: 0`                                       | **rojo** en `mutaciones-sin-gctime`                   |
+| T3    | `pedir` directo en la pantalla de check-in                      | **rojo** (tras la revisión; antes, verde)             |
+| T4    | `ADMIN_SALON` en vez de `ADMIN_OPERATIVO` en invitaciones       | **rojo**                                              |
+| T5b   | la 46b: copiar la lista de una clase en la agenda de mis-clases | **rojo 12/20** (antes 20/20)                          |
+| T5a   | `title={tenantId}` en packs                                     | **rojo 25/29** (con el barrido del plan, 29/29 verde) |
+| T6    | sacar `ahora` en el spec de stats                               | **rojo**                                              |
+| Rev.  | el `unsubscribe` vuelve al `catch` de la pantalla               | **rojo** en el hook: el cache se entera primero       |
+| Rev.  | `pedir` directo en push, al activar y al desactivar             | **rojo**, uno por cada camino                         |
+| Rev.  | `toBe` exacto en el 401 del check-in: texto de más en el aviso  | **rojo**                                              |
+| Rev.  | `reclamarLoCopiado()` afirmado: `writeText` dos veces           | **rojo**                                              |
+| Rev.  | el doble del portapapeles llama `escritura` en el acto          | **rojo**                                              |
+
+## Fuera del plan
+
+**`userEvent.setup()` pisa `navigator.clipboard`.** Se midió con user-event 14.6.7, y pasa también con
+`writeToClipboard: false`. La salida fue ponerle al doble **el símbolo interno de user-event**,
+importado de `dist/esm/utils/dataTransfer/Clipboard.js`: con ese símbolo, `setup()` lo deja en paz. Si
+una versión futura lo cambia, el guardián **lanza al cargar**; no falla en silencio.
+
+**Choque de fixture en 5a.** El centinela de monto `'25000.10'` coincidía con el `placeholder="25000.10"`
+del formulario de pagos. Con los atributos vigilados, eso se leía como fuga. Se pasó a `'31750.10'` en
+`bloque-pagos.spec`, `usuarios/[id]/page.spec` y `comprobantes-pendientes.spec`.
+
+**El reloj y los timers falsos.** Después de `useRealTimers()` vuelve el `Date` adelantado. Lo que no
+cubre es un `useFakeTimers()` sin `setSystemTime`, que arranca en la fecha de verdad.
+
+## Trampas nuevas
+
+**Un atributo siempre está en el `innerHTML`.** Restarlo contra el marcado lo da por visto siempre; hay
+que restarlo contra lo que se **lee** (`textContent`).
+
+**Un centinela de fixture no puede coincidir con un texto fijo de la pantalla** (un `placeholder`, un
+ejemplo): el guardián lo lee como fuga.
+
+**`jest --setupFiles=<archivo> <patron>`** toma el patrón como un segundo setup. Para filtrar,
+`--testPathPattern`.
+
+## Deuda anotada
+
+**Cerrada por esta fase:**
+
+- El 401 de las lecturas: va al login desde `lib/query.tsx`, con el texto común en los 16 lugares.
+- Las escrituras con `pedir` directo (push y check-in).
+- El 403 sin traducir de invitaciones.
+- Buscar otros tests con fecha fija (Fase 18): queda el script `test:reloj`, y no hubo bombas.
+- Grupo D: la 46b (el portapapeles) y la 42 (los atributos), salvo `href` y `data-*`.
+
+**Por diseño, ya no es deuda:**
+
+- La 44, el contexto de navegación anidado: un solo `<iframe>`, con `sandbox`.
+- Partir el dato en trozos.
+- El `.value` de la limpieza de un `useEffect`.
+
+**Nueva de esta fase:**
+
+- **`href` y `data-*` son huecos del canal de atributos**: se restan contra el marcado, así que un
+  centinela ahí no se ve. Decisión de Cesar.
+- **El canal del portapapeles depende de un símbolo interno de user-event.** Al subir de versión, si
+  el guardián lanza al cargar, hay que buscar el símbolo nuevo.
+- **Los `router.push` por pantalla (~17) y el `QueryCache` son una carrera conocida.** Si gana el
+  `router.push`, la cache no se tira; las pantallas con `SIN_QUERY` arman otro `volverA` si la URL
+  lleva query. Las dos salidas terminan en el login.
+
+## Lo que esta fase NO hace
+
+- Sacar los `router.push` de cada pantalla.
+- El contexto de navegación anidado (un segundo `<iframe>`).
+- El reloj adelantado en los e2e y en la web.
+- La deuda vieja que no es del grupo D: `use-rutinas.ts` sin tests, la sobre-invalidación de
+  `/mi-pack`, `PanelDeReasignar` con turnos pasados.
+
+Comandos: `pnpm --filter @boxadmin/web test`, `… exec tsc --noEmit`, `… build`;
+`pnpm --filter @boxadmin/api test`, `… test:reloj` (y con `RELOJ_ANIOS=5`), `… test:e2e`.
+
+## El checklist a mano (para Cesar)
+
+Comprobaciones que **ningún test puede hacer**: no hay navegador en el entorno.
+
+- [ ] Con la sesión vencida, abrir Configuración → Packs: se lee «Tu sesión caducó…» y va al login.
+- [ ] Con la sesión vencida, abrir «Buscar dónde hay lugar» en la ficha de un alumno: ídem.
+- [ ] Con la sesión vencida, escanear el QR de check-in: va al login y, al entrar, vuelve con la firma
+      y marca el presente.
+- [ ] Con la sesión vencida, activar las notificaciones en el perfil: ídem, sin «Unauthorized».
+- [ ] Copiar una clave temporal y un código de invitación sigue funcionando.
+- [ ] Copiar sigue funcionando en un navegador real (el canal usa un símbolo interno de user-event
+      sólo en tests).

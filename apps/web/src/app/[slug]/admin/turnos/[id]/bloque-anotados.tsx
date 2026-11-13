@@ -19,7 +19,7 @@ import {
   useTurnos,
 } from '@/hooks/use-turnos';
 import { useUsuarios } from '@/hooks/use-usuarios';
-import { mensajeDeFallo } from '@/lib/errores-de-api';
+import { mensajeDeFallo, textoDelError } from '@/lib/errores-de-api';
 
 /**
  * QUIEN ESTA ANOTADO EN EL TURNO, y las tres cosas que se pueden hacer con eso:
@@ -248,7 +248,7 @@ export function BloqueDeAnotados({ turno }: { turno: TurnoPublico }) {
 
         {error !== null && (
           <div className="flex flex-col items-start gap-2">
-            <Aviso tono="error">{error.message}</Aviso>
+            <Aviso tono="error">{textoDelError(error)}</Aviso>
             <Boton type="button" tono="secundario" onClick={() => void refetch()}>
               Reintentar
             </Boton>
@@ -493,7 +493,7 @@ function PanelDeReasignar({
         Reasignar la reserva de {nombreQueSeVe(reserva)}
       </p>
 
-      {error !== null && <Aviso tono="error">{error.message}</Aviso>}
+      {error !== null && <Aviso tono="error">{textoDelError(error)}</Aviso>}
 
       <div className="flex flex-col gap-1">
         {/* `htmlFor` y no una etiqueta que envuelva al select: envolviendolo, el

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import type { TurnoLibre, UsuarioDetalle } from '@boxadmin/shared';
 import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
+import { textoDelError } from '@/lib/errores-de-api';
 import { useTurnosLibres } from '@/hooks/use-stats';
 import { Seleccion } from '@/componentes/controles';
 
@@ -329,7 +330,7 @@ function DondeHayLugar({ usuario }: { usuario: UsuarioDetalle }) {
         <div data-fallo-al-leer className="flex flex-col items-start gap-2">
           <Aviso tono="error">
             {NO_SE_PUDO_MIRAR}
-            {error.message}
+            {textoDelError(error)}
           </Aviso>
           {/* Un fallo de red se arregla solo cuando vuelve la red, y el admin
               esta al telefono: tiene que poder reintentar sin perder la ficha. */}

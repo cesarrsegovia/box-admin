@@ -1,6 +1,6 @@
 /**
  * EL EJE DECIMOCTAVO: `requestIdleCallback`, QUE NO ES UN CANAL SINO UN
- * RELOJ — Y QUE APAGA LOS DIECIOCHO DE UNA SOLA LINEA.
+ * RELOJ — Y QUE APAGA LOS DIECINUEVE DE UNA SOLA LINEA.
  *
  * Es EL PRIMERO DE LOS DOS EJES, no el unico: el decimonoveno
  * —`src/test/salida-de-la-pestana.ts`— cierra la otra forma de aplazar una
@@ -10,7 +10,7 @@
  * respuesta fue MONTAR una API que falta, aqui DESPACHAR unos eventos que
  * nunca llegan. Montar el rato libre no cubre aquello, ni al reves.
  *
- * `espia-de-consola.ts` tapa dieciocho puertas por las que una pantalla puede
+ * `espia-de-consola.ts` tapa diecinueve puertas por las que una pantalla puede
  * decir algo que no mira nadie: la consola, el titulo, `window.name`, el
  * `<head>`, los tres almacenes, el buffer de User Timing, el `src` de una
  * imagen, las tres salidas laterales, el almacen de respuestas, el service
@@ -20,8 +20,8 @@
  * serializa —el `.value` de un control y el contenido de un `shadowRoot`—, el
  * disco privado del origen (OPFS), que es el sexto almacen, y el CENTRO DE
  * NOTIFICACIONES DEL SISTEMA OPERATIVO —`new Notification` y
- * `showNotification`—, que es el unico de los dieciocho que no acaba dentro
- * del navegador.
+ * `showNotification`—, que es uno de los dos que no acaban dentro del
+ * navegador, y EL PORTAPAPELES —`navigator.clipboard`—, que es el otro.
  * Todas se
  * comprueban en un `afterEach`, o sea DESPUES de que el test haya corrido.
  *
@@ -48,11 +48,12 @@
  * seria una regla sobre COMO se escribe el codigo bueno y no sobre si se
  * filtra algo: aplazar trabajo caro al rato libre del navegador es legitimo, y
  * un canal que obliga a escribir el codigo bueno de una forma concreta es el
- * que alguien desactiva. Es el criterio que `espia-de-consola.ts` ya aplico
- * para decidir que NO vigilar el portapapeles.
+ * que alguien desactiva. Es el criterio que `espia-de-consola.ts` aplico al
+ * portapapeles: no se vigila si la copia vino de un gesto de la persona, que
+ * seria una regla sobre como se copia, sino lo que se copio y nadie reclamo.
  *
  * Montandolo, en cambio, lo que se aplace CORRE —con los relojes de verdad
- * dentro del test— y entonces los dieciocho tapones lo ven, sin que ninguno tenga
+ * dentro del test— y entonces los diecinueve tapones lo ven, sin que ninguno tenga
  * que saber que esto existe. El que lo use legitimamente no nota nada; el que
  * esconda una fuga detras, la paga.
  *
@@ -103,7 +104,7 @@ const MILISEGUNDOS_DE_SOBRA = 50;
 /**
  * Monta `requestIdleCallback` y `cancelIdleCallback` para todo el paquete.
  *
- * Se llama desde `vitest.setup.ts`, al lado del tapon de los dieciocho canales
+ * Se llama desde `vitest.setup.ts`, al lado del tapon de los diecinueve canales
  * —que lleva dentro el otro eje, el decimonoveno— y
  * por el mismo motivo: un agujero de canal no es de una pantalla, y la que no
  * se acuerde de pedirlo es justamente la que lo va a necesitar.

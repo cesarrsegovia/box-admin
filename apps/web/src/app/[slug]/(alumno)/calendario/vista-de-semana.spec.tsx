@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ErrorDeApi } from '@/lib/cliente';
 import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { VistaDeSemana } from './vista-de-semana';
@@ -12,7 +12,11 @@ import { VistaDeSemana } from './vista-de-semana';
  * TURNOS, que es la forma mas pobre que la pantalla sabe dibujar; asi el unico
  * aviso de error posible es el de la accion.
  */
-const { fallo } = vi.hoisted(() => ({ fallo: { current: null as Error | null } }));
+const { fallo, disponibles } = vi.hoisted(() => ({
+  fallo: { current: null as Error | null },
+  /** La lectura de turnos disponibles; `null` es la semana vacia de siempre. */
+  disponibles: { current: null as Record<string, unknown> | null },
+}));
 
 const LECTURA_VACIA = {
   data: [],
@@ -22,12 +26,17 @@ const LECTURA_VACIA = {
   error: null,
 };
 
+beforeEach(() => {
+  fallo.current = null;
+  disponibles.current = null;
+});
+
 function mutacion(error: Error | null) {
   return { mutate: vi.fn(), isPending: false, isError: error !== null, error };
 }
 
 vi.mock('@/hooks/use-calendario', () => ({
-  useTurnosDisponibles: () => LECTURA_VACIA,
+  useTurnosDisponibles: () => disponibles.current ?? LECTURA_VACIA,
   useMisClases: () => LECTURA_VACIA,
 }));
 
@@ -55,5 +64,19 @@ describe('VistaDeSemana', () => {
     render(<VistaDeSemana />);
 
     expect(screen.getByText('El turno esta lleno')).toBeInTheDocument();
+  });
+
+  it('un 401 al leer los turnos disponibles dice que la sesion caduco, no «Unauthorized»', () => {
+    disponibles.current = {
+      data: undefined,
+      dataUpdatedAt: 0,
+      isPending: false,
+      isError: true,
+      error: new ErrorDeApi('Unauthorized', 401),
+    };
+    render(<VistaDeSemana />);
+
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 });

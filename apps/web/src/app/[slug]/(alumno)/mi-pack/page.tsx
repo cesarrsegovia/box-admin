@@ -2,6 +2,7 @@
 
 import { Aviso } from '@/componentes/ui';
 import { useMiPack } from '@/hooks/use-calendario';
+import { textoDelError } from '@/lib/errores-de-api';
 import { ResumenDelPack } from './resumen-del-pack';
 
 export default function PaginaDeMiPack() {
@@ -14,7 +15,7 @@ export default function PaginaDeMiPack() {
       {isPending && <p className="text-sm text-slate-500">Cargando…</p>}
       {isError && (
         <Aviso tono="error">
-          {error instanceof Error ? error.message : 'No se pudo cargar tu pack'}
+          {error instanceof Error ? textoDelError(error) : 'No se pudo cargar tu pack'}
         </Aviso>
       )}
       {data !== undefined && <ResumenDelPack datos={data} />}

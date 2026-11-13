@@ -168,7 +168,7 @@ function PantallaDeCheckIn() {
         <Aviso tono="error">
           <span data-fallo="lectura">
             {PRINCIPIO_DEL_FALLO_DE_LECTURA}
-            {config.error.message}
+            {textoDelError(config.error)}
           </span>
         </Aviso>
       </section>

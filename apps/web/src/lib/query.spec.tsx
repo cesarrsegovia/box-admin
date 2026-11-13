@@ -27,6 +27,18 @@ async function escribirConFallo(cliente: QueryClient, error: unknown): Promise<v
     .catch(() => undefined);
 }
 
+/**
+ * `retry: false` porque lo que se prueba es que hace el `QueryCache` con el
+ * fallo FINAL, no la politica de reintentos: con la de `crearClienteDeDatos`,
+ * un `Error` comun se reintenta dos veces con espera y el caso tardaba ~3 s.
+ * El `onError` del cache corre igual, una vez, cuando la lectura se rinde.
+ */
+async function leerConFallo(cliente: QueryClient, error: unknown, clave = 'algo'): Promise<void> {
+  await cliente
+    .fetchQuery({ queryKey: [clave], queryFn: () => Promise.reject(error), retry: false })
+    .catch(() => undefined);
+}
+
 describe('crearClienteDeDatos', () => {
   it('una escritura con 401 manda al login, con la vuelta a donde estaba', async () => {
     const cliente = crear();
@@ -56,12 +68,41 @@ describe('crearClienteDeDatos', () => {
     expect(ir).not.toHaveBeenCalled();
   });
 
-  it('una LECTURA con 401 no lo dispara: eso lo decide cada pantalla', async () => {
+  it('una LECTURA con 401 tambien manda al login, con la vuelta a donde estaba', async () => {
+    await leerConFallo(crear(), CADUCADA);
+
+    expect(ir.mock.calls).toEqual([
+      ['/mi-gym/login?volverA=%2Fmi-gym%2Fadmin%2Fusuarios%3Ftipo%3Dalumno'],
+    ]);
+  });
+
+  it.each([
+    ['un 403', new ErrorDeApi('Forbidden', 403)],
+    ['un 404', new ErrorDeApi('No existe', 404)],
+    ['sin conexion', new ErrorDeApi('Sin conexion', 0)],
+    ['un Error comun', new Error('se rompio')],
+  ])('una lectura con %s no navega', async (_caso, error) => {
+    await leerConFallo(crear(), error);
+
+    expect(ir).not.toHaveBeenCalled();
+  });
+
+  it('una lectura y una escritura con 401 a la vez mandan UNA sola vez', async () => {
     const cliente = crear();
 
-    await cliente
-      .fetchQuery({ queryKey: ['algo'], queryFn: () => Promise.reject(CADUCADA) })
-      .catch(() => undefined);
+    await Promise.all([
+      leerConFallo(cliente, CADUCADA),
+      leerConFallo(cliente, CADUCADA, 'otra'),
+      escribirConFallo(cliente, CADUCADA),
+    ]);
+
+    expect(ir).toHaveBeenCalledTimes(1);
+  });
+
+  it('en el login una lectura con 401 no navega: ya esta ahi', async () => {
+    const cliente = crearClienteDeDatos(ir, () => ({ pathname: '/mi-gym/login', search: '' }));
+
+    await leerConFallo(cliente, CADUCADA);
 
     expect(ir).not.toHaveBeenCalled();
   });

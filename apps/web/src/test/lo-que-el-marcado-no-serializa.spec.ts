@@ -1,7 +1,12 @@
 import { cleanup, render } from '@testing-library/react';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { escondidoEnElCuerpo } from './espia-de-consola';
+import {
+  escondidoEnElCuerpo,
+  esconditesSinRestar,
+  formaQueSeFue,
+  fotoDelCuerpo,
+} from './espia-de-consola';
 
 /**
  * EL GUARDIAN DEL DECIMOQUINTO CANAL, Y POR QUE ESTE SI TIENE SPEC.
@@ -32,7 +37,7 @@ import { escondidoEnElCuerpo } from './espia-de-consola';
  *
  * NADA DE LO QUE HAY AQUI ES UN CENTINELA REGISTRADO: este spec no llama a
  * `vigilarEstosDatos` y las cadenas de abajo son inventadas para la medicion,
- * asi que los dieciocho tapones globales siguen mirando lo suyo mientras corre.
+ * asi que los diecinueve tapones globales siguen mirando lo suyo mientras corre.
  * Y lo que este spec siembra en el `<body>` lo limpia el `cleanup()` del tapon
  * global, igual que en cualquier otro archivo.
  */
@@ -72,6 +77,17 @@ function loEscondido(): string[] {
 /** Los nombres de sitio, que son lo UNICO que el informe publica. */
 function losSitios(): string[] {
   return escondidoEnElCuerpo().map((escondite) => escondite.sitio);
+}
+
+/**
+ * Solo los sitios del `.value`, para los tests que miden ESA rama.
+ *
+ * Desde que la barrida mira tambien los atributos, un `<li>` con `.value = 7`
+ * deja un `value="7"` —se refleja— y un `<input type="text">` deja su `type`.
+ * Esos sitios son de la otra rama y no dicen nada de esta.
+ */
+function losSitiosDelValue(): string[] {
+  return losSitios().filter((sitio) => sitio.startsWith('el .value '));
 }
 
 describe('la premisa: hay sitios del cuerpo que el marcado no publica', () => {
@@ -188,6 +204,143 @@ describe('la sombra: un shadowRoot abierto no lo alcanza ninguna de las dos defe
   });
 });
 
+describe('los atributos de los descendientes del <body>', () => {
+  /**
+   * LA 42 DE LA FASE 12, Y OTRA VEZ LA T5 DE LA FASE 16.
+   *
+   * El canal doce mira los atributos SOLO del `<html>` y del `<body>`; los de
+   * un `<form>`, un `<a>` o un `<div>` de dentro no los miraba nadie. La
+   * barrida ya recorre cada nodo del cuerpo por su `.value`: los atributos
+   * entran por el mismo bucle, y el sitio los NOMBRA para que el informe diga
+   * cual fue.
+   *
+   * Esto mide la BARRIDA. Que el canal la cierre depende de la RESTA, que
+   * para un atributo va contra el texto y no contra el marcado: eso lo mide
+   * el bloque «la resta de los atributos» de mas abajo.
+   */
+  it('un atributo de un nodo de dentro sale en la barrida, nombrado', () => {
+    conEsteNodo('div', (nodo) => {
+      nodo.setAttribute('title', MARCA);
+    });
+
+    expect(loEscondido().join(' ')).toContain(MARCA);
+    expect(losSitios()).toContain('el atributo title de un <div>');
+  });
+
+  /**
+   * El `value` de un campo donde la persona escribio se resta, igual que su
+   * `.value`: React refleja lo tecleado en un campo controlado como atributo,
+   * y sin esta resta el canal seria rojo con el codigo correcto en las mismas
+   * dos pantallas que obligaron a escribir `TECLEADO_POR_LA_PERSONA`.
+   */
+  it('el atributo value de un campo donde se tecleo no es un escondite', () => {
+    const campo = conEsteNodo('input', (nodo) => {
+      nodo.setAttribute('value', MARCA);
+    });
+
+    campo.dispatchEvent(new Event('input', { bubbles: true }));
+
+    expect(loEscondido().join(' ')).not.toContain(MARCA);
+    expect(losSitios()).not.toContain('el atributo value de un <input>');
+  });
+
+  /**
+   * Y SOLO el `value`: el resto de los atributos del MISMO campo tecleado se
+   * siguen mirando. Restar el nodo entero dejaria pasar un `title={dato}` en
+   * cualquier campo donde alguien haya escrito una letra.
+   */
+  it('los otros atributos de un campo donde se tecleo siguen en la barrida', () => {
+    const campo = conEsteNodo('input', (nodo) => {
+      nodo.setAttribute('title', MARCA);
+    });
+
+    campo.dispatchEvent(new Event('input', { bubbles: true }));
+
+    expect(losSitios()).toContain('el atributo title de un <input>');
+  });
+});
+
+/**
+ * Los sitios donde el `afterEach` del tapon veria `valor` ESCONDIDO: la barrida,
+ * la resta y la busqueda, en el mismo orden que el tapon y con la foto del
+ * cuerpo tomada en el mismo instante.
+ */
+function dondeSeEsconde(valor: string): string[] {
+  return esconditesSinRestar(valor, escondidoEnElCuerpo(), fotoDelCuerpo())
+    .filter((escondite) => formaQueSeFue(escondite.contenido, valor) !== undefined)
+    .map((escondite) => escondite.sitio);
+}
+
+describe('la resta de los atributos: contra el TEXTO, no contra el marcado', () => {
+  /**
+   * LA 42, CERRADA DE PUNTA A PUNTA.
+   *
+   * Un atributo SIEMPRE sale en el `innerHTML`, asi que restarlo contra el
+   * marcado lo descontaba siempre: la mutacion `title={tenantId}` paso 29 de
+   * 29 con la barrida puesta. Un atributo se resta contra lo que la persona
+   * LEE —el `textContent`—, y entonces un `title` con un dato es una fuga
+   * aunque el `innerHTML` lo lleve.
+   */
+  it('un title con un dato es una fuga aunque este en el marcado', () => {
+    conEsteNodo('form', (nodo) => {
+      nodo.setAttribute('title', MARCA);
+    });
+
+    expect(document.body.innerHTML).toContain(MARCA);
+    expect(dondeSeEsconde(MARCA)).toEqual(['el atributo title de un <form>']);
+  });
+
+  it('y deja de serlo si el mismo dato esta escrito en la pantalla', () => {
+    conEsteNodo('p', (nodo) => {
+      nodo.setAttribute('title', MARCA);
+      nodo.textContent = MARCA;
+    });
+
+    expect(dondeSeEsconde(MARCA)).toEqual([]);
+  });
+
+  /**
+   * LAS DOS EXCEPCIONES CON NOMBRE, y son dos HUECOS CONOCIDOS: un secreto en
+   * la query de un enlace, o en un `data-x`, pasa. Ver el docblock de
+   * `ATRIBUTOS_QUE_SE_RESTAN_CONTRA_EL_MARCADO`.
+   */
+  it('un href con un dato no es una fuga: los enlaces llevan ids a proposito', () => {
+    conEsteNodo('a', (nodo) => {
+      nodo.setAttribute('href', `/admin/usuarios/${MARCA}`);
+    });
+
+    expect(dondeSeEsconde(MARCA)).toEqual([]);
+  });
+
+  it('un data-* con un dato tampoco: los specs los usan de selector', () => {
+    conEsteNodo('span', (nodo) => {
+      nodo.setAttribute('data-foo', MARCA);
+    });
+
+    expect(dondeSeEsconde(MARCA)).toEqual([]);
+  });
+
+  it('ni el value de un campo donde la persona tecleo', () => {
+    const campo = conEsteNodo('input', (nodo) => {
+      nodo.setAttribute('value', MARCA);
+    });
+
+    campo.dispatchEvent(new Event('input', { bubbles: true }));
+
+    expect(dondeSeEsconde(MARCA)).toEqual([]);
+  });
+
+  /**
+   * El `.value` sigue con SU resta, contra el marcado: una pantalla de
+   * edicion pinta `<input value={nombre}>` a proposito.
+   */
+  it('el .value que el marcado tambien publica sigue sin ser una fuga', () => {
+    render(createElement('input', { type: 'text', defaultValue: MARCA }));
+
+    expect(dondeSeEsconde(MARCA)).toEqual([]);
+  });
+});
+
 describe('lo que la barrida deja fuera, y no por descuido', () => {
   /**
    * Un `.value` NUMERICO no puede llevar un nombre dentro.
@@ -203,7 +356,7 @@ describe('lo que la barrida deja fuera, y no por descuido', () => {
       });
     }
 
-    expect(losSitios()).toEqual([]);
+    expect(losSitiosDelValue()).toEqual([]);
   });
 
   it('un .value vacio no es un escondite', () => {
@@ -211,7 +364,7 @@ describe('lo que la barrida deja fuera, y no por descuido', () => {
       (nodo as HTMLInputElement).type = 'text';
     });
 
-    expect(losSitios()).toEqual([]);
+    expect(losSitiosDelValue()).toEqual([]);
   });
 
   /**
@@ -278,6 +431,9 @@ describe('el informe no publica el volcado', () => {
       (nodo as HTMLInputElement).value = MARCA;
     });
 
-    expect(losSitios()).toEqual(['el .value de un <input type="password">']);
+    expect(losSitios()).toEqual([
+      'el .value de un <input type="password">',
+      'el atributo type de un <input type="password">',
+    ]);
   });
 });

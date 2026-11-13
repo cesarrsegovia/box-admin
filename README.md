@@ -2621,6 +2621,60 @@ guarda va recortado. `apps/web` y `packages/shared` no se tocaron.
   lecturas internas de las fichas y el 403 de invitaciones.
 - Ver `docs/superpowers/plans/PROGRESO.md`.
 
+## La deuda que queda — Fase 19
+
+Lo que las Fases 17 y 18 dejaron como «sigue». Ninguna función nueva y ningún endpoint cambia;
+`packages/shared` no se tocó, y en `apps/api` sólo hay un archivo de test y un script.
+
+- **El 401, en un solo lugar.** `crearClienteDeDatos` (`lib/query.tsx`) tiene un `QueryCache.onError`
+  gemelo del `MutationCache.onError`: **una lectura con 401 también va al login**, con la vuelta a
+  donde estaba. Los dos comparten `alFallar` y **un único `saliendo`**: una lectura y una escritura que
+  fallan juntas navegan una vez. En `/login` y en las rutas sin slug no navega.
+  - **El texto es siempre `TEXTO_DE_SESION_CADUCADA`.** Los 16 lugares que pintaban el `.message`
+    crudo de una lectura pasan por `textoDelError` y conservan su prefijo («No se pudieron leer los
+    pagos: …»). El login y el registro quedan fuera: ahí un 401 no es una sesión caducada.
+  - **Los `router.push` de cada pantalla se quedan, y con el `QueryCache` son una carrera conocida.**
+    Si gana el de la pantalla, navega el router y la cache no se tira; las pantallas con `SIN_QUERY`
+    arman otro `volverA` si la URL lleva query. Las dos salidas terminan en el login.
+- **Ninguna escritura con `pedir` suelto.** Si una escritura no es un `useMutation`, el
+  `MutationCache` no la ve, y ante un 401 dice «Unauthorized» y no va al login. Push
+  (`hooks/use-push.ts`) y check-in (`hooks/use-check-in.ts`) son ahora hooks con `gcTime: 0`, y las
+  pantallas los llaman con `mutateAsync` y pintan `textoDelError`. El destino del login del check-in
+  conserva el `?f=`, así que el alumno vuelve con la firma.
+  - **Si el POST de push falla, el navegador se desuscribe dentro del `mutationFn`**
+    (`useGuardarSuscripcion` recibe la `PushSubscription`), no en la pantalla: el `onError` del
+    `MutationCache`, que navega ante un 401, corre antes de que `mutateAsync` rechace.
+- **Invitaciones explica el 403 por el rol**: «Para esto hace falta ser administrador operativo. Tu rol
+  no alcanza.», como las otras pantallas con `repartirPorCampo`.
+- **`pnpm --filter @boxadmin/api test:reloj`** corre la suite unitaria de la API con `Date` adelantado
+  (`apps/api/test/reloj-adelantado.ts`): `new Date()` y `Date.now()` dan **dentro de N años**, y una
+  fecha escrita sigue siendo esa. Por defecto, un año; `RELOJ_ANIOS` elige cuántos (en PowerShell,
+  `$env:RELOJ_ANIOS='5'; pnpm --filter @boxadmin/api test:reloj`). Para filtrar se usa
+  `--testPathPattern <patron>`.
+  - **Cuándo:** al cerrar una fase que toque servicios que miran «hoy», o cuando un spec nuevo usa
+    una fecha fija. Así la próxima bomba aparece corriéndolo, no esperando al calendario.
+  - **La regla:** una fecha fija contra un servicio que mira «hoy» se arregla **pasándole `ahora`**
+    (o fechas relativas a un `ahora` fijo del test). **Nunca** moviendo la fecha fija más lejos.
+  - **No cubre** un `jest.useFakeTimers()` sin `setSystemTime`, que arranca en la fecha de verdad.
+- **El portapapeles y los atributos, en el guardián** (`src/test/espia-de-consola.ts`):
+  - El guardián monta **un doble de `navigator.clipboard`** que `userEvent.setup()` no pisa. Un
+    centinela copiado que **ningún spec reclamó** pone rojo el test.
+    - **Un spec que copia a propósito** (la clave temporal o el código de invitación) llama a
+      `reclamarLoCopiado()`, que devuelve lo copiado y lo da por visto, y afirma sobre eso.
+    - `escrituraDelPortapapeles()` da el mock de `writeText` para hacerlo fallar o mirar las llamadas.
+    - **Ningún spec pisa `navigator.clipboard` por su cuenta.**
+  - Los **atributos** de los descendientes del `<body>` se barren buscando centinelas. Se descuenta lo
+    que ya se ve en el texto y, para `value`, `href` y `data-*`, lo que ya está en el marcado.
+  - Ojo con los fixtures: un centinela que coincide con un `placeholder` se lee como fuga.
+
+### Lo que esta fase NO trae
+
+- **Sacar los `router.push` de cada pantalla**: quedan, como carrera conocida con el `QueryCache`.
+- **El contexto de navegación anidado** (un segundo `<iframe>`): sigue por diseño, hay uno solo y va
+  con `sandbox`.
+- **El reloj adelantado en los e2e y en la web.**
+- Ver `docs/superpowers/plans/PROGRESO.md`.
+
 ## Tests
 
 Unitarios:

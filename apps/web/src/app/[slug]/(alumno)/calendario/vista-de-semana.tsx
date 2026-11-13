@@ -71,7 +71,7 @@ export function VistaDeSemana() {
       {disponibles.isError && (
         <Aviso tono="error">
           {disponibles.error instanceof Error
-            ? disponibles.error.message
+            ? textoDelError(disponibles.error)
             : 'No se pudo cargar el calendario'}
         </Aviso>
       )}

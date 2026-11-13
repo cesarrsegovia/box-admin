@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 /**
- * EL TAPON DE LOS DIECIOCHO CANALES QUE NO MIRA NADIE, EN TODOS LOS SPECS —Y
+ * EL TAPON DE LOS DIECINUEVE CANALES QUE NO MIRA NADIE, EN TODOS LOS SPECS —Y
  * EL EJE DECIMONOVENO, QUE VIAJA DENTRO DE EL.
  *
  * `console.*`, `document.title`, `window.name`, el `<head>`, los tres
@@ -73,7 +73,7 @@ afterEach(() => {
  * MARCADO DEL `<body>` NO SERIALIZA: el `.value` de un control —que para los
  * tipos en modo valor y para un `<textarea>` es una PROPIEDAD que no se
  * refleja a ningun atributo— y el contenido de un `shadowRoot` abierto. Es el
- * UNICO de los dieciocho que vive DENTRO del cuerpo, o sea del lado que los tests
+ * UNICO de los diecinueve que vive DENTRO del cuerpo, o sea del lado que los tests
  * de pantalla miran, y aun asi no lo ve ninguno: leen `innerHTML` y
  * `textContent`, y ahi eso no sale. El dato esta en la pagina igual: se pinta,
  * se autocompleta, viaja en un envio de formulario y lo lee cualquier
@@ -93,8 +93,8 @@ afterEach(() => {
  * arbol, EL NOMBRE del archivo ademas del contenido, y las cuatro formas en
  * que `write` acepta ese contenido.
  * Y EL CENTRO DE NOTIFICACIONES DEL SISTEMA OPERATIVO —`new Notification` y
- * `ServiceWorkerRegistration.showNotification`—, que es EL UNICO DE LOS
- * DIECIOCHO QUE NO ACABA DENTRO DEL NAVEGADOR: el dato sale a una pantalla
+ * `ServiceWorkerRegistration.showNotification`—, que es EL PRIMERO DE LOS
+ * DOS QUE NO ACABAN DENTRO DEL NAVEGADOR: el dato sale a una pantalla
  * del sistema, se lee sin tocar nada desde delante del mostrador, sobrevive a
  * la pestaña, al logout Y AL CIERRE DEL NAVEGADOR, y en Windows queda en el
  * historial de notificaciones, que no vacia ningun «borrar datos del sitio».
@@ -115,6 +115,13 @@ afterEach(() => {
  * sobrevive al logout y que `chrome://blob-internals` enseña entero. Medido en
  * la Fase 14: un enlace «Descargar» con el CSV de la liquidacion de una
  * profesora, armado en el render y sin revocar, paso los 1874 tests.
+ * Y EL PORTAPAPELES —`navigator.clipboard`—, el VIGESIMO PRIMERO y el segundo
+ * que no acaba dentro del navegador: lo copiado es del sistema y aterriza en lo
+ * proximo donde la persona pegue. Medido en la Fase 12: la lista de una clase
+ * copiada con el `?.` prudente paso los 20 tests de la agenda. Se monta un
+ * doble que un `userEvent.setup()` no pisa, se afirma por centinelas y solo
+ * sobre lo que ningun spec reclamo con `reclamarLoCopiado()`: el panel copia
+ * la clave del alta y el codigo de invitacion a proposito.
  * La lista entera, con que se midio en cada caso, esta en el docblock de
  * `vigilarLosCanalesDeSalida`. Va aqui y no en cada spec
  * porque es una DIMENSION, no un caso: ninguna pantalla deberia tener que
@@ -149,13 +156,13 @@ vigilarLosCanalesDeSalida();
  * jsdom no implementa `requestIdleCallback`, asi que un
  * `window.requestIdleCallback?.(() => …)` es un no-op silencioso en los tests
  * y una ejecucion de verdad en el navegador: todo lo que se esconda detras
- * ocurre DESPUES de que corran los dieciocho tapones de arriba, o sea nunca. No
+ * ocurre DESPUES de que corran los diecinueve tapones de arriba, o sea nunca. No
  * abre una puerta nueva — las apaga TODAS, incluidas las que se tapen mañana.
  * Medido en la pantalla de quien no pago: el mismo `console.info` tira 28
  * tests de 28 desnudo y pasa los 28 envuelto.
  *
  * Se monta la API en vez de prohibirla —aplazar trabajo caro es legitimo— para
- * que lo aplazado CORRA dentro del test y los dieciocho tapones lo vean solos. El
+ * que lo aplazado CORRA dentro del test y los diecinueve tapones lo vean solos. El
  * razonamiento entero y las tres decisiones pequeñas: `src/test/rato-libre.ts`.
  */
 montarElRatoLibre();

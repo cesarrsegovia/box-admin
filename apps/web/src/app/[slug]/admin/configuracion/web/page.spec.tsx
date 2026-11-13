@@ -1049,6 +1049,15 @@ describe('cuando no se puede leer la configuracion', () => {
     expect(valorDelCampo('tagline')).toBeNull();
   });
 
+  it('un 401 al leer la web dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montarYEsperar({ falloAlLeer: NO_AUTORIZADO });
+
+    expect(textoDe('[data-fallo="lectura"]')).toBe(
+      `No se pudo leer la configuracion de la web: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+    expect(document.body.textContent).not.toContain('Unauthorized');
+  });
+
   /** La otra mitad: una web sin configurar de verdad SI se dibuja. */
   it('y una web sin configurar de verdad si se dibuja', async () => {
     await montarYEsperar({ web: WEB_SIN_CONFIGURAR });

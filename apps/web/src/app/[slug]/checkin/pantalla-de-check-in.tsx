@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CheckInRechazado, MotivoDeRechazoDeCheckIn, PresenteMarcado } from '@boxadmin/shared';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
-import { ErrorDeApi, pedir } from '@/lib/cliente';
+import { useMarcarPresente } from '@/hooks/use-check-in';
+import { ErrorDeApi } from '@/lib/cliente';
+import { textoDelError } from '@/lib/errores-de-api';
 
 /**
  * Los cinco estados de la pantalla, como union y no como tres booleanos
@@ -152,28 +154,30 @@ export function PantallaDeCheckIn({ slug, firma }: { slug: string; firma: string
     firma === null ? { tipo: 'sin-firma' } : { tipo: 'marcando' },
   );
 
-  const marcar = useCallback(async (laFirma: string) => {
-    setEstado({ tipo: 'marcando' });
+  const marcarPresente = useMarcarPresente();
 
-    try {
-      const datos = await pedir<PresenteMarcado>('/checkin', {
-        metodo: 'POST',
-        cuerpo: { firma: laFirma },
-      });
-      setEstado({ tipo: 'marcado', datos });
-    } catch (error) {
-      if (error instanceof ErrorDeApi) {
-        const rechazo = rechazoDeCheckIn(error);
-        if (rechazo !== null) {
-          setEstado({ tipo: 'rechazado', datos: rechazo });
+  const marcar = useCallback(
+    async (laFirma: string) => {
+      setEstado({ tipo: 'marcando' });
+
+      try {
+        const datos = await marcarPresente.mutateAsync(laFirma);
+        setEstado({ tipo: 'marcado', datos });
+      } catch (error) {
+        if (error instanceof ErrorDeApi) {
+          const rechazo = rechazoDeCheckIn(error);
+          if (rechazo !== null) {
+            setEstado({ tipo: 'rechazado', datos: rechazo });
+            return;
+          }
+          setEstado({ tipo: 'error', mensaje: textoDelError(error) });
           return;
         }
-        setEstado({ tipo: 'error', mensaje: error.message });
-        return;
+        setEstado({ tipo: 'error', mensaje: 'Error inesperado' });
       }
-      setEstado({ tipo: 'error', mensaje: 'Error inesperado' });
-    }
-  }, []);
+    },
+    [marcarPresente.mutateAsync],
+  );
 
   // El POST sale UNA vez por firma. El guardia no es decorativo: en
   // desarrollo React monta dos veces, y sin el, el segundo intento convertiria

@@ -30,11 +30,13 @@ import {
  * esto le agrega lo propio de este archivo, para todos sus tests.
  *
  * EL MONTO TERMINA EN `.10` A PROPOSITO, y es la pieza mas util de la lista:
- * `25000.10` es un importe que un float binario NO representa, asi que ademas
+ * `31750.10` es un importe que un float binario NO representa, asi que ademas
  * de centinela es la sonda que delata a quien lo convierta por el camino
- * —`Number('25000.10')` es `25000.1`, que ya no es el mismo texto ni el mismo
- * centinela—. Mismo valor que usaron la T1 en `use-dinero.spec` y la T2 en
- * `bloque-pagos.spec`.
+ * —`Number('31750.10')` es `31750.1`, que ya no es el mismo texto ni el mismo
+ * centinela—. Mismo valor que `bloque-pagos.spec`. NO es `25000.10`, el de
+ * hasta la Fase 19: ese importe esta escrito en la pantalla como `placeholder`
+ * del campo del monto, y el canal de atributos del tapon lo contaba como el
+ * centinela escondido en un atributo —rojo con el codigo correcto—.
  *
  * EL NOMBRE DEL ARCHIVO es un dato de una persona con nombre y apellido
  * —«transferencia-Ana-…»— que esta pantalla pinta a proposito: es con lo que
@@ -57,7 +59,7 @@ const CENTINELAS = {
   nombreDelArchivo: 'transferencia-Ana-Centinela-octubre.pdf',
   nombreDelOtroArchivo: 'deposito-Bruno-Centinela.jpg',
   laUrlFirmada: 'https://almacen.test/c/aaa?firma=FIRMA-CENTINELA-PRIMERA',
-  elMontoCobrado: '25000.10',
+  elMontoCobrado: '31750.10',
   laNotaDelCobro: 'Nota-Centinela-entro-por-el-banco',
   elMotivoDelRechazo: 'Motivo-Centinela-la-foto-no-se-lee',
 };
@@ -482,18 +484,18 @@ describe('aprobar un comprobante', () => {
 
     const cuerpo = elUnicoCuerpo();
 
-    // LAS DOS MITADES. El tipo, porque `Number('25000.10')` es un number y el
+    // LAS DOS MITADES. El tipo, porque `Number('31750.10')` es un number y el
     // DTO pide una cadena contra un `@Matches`; y el VALOR por igualdad
-    // exacta, porque ese number se serializa `25000.1` —un decimal, no dos— y
-    // es otro dinero. Un `toContain('25000')` pasaria sobre `250000`.
+    // exacta, porque ese number se serializa `31750.1` —un decimal, no dos— y
+    // es otro dinero. Un `toContain('31750')` pasaria sobre `317500`.
     expect(typeof cuerpo.monto).toBe('string');
-    expect(cuerpo.monto).toBe('25000.10');
-    expect(cuerpo.monto).not.toBe('25000.1');
+    expect(cuerpo.monto).toBe('31750.10');
+    expect(cuerpo.monto).not.toBe('31750.1');
 
     // Y el camino malo no esta en NINGUN sitio del cuerpo, ni escondido en
     // otra clave: el JSON entero, que es lo que recibe la API.
-    expect(JSON.stringify(cuerpo)).not.toContain('25000.1,');
-    expect(JSON.stringify(cuerpo)).not.toContain('25000.1}');
+    expect(JSON.stringify(cuerpo)).not.toContain('31750.1,');
+    expect(JSON.stringify(cuerpo)).not.toContain('31750.1}');
   });
 
   it('el metodo viaja SIEMPRE, con TRANSFERENCIA puesto de entrada', async () => {

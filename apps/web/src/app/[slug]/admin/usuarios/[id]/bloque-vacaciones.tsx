@@ -16,7 +16,7 @@ import { Confirmar } from '@/componentes/confirmar';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { useBorrarVacacion, useCrearVacacion, useVacaciones } from '@/hooks/use-vacaciones';
-import { mensajeDeFallo, repartirPorCampo } from '@/lib/errores-de-api';
+import { mensajeDeFallo, repartirPorCampo, textoDelError } from '@/lib/errores-de-api';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 
 /**
@@ -258,7 +258,7 @@ function PanelDeVacaciones({ usuario }: { usuario: UsuarioDetalle }) {
          */}
         {error !== null && (
           <div className="flex flex-col items-start gap-2">
-            <Aviso tono="error">{error.message}</Aviso>
+            <Aviso tono="error">{textoDelError(error)}</Aviso>
             <Boton tono="secundario" onClick={() => void refetch()}>
               Reintentar
             </Boton>

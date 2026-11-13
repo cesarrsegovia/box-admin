@@ -440,6 +440,16 @@ describe('la ficha de un turno', () => {
     );
   });
 
+  it('un 401 al leer el turno dice que la sesion caduco, no «Unauthorized»', async () => {
+    const cliente = prepararServidor({});
+    pedirEspia.mockRejectedValue(new ErrorDeApi('Unauthorized', 401));
+    await pintar(cliente);
+    await esperar();
+
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
+  });
+
   it('un error de red se distingue del rechazo y se puede reintentar', async () => {
     const cliente = prepararServidor({});
     pedirEspia.mockRejectedValue(new ErrorDeApi('Sin conexion', 0));

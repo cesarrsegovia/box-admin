@@ -10,6 +10,7 @@ import type {
   UsuarioResumen,
 } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { BloqueDeAnotados } from './bloque-anotados';
 
@@ -418,6 +419,20 @@ describe('la lista de anotados', () => {
     expect(screen.getByText(/sin conexion/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
   });
+
+  it('un 401 al leer los anotados dice que la sesion caduco, no «Unauthorized»', async () => {
+    const cliente = prepararServidor({});
+    pedirEspia.mockRejectedValue(new ErrorDeApi('Unauthorized', 401));
+    render(
+      <QueryClientProvider client={cliente}>
+        <BloqueDeAnotados turno={unTurno()} />
+      </QueryClientProvider>,
+    );
+    await esperar();
+
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -747,6 +762,18 @@ describe('reasignar una reserva', () => {
     await abrirReasignarDe(ANOTADA_CENTINELA);
 
     expect(rutasPedidas()).toEqual(['/turnos?salaId=sala-a']);
+  });
+
+  it('un 401 al leer los turnos destino dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montar();
+    // La lista ya llego: lo unico que se pide a partir de aqui es el catalogo
+    // de turnos que abre el reasignar.
+    pedirEspia.mockRejectedValue(new ErrorDeApi('Unauthorized', 401));
+
+    await abrirReasignarDe(ANOTADA_CENTINELA);
+
+    expect(enElPanel().getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 
   /**

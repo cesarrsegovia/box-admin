@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PagoPublico, RolUsuario, UsuarioDetalle } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { ProveedorDeRol } from '../../rol-del-panel';
 import {
@@ -29,9 +30,16 @@ import {
  *
  * EL MONTO TERMINA EN `.10` A PROPOSITO: es el importe que un float binario no
  * representa, asi que ademas de centinela es la sonda que delata a quien
- * convierta el dinero por el camino —`25000.1` ya no es el mismo texto y
- * tampoco el mismo centinela—. Es el mismo valor que uso la T1 en
- * `use-dinero.spec`.
+ * convierta el dinero por el camino —`31750.1` ya no es el mismo texto y
+ * tampoco el mismo centinela—.
+ *
+ * Y NO ES `25000.10`, que fue el valor hasta la Fase 19: ese importe esta
+ * ESCRITO EN LA PANTALLA —el `placeholder` del campo y el ejemplo del mensaje
+ * de error de `bloque-pagos.tsx`—, asi que el centinela coincidia con un texto
+ * fijo del componente. Con el canal de atributos del tapon, el `placeholder`
+ * contaba como el monto escondido en un atributo: rojo con el codigo correcto.
+ * Un centinela tiene que ser un dato que la pantalla solo pueda tener porque
+ * se lo dieron.
  *
  * LA NOTA es texto libre que escribe el mostrador sobre UNA PERSONA al lado de
  * lo que pago, y el `tenantId` es el dato que la Fase 0 se ocupo de que no
@@ -42,7 +50,7 @@ import {
 const CENTINELAS = {
   tenantIdDelGimnasio: 'tnt-centinela',
   nombreDeLaPersona: 'Ana-Centinela Perez',
-  montoDelPago: '25000.10',
+  montoDelPago: '31750.10',
   notaDelCobro: 'Nota-Centinela-pago-en-mano',
 };
 
@@ -540,8 +548,8 @@ describe('anular no es borrar', () => {
      * `Confirmar` cuelga su `aria-labelledby` de la pregunta, asi que el nombre
      * del dialogo ES la pregunta: se lee por donde la leeria un lector de
      * pantalla y no por la posicion de un parrafo. Y por igualdad y no por
-     * `toContain`, que es la primera trampa: `toContain('25000')` pasaria sobre
-     * un «250000» y `toContain('2026-10')` sobre cualquiera de los tres pagos.
+     * `toContain`, que es la primera trampa: `toContain('31750')` pasaria sobre
+     * un «317500» y `toContain('2026-10')` sobre cualquiera de los tres pagos.
      */
     expect(
       screen.getByRole('dialog', {
@@ -669,11 +677,11 @@ describe('lo que el formulario de cobro manda', () => {
 
     const cuerpo = elUnicoCuerpo();
 
-    // LA IGUALDAD EXACTA Y EL TIPO, las dos cosas. `25000.10` pasado por un
-    // `Number()` vuelve `25000.1` —un decimal, no dos— y en el peor caso
-    // `25000.100000000001`. Es dinero: el DTO exige `^\d{1,8}(\.\d{1,2})?$` y
+    // LA IGUALDAD EXACTA Y EL TIPO, las dos cosas. `31750.10` pasado por un
+    // `Number()` vuelve `31750.1` —un decimal, no dos—, y un importe asi puede
+    // volver con cola de float. Es dinero: el DTO exige `^\d{1,8}(\.\d{1,2})?$` y
     // un number ahi es un 400.
-    expect(cuerpo.monto).toBe('25000.10');
+    expect(cuerpo.monto).toBe('31750.10');
     expect(typeof cuerpo.monto).toBe('string');
   });
 
@@ -798,7 +806,7 @@ describe('leer los pagos de esta persona', () => {
     // afirmacion.
     await montar({ pagos: LOS_TRES });
 
-    expect(datoDe(EL_VIGENTE.id, 'data-monto')).toBe('25000.10');
+    expect(datoDe(EL_VIGENTE.id, 'data-monto')).toBe('31750.10');
     expect(datoDe(LA_SENA.id, 'data-monto')).toBe('7500.25');
     expect(datoDe(EL_ANULADO.id, 'data-monto')).toBe('19900.99');
 
@@ -825,6 +833,15 @@ describe('leer los pagos de esta persona', () => {
     expect(document.querySelector('[data-sin-nombres]')?.textContent?.trim()).toBe(
       QUIEN_NO_SE_PUEDE_NOMBRAR,
     );
+  });
+
+  it('un 401 al leer los pagos dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montar({ errorDeLectura: new ErrorDeApi('Unauthorized', 401) });
+
+    expect(screen.getByRole('alert').textContent).toBe(
+      `${NO_SE_PUDO_LEER}${TEXTO_DE_SESION_CADUCADA}`,
+    );
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 
   it('el fallo al leer se puede reintentar sin perder la ficha', async () => {

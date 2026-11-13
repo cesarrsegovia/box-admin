@@ -554,7 +554,7 @@ export function LasPlantillas() {
         <Aviso tono="error">
           <span data-fallo="lectura-de-plantillas">
             {PRINCIPIO_DEL_FALLO_DE_LECTURA}
-            {plantillas.error.message}
+            {textoDelError(plantillas.error)}
           </span>
         </Aviso>
       </section>

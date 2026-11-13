@@ -11,6 +11,7 @@
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:reloj": "jest --setupFiles=../test/reloj-adelantado.ts",
     "test:watch": "jest --watch",
     "db:test:deploy": "dotenv -e ../../.env.test -- prisma migrate deploy",
     "pretest:e2e": "pnpm db:test:deploy",

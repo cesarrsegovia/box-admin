@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Advertencia } from '@boxadmin/shared';
 import { ClaveTemporal } from './clave-temporal';
-import { SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
+import {
+  escrituraDelPortapapeles,
+  reclamarLoCopiado,
+  SECRETOS_DEL_PANEL,
+} from '@/test/espia-de-consola';
 
 /**
  * El centinela de esta pantalla: la contraseña temporal del alta.
@@ -15,23 +19,15 @@ import { SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
 const CLAVE = SECRETOS_DEL_PANEL.claveDelAlta;
 
 /**
- * El portapapeles se dobla ANTES de que `userEvent.setup()` ponga el suyo.
- *
- * `setup()` instala su propio doble en `navigator.clipboard`, asi que el orden
- * importa: primero se crea la sesion de userEvent, despues se pisa el
- * portapapeles con el espia. Al reves, el espia no se llamaria nunca y los
- * tests del portapapeles pasarian mirando al vacio.
+ * EL PORTAPAPELES NO SE DOBLA AQUI: lo monta el tapon global en cada test, y
+ * un `userEvent.setup()` lo deja en su sitio —ver el docblock de
+ * `PORTAPAPELES_ORIGINAL` en `espia-de-consola.ts`—. Este spec lee lo copiado
+ * con `reclamarLoCopiado()`, que ademas lo marca como pedido: esta pantalla
+ * copia la clave A PROPOSITO, y una copia con un centinela que nadie reclama
+ * pone rojo el test. Para hacer fallar la escritura, `escrituraDelPortapapeles()`.
  */
-const escribirEnPortapapeles = vi.fn<(texto: string) => Promise<void>>();
-
 function montar(advertencias: Advertencia[] = [], alTerminar = vi.fn()) {
   const sesion = userEvent.setup();
-
-  Object.defineProperty(navigator, 'clipboard', {
-    value: { writeText: escribirEnPortapapeles },
-    configurable: true,
-    writable: true,
-  });
 
   render(
     <ClaveTemporal
@@ -52,10 +48,6 @@ function montar(advertencias: Advertencia[] = [], alTerminar = vi.fn()) {
  * que cada spec registre con `vigilarEstosDatos`. Dejo de ser manual cuando se
  * vio que solo cinco de cuarenta y nueve specs se habian acordado de pedirlo.
  */
-beforeEach(() => {
-  escribirEnPortapapeles.mockResolvedValue(undefined);
-});
-
 afterEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
@@ -143,7 +135,7 @@ describe('copiar la clave', () => {
 
     await sesion.click(screen.getByRole('button', { name: /copiar/i }));
 
-    expect(escribirEnPortapapeles).toHaveBeenCalledWith(CLAVE);
+    expect(reclamarLoCopiado()).toEqual([CLAVE]);
   });
 
   /**
@@ -155,17 +147,18 @@ describe('copiar la clave', () => {
    * mostrador que usan cuatro personas por turno. En Windows, el historial del
    * portapapeles (Win+V) la guarda ademas para despues.
    *
-   * El test de arriba no lo ve: con el autocopiado el espia TAMBIEN se llamo
-   * con la clave, solo que antes. Por eso este mira ANTES del clic.
+   * El test de arriba lo ve solo de rebote: con el autocopiado, lo reclamado
+   * son DOS copias y no una, y cae por el conteo. Este lo afirma de frente,
+   * ANTES del clic, que es donde el autocopiado se distingue de copiar.
    */
   it('no se copia nada hasta que alguien lo pide', () => {
     montar();
 
-    expect(escribirEnPortapapeles).not.toHaveBeenCalled();
+    expect(reclamarLoCopiado()).toEqual([]);
   });
 
   it('si el portapapeles falla lo dice, en vez de fingir que copio', async () => {
-    escribirEnPortapapeles.mockRejectedValue(new Error('sin permiso'));
+    escrituraDelPortapapeles().mockRejectedValueOnce(new Error('sin permiso'));
     const { sesion } = montar();
 
     await sesion.click(screen.getByRole('button', { name: /copiar/i }));
@@ -179,6 +172,9 @@ describe('copiar la clave', () => {
     await sesion.click(screen.getByRole('button', { name: /copiar/i }));
 
     expect(screen.getByText(/copiada/i)).toBeInTheDocument();
+    // Copio la clave a proposito: se reclama para que el tapon no la cuente
+    // como fuga, y se afirma que fue ella y una sola vez.
+    expect(reclamarLoCopiado()).toEqual([CLAVE]);
   });
 });
 

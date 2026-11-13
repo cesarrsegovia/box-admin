@@ -777,6 +777,14 @@ describe('la sesion caducada', () => {
     );
   });
 
+  it('un 401 al leer la sala dice que la sesion caduco, no «Unauthorized»', async () => {
+    montar({ error: new ErrorDeApi('Unauthorized', 401) });
+    await esperar();
+
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
+  });
+
   it('un fallo que no es de sesion si se puede reintentar', async () => {
     montar({ error: new ErrorDeApi('Se cayo la base', 500) });
     await esperar();

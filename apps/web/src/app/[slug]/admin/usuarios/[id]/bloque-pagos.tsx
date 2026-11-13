@@ -14,7 +14,7 @@ import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
 import { useAnularPago, usePagos, useRegistrarPago } from '@/hooks/use-dinero';
 import { Seleccion } from '@/componentes/controles';
-import { mensajeDeFallo } from '@/lib/errores-de-api';
+import { mensajeDeFallo, textoDelError } from '@/lib/errores-de-api';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 
 /**
@@ -638,7 +638,7 @@ function PanelDePagos({ usuario }: { usuario: UsuarioDetalle }) {
         <div data-fallo-al-leer className="flex flex-col items-start gap-2">
           <Aviso tono="error">
             {NO_SE_PUDO_LEER}
-            {error.message}
+            {textoDelError(error)}
           </Aviso>
           <Boton type="button" tono="secundario" onClick={() => void refetch()}>
             Reintentar

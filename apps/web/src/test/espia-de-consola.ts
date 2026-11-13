@@ -1,5 +1,9 @@
 import { cleanup } from '@testing-library/react';
-import { afterEach, beforeEach, expect, vi } from 'vitest';
+import {
+  attachClipboardStubToView,
+  detachClipboardStubFromView,
+} from '@testing-library/user-event/dist/esm/utils/dataTransfer/Clipboard.js';
+import { afterEach, beforeEach, expect, vi, type Mock } from 'vitest';
 import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
 
 /**
@@ -26,8 +30,10 @@ import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
  * `navigator.storage.getDirectory()`—, que es el SEXTO almacen y un SISTEMA DE
  * ARCHIVOS entero: sobrevive al logout y al reinicio como `localStorage`, no
  * tiene el tope de 5 MB, guarda bytes sin que nadie serialice y NO SALE en la
- * pestaña «Application» donde si salen los otros cinco. Ninguno de esos
- * DIECIOCHO lo mira un test de pantalla: los tests
+ * pestaña «Application» donde si salen los otros cinco, y EL PORTAPAPELES
+ * —`navigator.clipboard`—, que es del SISTEMA y no de la pestaña: lo copiado
+ * sobrevive al navegador y aterriza donde la persona pegue. Ninguno de esos
+ * DIECINUEVE lo mira un test de pantalla: los tests
  * miran el marcado DEL CUERPO, los cuerpos de las peticiones, las rutas y las
  * dos caches.
  *
@@ -59,9 +65,9 @@ import { despacharLaSalidaDeLaPestana } from './salida-de-la-pestana';
  *    verde. Era una lista negra —el patron contra el que este repo predica—
  *    puesta en infraestructura que comparten cuarenta y nueve specs.
  *
- * DIECIOCHO CANALES Y DOS EJES. Los canales son PUERTAS: sitios por donde sale
+ * DIECINUEVE CANALES Y DOS EJES. Los canales son PUERTAS: sitios por donde sale
  * un dato. Los ejes no abren ninguna puerta nueva — mueven el MOMENTO en que la
- * pantalla habla a un hueco donde ninguno de los dieciocho tapones esta
+ * pantalla habla a un hueco donde ninguno de los diecinueve tapones esta
  * mirando, y por eso los apagan todos de una linea, incluidos los que se tapen
  * mañana. Van numerados detras de los canales y viven cada uno en su archivo:
  *
@@ -127,18 +133,18 @@ function todoLoVigilado(): [string, string][] {
 }
 
 // ---------------------------------------------------------------------------
-// EL ALFABETO: no es un canal mas, es COMO se busca el centinela en los dieciocho
+// EL ALFABETO: no es un canal mas, es COMO se busca el centinela en los diecinueve
 // ---------------------------------------------------------------------------
 
 /**
- * LOS DIECIOCHO CANALES COMPARTEN UNA PROPIEDAD, Y UNA SOLA LINEA LOS DERROTA.
+ * LOS DIECINUEVE CANALES COMPARTEN UNA PROPIEDAD, Y UNA SOLA LINEA LOS DERROTA.
  *
  * Todos afirman igual: `volcado.includes(valor)`. Esa decision es correcta y
  * esta razonada arriba canal por canal —un tapon que prohiba `console.info`,
  * pedir una imagen o hablarle al worker se desactiva el dia que alguien lo
  * necesite, y entonces no tapa nada—. Pero tiene un corolario que ningun test
  * enunciaba: **buscar por subcadena del valor CRUDO deja pasar cualquier
- * transformacion del dato, y la deja pasar por los dieciocho a la vez.** No es un
+ * transformacion del dato, y la deja pasar por los diecinueve a la vez.** No es un
  * agujero de un canal: es un agujero del alfabeto.
  *
  * LA MUTACION QUE LO DESCUBRIO, medida, en el `onSuccess` de un hook:
@@ -147,7 +153,7 @@ function todoLoVigilado(): [string, string][] {
  *
  * donde `lista` lleva el nombre propio y la ausencia de cada alumno de una
  * clase. Sobrevivio los 1599 tests del paquete con los trece canales
- * enchufados, Y POR EL CANAL MAS VIGILADO DE LOS DIECIOCHO. El control que lo
+ * enchufados, Y POR EL CANAL MAS VIGILADO DE LOS DIECINUEVE. El control que lo
  * prueba: la MISMA linea sin el `btoa` hace caer 5 tests con «la consola dijo
  * alumnaQueVino». El instrumento funcionaba; lo unico que cambiaba entre caer
  * y no caer era la codificacion.
@@ -162,7 +168,7 @@ function todoLoVigilado(): [string, string][] {
  * ASI QUE SE ARREGLA AQUI Y NO CANAL POR CANAL: lo que cambia no es QUE se
  * prohibe —sigue sin prohibirse ninguna llamada— sino COMO se busca el
  * centinela. Cada centinela se convierte en una LISTA DE AGUJAS —el valor y
- * sus formas codificadas— y los dieciocho canales buscan la lista entera. Un canal
+ * sus formas codificadas— y los diecinueve canales buscan la lista entera. Un canal
  * que se tape mañana hereda el alfabeto sin escribir una linea, que es el
  * mismo motivo por el que el registro de datos es uno solo y no uno por tapon.
  *
@@ -187,7 +193,7 @@ function todoLoVigilado(): [string, string][] {
  *    CORRECTA de meter un texto en base64 — es lo que dice la documentacion y
  *    es, literalmente, lo que hacia la mutacion.
  *  - LAS TRES CAJAS DE LETRAS. Ver el comentario dentro de `formasDe`: un
- *    `.toLowerCase()` derrotaba los dieciocho canales a la vez.
+ *    `.toLowerCase()` derrotaba los diecinueve canales a la vez.
  *  - LA FORMA LOCALIZADA DE UN IMPORTE —`toLocaleString`—, que es la unica del
  *    alfabeto que depende de parametros y por eso se argumenta aparte, entera,
  *    en el docblock de `agujasLocalizadas`: `25000.10` sale `25.000,1` y el
@@ -353,7 +359,7 @@ function agujasDeBase64(texto: string): string[] {
  * DETERMINISTA — Y LA QUE FALTABA EN LA FASE DEL DINERO.
  *
  * MEDIDO en el catalogo de packs de la Fase 14, por el canal MAS vigilado de
- * los dieciocho:
+ * los diecinueve:
  *
  *     console.info('[packs] lista de precios', packs.data.map((p) =>
  *       Number(p.precio).toLocaleString('es-AR')))
@@ -366,7 +372,7 @@ function agujasDeBase64(texto: string): string[] {
  * coma y aparecen los separadores de miles, asi que el centinela no esta en el
  * volcado NI en claro, NI en base64, NI %-codificado, NI en otra caja de
  * letras. Es la familia del `.toLowerCase()` —una transformacion que suena a
- * buena practica y que derrota los dieciocho canales a la vez— y no es una
+ * buena practica y que derrota los diecinueve canales a la vez— y no es una
  * rebuscadura: FORMATEAR UN IMPORTE PARA LEERLO ES *LA* COSA QUE SE HACE CON EL
  * DINERO.
  *
@@ -511,7 +517,7 @@ function agujasLocalizadas(valor: string): string[] {
  *
  * Es lo que hace que esto no cueste nada: el registro de datos vigilados no
  * cambia dentro de un spec, asi que codificar se paga una vez por centinela y
- * no dieciocho veces por test. Lo que queda por test son unos pocos `includes` mas
+ * no diecinueve veces por test. Lo que queda por test son unos pocos `includes` mas
  * sobre un volcado que casi siempre esta vacio.
  */
 const AGUJAS_POR_CENTINELA = new Map<string, FormaDelDato[]>();
@@ -535,7 +541,7 @@ function formasDe(valor: string): FormaDelDato[] {
    * LA CAJA DE LAS LETRAS ES UNA FORMA MAS, Y ERA LA MAS BARATA QUE QUEDABA.
    *
    * MEDIDO en la cola de comprobantes de la Fase 14, por el canal MAS vigilado
-   * de los dieciocho:
+   * de los diecinueve:
    *
    *     console.info('[comprobantes] revisado', nombreDelArchivo + '|' + nota)
    *       → caen 7 tests de 1809.
@@ -622,7 +628,7 @@ function formasDe(valor: string): FormaDelDato[] {
  * EN QUE FORMA lleva un volcado a un centinela, o `undefined` si no lo lleva.
  *
  * Es el unico sitio donde se compara un centinela con un volcado, y por eso es
- * el unico sitio que hay que tocar para que los dieciocho canales aprendan una
+ * el unico sitio que hay que tocar para que los diecinueve canales aprendan una
  * forma nueva.
  *
  * SE EXPORTA SOLO PARA SU GUARDIAN, `alfabeto-de-centinelas.spec.ts`, por el
@@ -1249,61 +1255,238 @@ interface RespuestaGuardada {
  */
 const SERVICE_WORKER_ORIGINAL = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker');
 
+// ---------------------------------------------------------------------------
+// El vigesimo primer canal: el portapapeles (`navigator.clipboard`)
+// ---------------------------------------------------------------------------
+
 /**
- * EL PORTAPAPELES NO SE VIGILA, Y ESTA ESCRITO AQUI PARA QUE NO SE REABRA.
+ * EL PORTAPAPELES ES DEL SISTEMA, NO DE LA PESTAÑA.
  *
- * Es el cuarto vecino de esta familia y el unico que se queda fuera. No por
- * pereza: por dos medidas y una asimetria, en ese orden.
+ * Es el cuarto vecino de la familia de `sendBeacon`, `caches` y el service
+ * worker —una API que jsdom no trae— y el que mas tiempo estuvo fuera. Lo que
+ * se copia no se queda en el navegador: sobrevive al cierre de la pestaña, al
+ * logout y al del navegador, aterriza en lo proximo donde la persona del
+ * mostrador pegue algo —un chat, un correo, un documento compartido— y en
+ * Windows queda ademas en el historial del portapapeles (Win+V). Ninguno de los
+ * otros canales tiene esa propiedad salvo el centro de notificaciones.
  *
- * 1. NO SE PUEDE VER DESDE AQUI. `navigator.clipboard` no existe en jsdom
- *    —medido—, asi que el unico portapapeles que hay en un test es el que
- *    instala un spec. Y los tres specs que lo ejercitan
- *    (`usuarios/nuevo/clave-temporal`, `usuarios/nuevo/page`, `invitaciones/page`)
- *    lo instalan con `Object.defineProperty(navigator, 'clipboard', …)`
- *    —propiedad PROPIA de `navigator`— DENTRO del cuerpo del test, o sea
- *    DESPUES de cualquier `beforeEach`. Medido con una sonda que hacia
- *    exactamente eso: el doble del tapon registro CERO escrituras y el del
- *    spec se llevo la llamada. Un espia global del portapapeles estaria ciego
- *    en los tres unicos sitios donde el portapapeles se usa, y «funcionando»
- *    en los cincuenta y siete donde no se puede usar. Verde y ciego es
- *    exactamente el modo de fallo que el resto de este archivo existe para
- *    evitar.
+ * LA MUTACION QUE LO DEJO ESCRITO, la 46b de la Fase 12: un
+ * `void navigator.clipboard?.writeText(JSON.stringify(alumnos.data))` en la
+ * lista de personas paso los 20 tests de esa pantalla. `navigator.clipboard`
+ * es `undefined` en jsdom —medido—, asi que el `?.` prudente no hace nada y
+ * pasa en verde mientras en el mostrador copia la lista entera.
  *
- * 2. Y NO SE PUEDE AFIRMAR POR CENTINELAS. El panel copia secretos A
- *    PROPOSITO, y no en un sitio sino en DOS: `clave-temporal.tsx` copia la
- *    contraseña temporal del alta (`claveDelAlta`) e `invitaciones/page.tsx`
- *    copia el codigo de invitacion (`codigoDeInvitacion`). Los dos son
- *    centinelas registrados. «Ningun centinela sale por el portapapeles» seria
- *    rojo con el codigo correcto en las dos pantallas.
+ * ---------------------------------------------------------------------------
+ * POR QUE NO SE VIGILO HASTA AHORA, Y QUE LO CAMBIO.
  *
- * SE MIRO EL CRITERIO QUE LOS DISTINGUIRIA, y existe: una copia deliberada
- * ocurre mientras se despacha un gesto de la persona y una copia accidental no.
- * Es medible —`window.event` esta presente durante un `dispatchEvent` y es
- * `undefined` fuera de el, medido con una sonda; `navigator.userActivation`, que
- * seria lo correcto, no existe en jsdom—. No se usa igualmente por dos cosas:
- * no arregla el punto 1, que es el que decide; y convierte el canal en una
- * regla sobre COMO se escribe una copia legitima, no sobre si se filtra algo.
- * Un boton de copiar que hiciera `await` de cualquier cosa antes del
- * `writeText` —formatear, pedir el dato— se pondria rojo con el codigo
- * correcto. Un canal que obliga a escribir el codigo bueno de una forma
- * concreta es el que alguien desactiva.
+ * Dos cosas, y las dos siguen siendo ciertas; lo que cambio es como se
+ * resuelven.
  *
- * LO QUE CUBRE EL HUECO MIENTRAS TANTO, dicho sin adornar. En los cincuenta y
- * siete specs que no instalan un doble, `navigator.clipboard` es `undefined` y
- * un `navigator.clipboard.writeText(dato)` revienta con un `TypeError`
- * —medido—, asi que el test cae. Y en los dos sitios que SI copian, el spec de
- * cada pantalla ya afirma que no se copia sola: «no se copia nada hasta que
- * alguien lo pide» en `clave-temporal.spec.tsx` y «no se copia solo al
- * portapapeles: copiar es una accion que se pide» en `invitaciones/page.spec.tsx`.
+ * 1. LOS SPECS LO PISABAN DESDE DENTRO DEL TEST. Los tres que lo ejercitan
+ *    (`usuarios/nuevo/clave-temporal`, `usuarios/nuevo/page`,
+ *    `invitaciones/page`) instalaban su doble con
+ *    `Object.defineProperty(navigator, 'clipboard', …)` dentro del cuerpo del
+ *    test, DESPUES de cualquier `beforeEach`: un espia global habria quedado
+ *    ciego en los tres unicos sitios donde el portapapeles se usa. Se resuelve
+ *    montando el doble UNA vez, desde aqui, y haciendo que esos tres specs lean
+ *    el global en vez de pisarlo.
  *
- * EL AGUJERO QUE QUEDA, para que nadie lo descubra creyendo que esto lo tapaba:
- * un `await navigator.clipboard?.writeText(dato)` dentro de un `try/catch`, en
- * una pantalla que no instale doble, no revienta —se traga el `TypeError`— y
- * pasa en verde. Eso se tapa el dia que `navigator.clipboard` se monte UNA vez
- * para todo el paquete, desde aqui, en lugar de spec a spec; mientras los
- * specs se lo pisen a mano, este canal no se puede vigilar sin una excepcion
- * que lo vacie, y una excepcion que lo vacie es peor que no tenerlo.
+ * 2. EL PANEL COPIA SECRETOS A PROPOSITO, y no en un sitio sino en DOS:
+ *    `clave-temporal.tsx` copia la contraseña temporal del alta
+ *    (`claveDelAlta`) e `invitaciones/page.tsx` el codigo de invitacion
+ *    (`codigoDeInvitacion`), los dos centinelas registrados. «Ningun centinela
+ *    sale por el portapapeles» seria rojo con el codigo correcto en las dos
+ *    pantallas. Se resuelve con UN RECLAMO: lo que se copia queda registrado,
+ *    el spec que copia a proposito lo RECLAMA con `reclamarLoCopiado()` —y al
+ *    reclamarlo lo lee, que es lo que afirma—, y lo que quede sin reclamar y
+ *    lleve un centinela pone rojo el test. La copia legitima se paga con una
+ *    linea en el spec de SU pantalla; la fuga, que no la pide nadie, no la
+ *    reclama nadie.
+ *
+ * SE MIRO OTRO CRITERIO Y SE DESCARTO: una copia deliberada ocurre mientras se
+ * despacha un gesto de la persona y una accidental no. Es medible
+ * —`window.event` esta presente durante un `dispatchEvent` y es `undefined`
+ * fuera de el; `navigator.userActivation`, que seria lo correcto, no existe en
+ * jsdom—. No se usa porque convierte el canal en una regla sobre COMO se
+ * escribe una copia legitima: un boton de copiar que hiciera `await` de
+ * cualquier cosa antes del `writeText` se pondria rojo con el codigo correcto.
+ * El reclamo no tiene ese modo de fallo: no le importa cuando se copio, solo
+ * que alguien lo haya pedido.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ USER-EVENT INSTALA SU PROPIO PORTAPAPELES, Y ESO ESTA MEDIDO.
+ *
+ * `userEvent.setup()` llama SIEMPRE a `attachClipboardStubToView` —tambien con
+ * `writeToClipboard: false`, que solo decide si `copy()` y `cut()` escriben—,
+ * y esa funcion PISA `navigator.clipboard` con un accesor propio que devuelve
+ * su doble. Medido con una sonda en user-event 14.6.7: con el doble de este
+ * archivo puesto en el `beforeEach`, un `setup()` dentro del test lo sustituye
+ * y el `writeText` de despues registra CERO escrituras, con y sin
+ * `writeToClipboard: false`. Es exactamente el punto 1 de arriba, ahora por
+ * culpa de la libreria: 31 specs llaman a `setup()`.
+ *
+ * Leer el portapapeles de user-event al terminar NO sirve, y tambien se midio:
+ * su doble guarda lo escrito, pero solo se puede leer con `readText()` o
+ * `getType()`, que son promesas, y este `afterEach` es sincrono a proposito
+ * (volverlo asincrono es un cambio de otro tamaño). De paso, en este repo los
+ * tests importan `afterEach` de `vitest` y no hay globales, asi que user-event
+ * NO registra los ganchos con los que vaciaria su doble entre tests: lo copiado
+ * en un test seguia ahi en el siguiente.
+ *
+ * LO QUE SI FUNCIONA: `attachClipboardStubToView` NO pisa un portapapeles que
+ * ya sea suyo, y lo reconoce por UN SIMBOLO —`Symbol('Manage ClipboardSub')`—
+ * que el doble lleva como clave. Se saca ese simbolo de un doble de user-event
+ * de verdad, una vez al cargar, y el de este archivo lo lleva puesto: medido,
+ * con el simbolo un `setup()` deja el doble en su sitio —es el MISMO objeto
+ * antes y despues— y el `writeText` de despues llega aqui. El modulo se importa
+ * por la ruta profunda (`dist/esm/utils/dataTransfer/Clipboard.js`), que el
+ * campo `exports` del paquete publica y que es el MISMO modulo que usa
+ * `setup()` —medido: el simbolo del doble que pone `setup()` es el mismo que
+ * reconoce la funcion importada por esa ruta—. Si una version de user-event
+ * cambia eso, la carga de este archivo LANZA: un canal que se queda ciego en
+ * 31 specs sin decir nada es el modo de fallo que todo este archivo existe
+ * para evitar. Lo custodia `portapapeles.spec.ts`.
+ *
+ * ---------------------------------------------------------------------------
+ * LO QUE SE QUEDA FUERA, DICHO AQUI PARA QUE NADIE LO DESCUBRA CREYENDO QUE
+ * ESTO LO TAPABA:
+ *
+ *  - `navigator.clipboard.write([new ClipboardItem(…)])`. `ClipboardItem` no
+ *    existe en jsdom, asi que una pantalla que lo use revienta con un
+ *    `ReferenceError` —el test cae solo— o, detras de un `typeof`, no llega a
+ *    llamar a `write`. El `write` del doble esta para que el objeto tenga la
+ *    forma de la API, y no se mira: hoy no hay un solo `ClipboardItem` en
+ *    `apps/web/src`.
+ *  - `document.execCommand('copy')` y el evento `copy` con
+ *    `clipboardData.setData(…)`. Son las formas viejas, no pasan por
+ *    `navigator.clipboard` y no se midieron. Hoy no hay ninguna de las dos en
+ *    `apps/web/src`.
+ *  - UNA ESCRITURA QUE RECHAZA no cuenta: lo que no llego al portapapeles no
+ *    salio. Es lo que deja al spec del «no se pudo copiar» sin reclamar nada.
+ *  - Se afirma POR CENTINELAS y no por la forma fuerte: copiar es legitimo en
+ *    este producto, y una lista de alumnos sin centinelas copiada sin pedirla
+ *    pasa en verde. Es el precio de las dos pantallas que copian a proposito.
  */
+const PORTAPAPELES_ORIGINAL = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+
+/**
+ * EL SIMBOLO CON EL QUE USER-EVENT RECONOCE UN PORTAPAPELES COMO SUYO.
+ *
+ * Se saca de un doble de verdad y el portapapeles se devuelve a como estaba:
+ * `detachClipboardStubFromView` deja una propiedad propia que vale
+ * `undefined`, que no es lo mismo que no tenerla.
+ */
+const CONTROL_DE_USER_EVENT: symbol = (() => {
+  attachClipboardStubToView(window);
+  const simbolo = Object.getOwnPropertySymbols(navigator.clipboard).find(
+    (uno) => uno.description === 'Manage ClipboardSub',
+  );
+  detachClipboardStubFromView(window);
+
+  if (PORTAPAPELES_ORIGINAL === undefined) Reflect.deleteProperty(navigator, 'clipboard');
+  else Object.defineProperty(navigator, 'clipboard', PORTAPAPELES_ORIGINAL);
+
+  if (simbolo === undefined) {
+    throw new Error(
+      'user-event ya no marca su portapapeles con «Manage ClipboardSub»: el canal del ' +
+        'portapapeles quedaria ciego en cada spec que llame a userEvent.setup(). ' +
+        'Ver el docblock de PORTAPAPELES_ORIGINAL.',
+    );
+  }
+
+  return simbolo;
+})();
+
+export interface PortapapelesDeMentira {
+  /** Lo que se monta en `navigator.clipboard`. */
+  doble: object;
+  /** El `writeText` que un spec puede hacer fallar. Ver `escrituraDelPortapapeles`. */
+  escritura: Mock<(texto: string) => Promise<void>>;
+  /** Lo copiado que nadie reclamo todavia, en orden. */
+  sinReclamar: () => string[];
+  /** Todo lo copiado sin reclamar, y lo marca como reclamado. */
+  reclamar: () => string[];
+}
+
+/**
+ * EL PORTAPAPELES DE MENTIRA, exportado como `almacenDeObjetosDeMentira`: el
+ * tapon instala uno por test y el guardian arma los suyos sin tocar nada
+ * global.
+ *
+ * REGISTRA Y DEJA PASAR, como el resto del tapon: lo copiado se anota EN EL
+ * ACTO y la llamada sigue al `vi.fn` —que resuelve—, para que un spec pueda
+ * hacerla fallar sin perder el registro. La anotacion vive FUERA del `vi.fn`
+ * a proposito: un `vi.resetAllMocks()` o un `mockImplementation` del spec le
+ * cambian la respuesta, no lo que se ve. Si la escritura rechaza —o lanza en
+ * el acto—, la copia se borra del registro: no llego al portapapeles.
+ */
+export function portapapelesDeMentira(): PortapapelesDeMentira {
+  const copias: { texto: string; reclamada: boolean }[] = [];
+  const escritura = vi.fn<(texto: string) => Promise<void>>(() => Promise.resolve());
+
+  const doble = {
+    writeText(texto: unknown): Promise<void> {
+      const copia = { texto: String(texto), reclamada: false };
+      copias.push(copia);
+
+      // `.then(() => escritura(…))` y no `Promise.resolve(escritura(…))`: un
+      // `mockImplementation` que LANZA en el acto saldria de aqui antes del
+      // `.catch()` y dejaria la copia anotada. Dentro del `then`, lanzar es
+      // rechazar, y la copia se borra igual que con un `mockRejectedValue`.
+      return Promise.resolve()
+        .then(() => escritura(copia.texto))
+        .catch((motivo: unknown) => {
+          copias.splice(copias.indexOf(copia), 1);
+          throw motivo;
+        });
+    },
+    readText: (): Promise<string> => Promise.resolve(copias.at(-1)?.texto ?? ''),
+    write: (): Promise<void> => Promise.resolve(),
+    read: (): Promise<unknown[]> => Promise.resolve([]),
+    addEventListener(): void {},
+    removeEventListener(): void {},
+    dispatchEvent: (): boolean => true,
+    // Lo que `attachClipboardStubToView` busca para no pisarlo. Los dos
+    // ganchos solo los llamarian los `afterEach`/`afterAll` de user-event, que
+    // sin globales no se registran; se dejan vacios por si alguna vez lo hacen:
+    // el que vacia y devuelve este doble es el tapon.
+    [CONTROL_DE_USER_EVENT]: { resetClipboardStub(): void {}, detachClipboardStub(): void {} },
+  };
+
+  const sinReclamar = (): string[] =>
+    copias.filter((copia) => !copia.reclamada).map((copia) => copia.texto);
+
+  return {
+    doble,
+    escritura,
+    sinReclamar,
+    reclamar() {
+      const loDeAhora = sinReclamar();
+      for (const copia of copias) copia.reclamada = true;
+
+      return loDeAhora;
+    },
+  };
+}
+
+/** El de este test. Lo cambia el `beforeEach` del tapon. */
+let portapapelesDeEsteTest = portapapelesDeMentira();
+
+/**
+ * Lo que se copio en este test, y lo marca como visto. Para las pantallas que
+ * copian a proposito.
+ *
+ * Devuelve SOLO lo que no se habia reclamado: una copia que llega despues de un
+ * reclamo sigue sin reclamar, y si lleva un centinela pone rojo el test.
+ */
+export function reclamarLoCopiado(): string[] {
+  return portapapelesDeEsteTest.reclamar();
+}
+
+/** El `writeText` del doble, para que un spec lo haga fallar (`mockRejectedValueOnce`). */
+export function escrituraDelPortapapeles(): Mock<(texto: string) => Promise<void>> {
+  return portapapelesDeEsteTest.escritura;
+}
 
 // ---------------------------------------------------------------------------
 // El undecimo canal: IndexedDB, EL QUINTO ALMACEN
@@ -1939,7 +2122,7 @@ function textoDeLosAtributos(atributos: [string, string][]): string {
  * En el CUARTO canal no cabe: ese lee `document.head.children` y su vocabulario
  * es «la cabecera del documento»; un hermano del `<head>` no es la cabecera y
  * meterlo ahi obligaria a que ese canal dejara de poder decir donde estaba. Y
- * un canal NUEVO costaria renumerar los dieciocho en cuatro archivos para
+ * un canal NUEVO costaria renumerar los diecinueve en cuatro archivos para
  * agregar una lectura de `document.documentElement.children` sobre un elemento
  * que este canal ya vigila: seria contar dos veces el mismo sitio.
  *
@@ -3016,7 +3199,7 @@ function conexionDeMentira(puerta: PuertaDeRed) {
  * que lo llame fuga se pone rojo con el codigo correcto, y un canal que se
  * pone rojo con el codigo correcto es de los que alguien desactiva — que es el
  * criterio con el que este archivo decidio no prohibir `console.info`, no
- * prohibir pedir imagenes y no vigilar el portapapeles.
+ * prohibir pedir imagenes y no prohibir copiar al portapapeles.
  *
  * COMO SE DISTINGUE, Y SE PUEDE: lo que la persona escribe llega por un EVENTO
  * —`input` o `change`, que burbujean los dos— y lo que una pantalla escribe a
@@ -3054,6 +3237,12 @@ interface EsconditeDelCuerpo {
   sitio: string;
   /** Lo que lleva dentro, para buscar centinelas. NUNCA entra en el informe. */
   contenido: string;
+  /**
+   * Contra que se resta: un centinela que ESTE ahi no cuenta como escondido.
+   * El `.value` y la sombra, contra el MARCADO; los atributos, contra el TEXTO.
+   * Ver «LOS ATRIBUTOS SE RESTAN CONTRA EL TEXTO» en `escondidoEnElCuerpo`.
+   */
+  restaContra: 'marcado' | 'texto';
 }
 
 /**
@@ -3073,6 +3262,39 @@ function nombreDelNodo(nodo: Element): string {
 }
 
 /**
+ * LOS ATRIBUTOS QUE SE RESTAN CONTRA EL MARCADO Y NO CONTRA EL TEXTO, CON
+ * NOMBRE Y UNO POR UNO.
+ *
+ * Es una lista, que es lo que este archivo evita, y por eso va corta, cerrada
+ * y argumentada. Cada entrada salio de MEDIR el paquete con los atributos
+ * restados contra el texto: 189 tests rojos en 7 archivos, todos con el codigo
+ * correcto. Lo que hay aqui es lo que los ponia rojos y es legitimo:
+ *
+ *  - `value`. Es el mismo dato que el `.value` del control, que ya tiene su
+ *    rama y SU resta —contra el marcado, porque una pantalla de edicion pinta
+ *    `<input value={nombre}>` a proposito—. Restarlo contra el texto pondria
+ *    rojo cada formulario de edicion del panel. El de un campo donde la persona
+ *    tecleo ni siquiera entra en la barrida.
+ *  - `href`. Un enlace lleva ids A PROPOSITO para navegar —la ficha de un
+ *    alumno, un turno, la URL firmada de un comprobante—, y medido: es el
+ *    atributo de tres de los siete archivos.
+ *  - CUALQUIER `data-*`. Los specs los usan de selector —`data-alumno`,
+ *    `data-persona` con un `perfilId`— y la pantalla de pasar lista lee ahi la
+ *    ausencia de cada alumno.
+ *
+ * ⚠️ LOS DOS ULTIMOS SON HUECOS CONOCIDOS, dichos para que nadie los descubra
+ * creyendo que esto los tapaba: UN SECRETO EN LA QUERY DE UN ENLACE —un
+ * `href={`?vista=${JSON.stringify(datos)}`}`, que es la 42 tal cual— PASA, y
+ * un `data-x={secreto}` TAMBIEN PASA. Cerrarlos pide distinguir el id que un
+ * enlace necesita del dato que se cuela, y eso no se hace con una lista.
+ */
+const ATRIBUTOS_QUE_SE_RESTAN_CONTRA_EL_MARCADO: readonly string[] = ['value', 'href'];
+
+function seRestaContraElMarcado(nombre: string): boolean {
+  return ATRIBUTOS_QUE_SE_RESTAN_CONTRA_EL_MARCADO.includes(nombre) || nombre.startsWith('data-');
+}
+
+/**
  * Los escondites del `<body>`, recorriendo el cuerpo UNA vez.
  *
  * Se llama ANTES de `cleanup()`: lo que mira vive DENTRO del `<body>`, que el
@@ -3085,6 +3307,34 @@ function nombreDelNodo(nodo: Element): string {
  * por una lista de etiquetas, se deja la rama del `shadowRoot`, o mueve la
  * llamada detras del `cleanup()`, LOS 1665 TESTS SIGUEN EN VERDE y el canal se
  * queda ciego. Ningun spec de pantalla lo llama.
+ *
+ * ---------------------------------------------------------------------------
+ * LOS ATRIBUTOS SE RESTAN CONTRA EL TEXTO, Y ASI SE CERRO LA 42.
+ *
+ * Desde la Fase 19 la barrida recoge ademas los atributos de cada nodo del
+ * cuerpo —el canal doce los mira solo en el `<html>` y el `<body>`—, con un
+ * sitio que los nombra (`el atributo title de un <form>`). Lo custodia
+ * `lo-que-el-marcado-no-serializa.spec.ts`.
+ *
+ * CON LA RESTA DE SIEMPRE NO SERVIA, y se midio antes de cambiarla: UN
+ * ATRIBUTO SIEMPRE SALE EN EL `innerHTML`, asi que restarlo contra el marcado
+ * lo descontaba siempre. La mutacion de la T5 de la Fase 16, `title={tenantId}`
+ * en la pantalla de packs, siguio pasando 29 de 29 con la barrida puesta.
+ *
+ * POR ESO UN ATRIBUTO SE RESTA CONTRA EL TEXTO —lo que la persona LEE, el
+ * `textContent`— y no contra el marcado: un dato en un `title` que no esta
+ * escrito en la pantalla es un dato escondido aunque el `innerHTML` lo lleve.
+ * Con esa resta la misma mutacion CAE, 25 de 29. Ver `restaContra` y
+ * `esconditesSinRestar`.
+ *
+ * LA 42 QUEDA CERRADA SALVO `href` Y `data-*`, que siguen restandose contra el
+ * marcado —junto con `value`— y son HUECOS CONOCIDOS: un secreto en la query
+ * de un enlace, o en un `data-x`, pasa. La lista, por que entra cada uno y lo
+ * que se midio: el docblock de `ATRIBUTOS_QUE_SE_RESTAN_CONTRA_EL_MARCADO`.
+ * Y una correccion de fixtures que salio de medir: los specs de
+ * `usuarios/[id]` (`bloque-pagos`, `page`) y de `comprobantes-pendientes`
+ * usaban `25000.10` de centinela del monto, que es el `placeholder` de sus
+ * campos —un texto fijo de la pantalla, no un dato—; pasaron a `31750.10`.
  */
 export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
   const escondites: EsconditeDelCuerpo[] = [];
@@ -3097,7 +3347,28 @@ export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
     const valor = (nodo as Partial<HTMLInputElement>).value;
 
     if (typeof valor === 'string' && valor !== '' && !TECLEADO_POR_LA_PERSONA.has(nodo)) {
-      escondites.push({ sitio: `el .value de un ${nombreDelNodo(nodo)}`, contenido: valor });
+      escondites.push({
+        sitio: `el .value de un ${nombreDelNodo(nodo)}`,
+        contenido: valor,
+        restaContra: 'marcado',
+      });
+    }
+
+    // LOS ATRIBUTOS DE CADA DESCENDIENTE. El canal doce los mira solo en
+    // `documentElement` y `body`; un `title={dato}` en un `<form>` pasaba en
+    // verde (la 42 de la Fase 12, y otra vez la T5 de la Fase 16). El `value`
+    // de un campo donde la persona escribio se resta, igual que su `.value`:
+    // React lo refleja como atributo. Se restan contra el TEXTO y no contra el
+    // marcado —salvo `value`, `href` y `data-*`—: ver «LOS ATRIBUTOS SE
+    // RESTAN CONTRA EL TEXTO» en el docblock de arriba.
+    for (const atributo of nodo.attributes) {
+      if (atributo.value === '') continue;
+      if (atributo.name === 'value' && TECLEADO_POR_LA_PERSONA.has(nodo)) continue;
+      escondites.push({
+        sitio: `el atributo ${claveSegura(atributo.name)} de un ${nombreDelNodo(nodo)}`,
+        contenido: atributo.value,
+        restaContra: seRestaContraElMarcado(atributo.name) ? 'marcado' : 'texto',
+      });
     }
 
     // El `.value` de un `<select>` es DERIVADO —lo da el `<option>` elegido, y
@@ -3111,11 +3382,40 @@ export function escondidoEnElCuerpo(): EsconditeDelCuerpo[] {
       escondites.push({
         sitio: `el shadowRoot de un ${nombreDelNodo(nodo)}`,
         contenido: `${sombra.innerHTML} ${sombra.textContent ?? ''}`,
+        restaContra: 'marcado',
       });
     }
   }
 
   return escondites;
+}
+
+/** Lo que el `<body>` publica, fotografiado en UN instante. Ver `esconditesSinRestar`. */
+export interface FotoDelCuerpo {
+  /** El `innerHTML` y el `textContent`: todo lo que el marcado serializa. */
+  marcado: string;
+  /** Solo el `textContent`: lo que la persona LEE en la pantalla. */
+  texto: string;
+}
+
+export function fotoDelCuerpo(): FotoDelCuerpo {
+  const texto = document.body.textContent ?? '';
+
+  return { marcado: `${document.body.innerHTML} ${texto}`, texto };
+}
+
+/** Los escondites que la resta NO descuenta para este centinela. */
+export function esconditesSinRestar(
+  valor: string,
+  escondites: EsconditeDelCuerpo[],
+  foto: FotoDelCuerpo,
+): EsconditeDelCuerpo[] {
+  const enElMarcado = formaQueSeFue(foto.marcado, valor) !== undefined;
+  const enElTexto = formaQueSeFue(foto.texto, valor) !== undefined;
+
+  return escondites.filter((escondite) =>
+    escondite.restaContra === 'marcado' ? !enElMarcado : !enElTexto,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -4026,11 +4326,11 @@ export function almacenDeObjetosDeMentira(): AlmacenDeObjetos {
 }
 
 /**
- * EL TAPON DE LOS DIECIOCHO CANALES —Y EL EJE DECIMONOVENO—, en todos los specs.
+ * EL TAPON DE LOS DIECINUEVE CANALES —Y EL EJE DECIMONOVENO—, en todos los specs.
  *
- * Los dieciocho canales son los de abajo. El eje decimonoveno no es uno de ellos:
+ * Los diecinueve canales son los de abajo. El eje decimonoveno no es uno de ellos:
  * es el despacho de los eventos de salida de la pestaña, que corre como
- * PRIMERA linea del `afterEach` para que los dieciocho miren un mundo en el que la
+ * PRIMERA linea del `afterEach` para que los diecinueve miren un mundo en el que la
  * pestaña ya se cerro. Vive en `src/test/salida-de-la-pestana.ts` y el porque
  * de su sitio exacto esta ahi y en el comentario de esa primera linea.
  *
@@ -4249,7 +4549,7 @@ export function almacenDeObjetosDeMentira(): AlmacenDeObjetos {
  * `PuertaDeRed`. Y lo custodia un spec propio, `red-por-fuera-de-pedir.spec.ts`,
  * porque la pregunta de la pila es invisible desde cualquier spec de pantalla.
  *
- * **Lo que el marcado del `<body>` no serializa.** EL UNICO DE LOS DIECIOCHO QUE
+ * **Lo que el marcado del `<body>` no serializa.** EL UNICO DE LOS DIECINUEVE QUE
  * VIVE DENTRO DEL CUERPO, o sea del lado que los tests de pantalla miran — y
  * que aun asi no ve ninguno, porque leen `innerHTML` y `textContent` y ahi
  * esto no sale: el `.value` de un control, que para los tipos en modo valor y
@@ -4302,8 +4602,9 @@ export function almacenDeObjetosDeMentira(): AlmacenDeObjetos {
  * hecho ese guardian ya encontro una: la rama de `ArrayBuffer` de
  * `cuerpoDeUnaBaliza` estaba MUERTA en este entorno, ver `esUnArrayBuffer`—.
  *
- * **El centro de notificaciones del sistema operativo.** EL UNICO DE LOS
- * DIECIOCHO QUE NO ACABA DENTRO DEL NAVEGADOR: `new Notification(titulo,
+ * **El centro de notificaciones del sistema operativo.** EL PRIMERO DE LOS
+ * DOS QUE NO ACABAN DENTRO DEL NAVEGADOR —el otro es el portapapeles, el
+ * vigesimo primero—: `new Notification(titulo,
  * opciones)` y su vecina `ServiceWorkerRegistration.showNotification(…)` sacan
  * el dato a una pantalla del SISTEMA. Medido en esta fase: un aviso de «Cobro
  * registrado» en el `onSuccess` de la mutacion de cobro de la ficha de una
@@ -4347,14 +4648,47 @@ export function almacenDeObjetosDeMentira(): AlmacenDeObjetos {
  * estan en el docblock de `CREAR_UNA_URL_DE_OBJETO_ORIGINAL`. Lo custodia
  * `objetos-con-url.spec.ts`.
  *
- * EL CUARTO VECINO DE ESA FAMILIA —`navigator.clipboard`— NO SE VIGILA, a
- * proposito y con el motivo medido escrito al lado de los otros tres: el panel
- * copia secretos registrados a proposito en DOS pantallas, y los tres specs
- * que ejercitan el portapapeles le pisan el objeto entero a `navigator` desde
- * dentro del test, donde ningun `beforeEach` llega. Un espia alli estaria
- * ciego justo donde el canal se usa. El razonamiento entero, el criterio que
- * si los distinguiria y el agujero que queda: en el comentario de
- * `textoDeUnBlob`, justo encima de `claveSegura`.
+ * **El portapapeles.** EL VIGESIMO PRIMER CANAL, y el segundo que no acaba
+ * dentro del navegador: lo copiado es del SISTEMA, sobrevive a la pestaña, al
+ * logout y al cierre del navegador, y aterriza en lo proximo donde la persona
+ * del mostrador pegue algo. Medido en la Fase 12 —la 46b—: un
+ * `void navigator.clipboard?.writeText(JSON.stringify(alumnos.data))` en la
+ * agenda de una profesora paso sus 20 tests, porque `navigator.clipboard` no
+ * existe en jsdom; con el canal puesto caen 12 de 20. Se monta un doble por
+ * test que REGISTRA lo copiado, y el doble lleva el simbolo con el que
+ * user-event reconoce un portapapeles como suyo, para que un `userEvent.setup()`
+ * no lo pise —medido: sin el simbolo, `setup()` lo sustituye y el canal ve
+ * cero escrituras—. Se afirma SOLO POR CENTINELAS Y SOLO SOBRE LO NO
+ * RECLAMADO: el panel copia la contraseña del alta y el codigo de invitacion a
+ * proposito, y el spec de cada pantalla lo reclama con `reclamarLoCopiado()`.
+ * Lo que mira, lo que reclama un spec y lo que no cubre: el docblock de
+ * `PORTAPAPELES_ORIGINAL`. Lo custodia `portapapeles.spec.ts`.
+ *
+ * LO QUE ESTE TAPON NO CIERRA, separado en hueco conocido y diseño
+ * —un limite escrito es una defensa; uno tacito, una trampa—:
+ *
+ *  - HUECO CONOCIDO: `href` Y `data-*` EN LOS DESCENDIENTES DEL `<body>`. La
+ *    42 de la Fase 12 —los atributos de los descendientes— quedo CERRADA en
+ *    la Fase 19: el decimoquinto los barre y los resta contra el TEXTO, y
+ *    `title={tenantId}` en packs cae 25 de 29. Menos esos dos, que se restan
+ *    contra el marcado porque llevan ids a proposito: un secreto en la query
+ *    de un enlace o en un `data-x` PASA. El docblock de
+ *    `ATRIBUTOS_QUE_SE_RESTAN_CONTRA_EL_MARCADO`.
+ *  - POR DISEÑO: EL CONTEXTO DE NAVEGACION ANIDADO (la 44 de la Fase 12). Los
+ *    tapones estan atados a UN documento y UNA ventana, y un `<iframe>` tiene
+ *    los suyos. Medido en la Fase 19: sigue habiendo UN SOLO `<iframe>` en
+ *    `apps/web/src`, la previsualizacion de `configuracion/email/plantillas.tsx`,
+ *    con `sandbox=""` —sin scripts ni mismo origen, asi que no puede escribir
+ *    en nada de esta pagina—. Doblar cada ventana que se cree es un canal de
+ *    otro tamaño para una puerta que el producto usa una vez y cerrada.
+ *  - POR DISEÑO: PARTIR EL DATO EN TROZOS. Es una fuga deliberada y cubrirla
+ *    pondria rojo cualquier volcado con las letras en orden. El argumento
+ *    entero: «LO QUE SE QUEDA FUERA» en el docblock de `FormaDelDato`.
+ *  - POR DISEÑO: EL `.value` QUE ESCRIBA LA LIMPIEZA DE UN `useEffect`. El
+ *    decimoquinto se lee antes del `cleanup()` porque lo que mira vive dentro
+ *    del `<body>`, y el nodo sobre el que esa limpieza escribiria ya no esta
+ *    en el documento cuando corre. El argumento entero: el comentario de la
+ *    llamada a `escondidoEnElCuerpo` en el `afterEach`.
  *
  * Se vigilan las DOS puertas y las DOS mitades de cada una. `measure` crea una
  * entrada con nombre propio igual que `mark`, asi que cubrir solo `mark`
@@ -5078,11 +5412,31 @@ export function vigilarLosCanalesDeSalida(): void {
         objetosConUrl.revocar(url);
       },
     });
+
+    /**
+     * EL VIGESIMO PRIMER CANAL: el portapapeles, que jsdom no trae.
+     *
+     * Se DEFINE, como la baliza y como los objetos con URL, porque lo que hay
+     * que cazar es la forma prudente —`navigator.clipboard?.writeText(…)`—,
+     * que sin esto no hace nada y pasa en verde. Un doble NUEVO por test, y no
+     * uno vaciado: lo que copio el test anterior no puede acusar al siguiente.
+     *
+     * SE ENGANCHA EN CADA TEST, como todo lo de arriba: el `afterEach` de
+     * abajo lo devuelve a no existir. Y el `userEvent.setup()` que el spec
+     * llame despues lo deja en su sitio porque el doble lleva el simbolo de
+     * user-event: ver el docblock de `PORTAPAPELES_ORIGINAL`.
+     */
+    portapapelesDeEsteTest = portapapelesDeMentira();
+
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: portapapelesDeEsteTest.doble,
+    });
   });
 
   afterEach(() => {
     /**
-     * LA PESTAÑA SE CIERRA AQUI, ANTES DE LEER NI UNO DE LOS DIECIOCHO CANALES.
+     * LA PESTAÑA SE CIERRA AQUI, ANTES DE LEER NI UNO DE LOS DIECINUEVE CANALES.
      *
      * Es el eje decimonoveno, y esta primero por dos medidas que no se
      * adivinan y estan las dos en `salida-de-la-pestana.ts`:
@@ -5098,7 +5452,7 @@ export function vigilarLosCanalesDeSalida(): void {
      *    leen aqui abajo con el arbol todavia montado; el resto, despues del
      *    `cleanup()`. Despachando entre la foto de la cabecera y el desmontaje,
      *    un oyente de `pagehide` que subiera un `<meta>` al `<head>` no lo
-     *    veria nadie. Desde aqui arriba, los dieciocho tapones miran un mundo en el
+     *    veria nadie. Desde aqui arriba, los diecinueve tapones miran un mundo en el
      *    que la pestaña ya se cerro.
      */
     despacharLaSalidaDeLaPestana();
@@ -5165,7 +5519,7 @@ export function vigilarLosCanalesDeSalida(): void {
      * panel.
      */
     const escondites = escondidoEnElCuerpo();
-    const marcadoDelCuerpo = `${document.body.innerHTML} ${document.body.textContent ?? ''}`;
+    const fotoDelCuerpoAlTerminar = fotoDelCuerpo();
 
     /**
      * EL DESMONTAJE VA AQUI DENTRO, Y EL ORDEN ES LA PARTE DELICADA.
@@ -5218,6 +5572,23 @@ export function vigilarLosCanalesDeSalida(): void {
       if (original === undefined) Reflect.deleteProperty(URL, nombre);
       else Object.defineProperty(URL, nombre, original);
     }
+
+    /**
+     * EL VIGESIMO PRIMER CANAL SE LEE AQUI, DESPUES DE `cleanup()`, COMO EL
+     * VIGESIMO.
+     *
+     * Lo copiado no vive en el arbol que `render` monta, asi que leer despues
+     * no pierde nada y caza ademas la copia que haga la LIMPIEZA de un
+     * `useEffect`. Se lee lo que nadie reclamo, se cambia el doble y se
+     * devuelve `navigator.clipboard` a como estaba —en jsdom, a no estar—
+     * ANTES de afirmar: si una afirmacion lanza, el test siguiente no hereda
+     * lo del que fallo.
+     */
+    const loCopiadoSinReclamar = portapapelesDeEsteTest.sinReclamar().join(' ');
+    portapapelesDeEsteTest = portapapelesDeMentira();
+
+    if (PORTAPAPELES_ORIGINAL === undefined) Reflect.deleteProperty(navigator, 'clipboard');
+    else Object.defineProperty(navigator, 'clipboard', PORTAPAPELES_ORIGINAL);
 
     /**
      * EL BUFFER SE LEE AQUI, DESPUES DE `cleanup()`, Y NO ANTES.
@@ -5709,13 +6080,13 @@ export function vigilarLosCanalesDeSalida(): void {
      */
     for (const [nombre, valor] of todoLoVigilado()) {
       /**
-       * LOS DIECIOCHO CANALES, CONTRA EL MISMO ALFABETO Y POR LA MISMA PUERTA.
+       * LOS DIECINUEVE CANALES, CONTRA EL MISMO ALFABETO Y POR LA MISMA PUERTA.
        *
        * Cada afirmacion busca el centinela en TODAS sus formas —en claro,
        * %-codificado, en base64 con sus tres desplazamientos— y no solo en la
        * cruda: ver el docblock de `FormaDelDato` para el porque y para lo que
        * se queda fuera a proposito. Pasa por aqui para que una forma nueva se
-       * agregue en UN sitio y la hereden los dieciocho, igual que el registro de
+       * agregue en UN sitio y la hereden los diecinueve, igual que el registro de
        * datos vigilados es uno solo y no uno por tapon.
        *
        * EL INFORME SIGUE SIN PUBLICAR NADA. `decirlo` recibe COMO se fue
@@ -5858,6 +6229,21 @@ export function vigilarLosCanalesDeSalida(): void {
         loPublicadoConUrl,
         (como) =>
           `un objeto publicado con URL.createObjectURL y sin revocar lleva ${nombre}${como}`,
+      );
+
+      /**
+       * EL VIGESIMO PRIMER CANAL, SOLO por centinelas y SOLO lo no reclamado.
+       *
+       * Copiar es legitimo y el panel lo hace a proposito en dos pantallas: lo
+       * que su spec reclamo con `reclamarLoCopiado()` ya lo afirmo ese spec.
+       * Lo que nadie reclamo es una copia que no pidio nadie, y si lleva un
+       * dato vigilado es la fuga. El mensaje dice como reclamarla si era
+       * legitima, y nunca lo que se copio.
+       */
+      noSeFuePor(
+        loCopiadoSinReclamar,
+        (como) =>
+          `el portapapeles del sistema lleva ${nombre}${como} y ningun spec lo reclamo (reclamarLoCopiado)`,
       );
 
       noSeFuePor(
@@ -6003,8 +6389,8 @@ export function vigilarLosCanalesDeSalida(): void {
       // La resta se calcula UNA vez por centinela y no una por escondite: no
       // depende del sitio, y en una pantalla con treinta controles serian
       // treinta barridas del marcado entero para contestar lo mismo.
-      if (escondites.length > 0 && formaQueSeFue(marcadoDelCuerpo, valor) === undefined) {
-        for (const escondite of escondites) {
+      if (escondites.length > 0) {
+        for (const escondite of esconditesSinRestar(valor, escondites, fotoDelCuerpoAlTerminar)) {
           noSeFuePor(escondite.contenido, (como) => `${escondite.sitio} esconde ${nombre}${como}`);
         }
       }

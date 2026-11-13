@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ClaveInvitacionPublica, PackPublico, SalaPublica } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
 import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
-import { SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
+import { reclamarLoCopiado, SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
 import { CAMPOS_DE_LA_CLAVE } from './formulario';
 import PaginaDeInvitaciones from './page';
 
@@ -669,9 +669,12 @@ describe('crear una clave', () => {
     await rellenar(sesion);
     await enviar(sesion, 'Crear clave');
 
-    // El reparto por campo manda las frases que nombran un campo a su campo; el
-    // 403 no nombra ninguno y queda suelto, en el cartel de arriba.
-    expect(screen.getByText(/forbidden/i)).toBeInTheDocument();
+    // El 403 se traduce antes de repartir: «Forbidden» no nombra ningun campo y
+    // quedaria suelto, en ingles, en el cartel de arriba.
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Para esto hace falta ser administrador operativo. Tu rol no alcanza.',
+    );
+    expect(document.body.textContent).not.toMatch(/forbidden/i);
   });
 
   it('un 401 de la API dice que la sesion caduco, no «Unauthorized»', async () => {
@@ -879,22 +882,19 @@ describe('cuando la lista falla', () => {
  */
 describe('el codigo no deja copias donde no se mira', () => {
   it('no se copia solo al portapapeles: copiar es una accion que se pide', async () => {
-    const escribir = vi.fn<(texto: string) => Promise<void>>().mockResolvedValue(undefined);
+    // El portapapeles lo monta el tapon global ANTES del montaje, asi que esto
+    // ve tambien una copia hecha al pintar la lista —el doble de antes se
+    // instalaba despues de montar y no la habria visto—.
     const { sesion } = await montarYEsperar({ claves: [unaClave()] });
 
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: escribir },
-      configurable: true,
-      writable: true,
-    });
-
-    expect(escribir).not.toHaveBeenCalled();
+    expect(reclamarLoCopiado()).toEqual([]);
 
     await sesion.click(screen.getByRole('button', { name: 'Copiar el codigo de Promo verano' }));
     await esperar();
 
-    expect(escribir).toHaveBeenCalledWith(CODIGO);
-    expect(escribir).toHaveBeenCalledTimes(1);
+    // UNA copia y con el codigo: el `toEqual` de la lista entera dice las dos
+    // cosas que antes decian `toHaveBeenCalledWith` y `toHaveBeenCalledTimes(1)`.
+    expect(reclamarLoCopiado()).toEqual([CODIGO]);
   });
 
   /**

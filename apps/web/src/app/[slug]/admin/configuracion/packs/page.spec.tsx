@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PackPublico, RolUsuario } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { usePacks } from '@/hooks/use-catalogos';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import { ProveedorDeRol } from '../../rol-del-panel';
@@ -630,6 +631,15 @@ describe('el listado', () => {
     expect(document.body.textContent).toBe(
       `Los packsNo se pudo leer el catalogo de packs: ${MENSAJE_DE_LA_API}`,
     );
+  });
+
+  it('un 401 al leer el catalogo dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montarYEsperar({ falloAlLeer: new ErrorDeApi('Unauthorized', 401) });
+
+    expect(textoDe('[data-fallo="lectura"]')).toBe(
+      `No se pudo leer el catalogo de packs: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 });
 

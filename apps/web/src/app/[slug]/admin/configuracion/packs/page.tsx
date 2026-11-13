@@ -13,7 +13,7 @@ import {
   useCrearPack,
   useDarDeBajaPack,
 } from '@/hooks/use-dinero';
-import { mensajeDeFallo } from '@/lib/errores-de-api';
+import { mensajeDeFallo, textoDelError } from '@/lib/errores-de-api';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 
 /**
@@ -877,7 +877,7 @@ function PantallaDePacks() {
         <Aviso tono="error">
           <span data-fallo="lectura">
             {PRINCIPIO_DEL_FALLO_DE_LECTURA}
-            {packs.error.message}
+            {textoDelError(packs.error)}
           </span>
         </Aviso>
       </section>

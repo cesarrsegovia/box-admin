@@ -984,6 +984,15 @@ describe('un 404 no es un fallo', () => {
     expect(camposDeContrasena()).toEqual([]);
     expect(botonesDelDocumento()).toEqual([]);
   });
+
+  it('un 401 al leer el correo dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montarYEsperar({ falloAlLeer: NO_AUTORIZADO });
+
+    expect(textoDe('[data-fallo="lectura"]')).toBe(
+      `No se pudo leer la configuracion del correo: ${TEXTO_DE_SESION_CADUCADA}`,
+    );
+    expect(document.body.textContent).not.toContain('Unauthorized');
+  });
 });
 
 // ---------------------------------------------------------------------------

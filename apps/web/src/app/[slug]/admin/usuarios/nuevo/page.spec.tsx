@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,7 +6,7 @@ import type { AltaUsuarioRespuesta, PackPublico, SalaPublica } from '@boxadmin/s
 import { ErrorDeApi } from '@/lib/cliente';
 import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import PaginaDeAlta from './page';
-import { SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
+import { reclamarLoCopiado, SECRETOS_DEL_PANEL } from '@/test/espia-de-consola';
 
 /**
  * El centinela de esta pantalla: la contraseña temporal que devuelve el alta.
@@ -60,8 +60,6 @@ vi.mock('@/lib/cliente', async (original) => ({
   ...(await original<typeof import('@/lib/cliente')>()),
   pedir: pedirEspia,
 }));
-
-const escribirEnPortapapeles = vi.fn<(texto: string) => Promise<void>>();
 
 const SALAS: SalaPublica[] = [
   {
@@ -154,13 +152,9 @@ function montar(opciones: OpcionesDeMontaje = {}) {
     return Promise.resolve(unaRespuesta(opciones.respuesta));
   });
 
-  // El portapapeles se pisa DESPUES de `setup()`, que instala el suyo.
+  // El portapapeles NO se dobla aqui: lo monta el tapon global en cada test y
+  // `setup()` lo deja en su sitio. Lo copiado se lee con `reclamarLoCopiado()`.
   const sesion = userEvent.setup();
-  Object.defineProperty(navigator, 'clipboard', {
-    value: { writeText: escribirEnPortapapeles },
-    configurable: true,
-    writable: true,
-  });
 
   const cliente = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -272,10 +266,6 @@ function volcadoDelCliente(cliente: QueryClient): string {
  * que cada spec registre con `vigilarEstosDatos`. Dejo de ser manual cuando se
  * vio que solo cinco de cuarenta y nueve specs se habian acordado de pedirlo.
  */
-beforeEach(() => {
-  escribirEnPortapapeles.mockResolvedValue(undefined);
-});
-
 afterEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
@@ -393,7 +383,7 @@ describe('la clave no deja copias', () => {
   it('no se copia sola al portapapeles', async () => {
     await darDeAlta();
 
-    expect(escribirEnPortapapeles).not.toHaveBeenCalled();
+    expect(reclamarLoCopiado()).toEqual([]);
   });
 
   /**

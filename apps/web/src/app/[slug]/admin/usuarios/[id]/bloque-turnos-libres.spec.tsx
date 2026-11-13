@@ -9,11 +9,13 @@ import type {
   UsuarioDetalle,
 } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
+import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
 import {
   BloqueDeTurnosLibres,
   DE_HOY_EN_ADELANTE,
   NO_HAY_DONDE_METERLA,
+  NO_SE_PUDO_MIRAR,
   NO_TIENE_ESTA_SALA,
 } from './bloque-turnos-libres';
 
@@ -568,5 +570,14 @@ describe('vacio y fallo no se parecen', () => {
     await abrir({ error: new ErrorDeApi('La base no contesta', 500) });
 
     expect(screen.getByText(DE_HOY_EN_ADELANTE)).toBeInTheDocument();
+  });
+
+  it('un 401 al mirar donde hay lugar dice que la sesion caduco, no «Unauthorized»', async () => {
+    await abrir({ error: new ErrorDeApi('Unauthorized', 401) });
+
+    expect(screen.getByRole('alert').textContent).toBe(
+      `${NO_SE_PUDO_MIRAR}${TEXTO_DE_SESION_CADUCADA}`,
+    );
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 });

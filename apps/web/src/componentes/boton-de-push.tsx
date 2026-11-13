@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ErrorDeApi, pedir } from '@/lib/cliente';
-import { claveAplicacionDesdeBase64, serializar } from '@/lib/push';
+import { useBorrarSuscripcion, useGuardarSuscripcion } from '@/hooks/use-push';
+import { ErrorDeApi } from '@/lib/cliente';
+import { textoDelError } from '@/lib/errores-de-api';
+import { claveAplicacionDesdeBase64 } from '@/lib/push';
 import { Aviso, Boton } from './ui';
 
 /**
@@ -40,6 +42,8 @@ export function BotonDePush() {
   const [error, setError] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
   const clave = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const guardar = useGuardarSuscripcion();
+  const borrar = useBorrarSuscripcion();
 
   useEffect(() => {
     // Todo esto vive en el efecto y no en el render: en el render del servidor
@@ -103,17 +107,9 @@ export function BotonDePush() {
         applicationServerKey: claveAplicacionDesdeBase64(clave),
       });
 
-      try {
-        await pedir('/push/suscripcion', { metodo: 'POST', cuerpo: serializar(suscripcion) });
-      } catch (fallo) {
-        // Si el servidor no se queda con la suscripcion, el navegador tampoco.
-        // Sin esto queda una suscripcion viva que nadie conoce: el alumno ve
-        // "Activar" —asi que se cree sin avisos— y ademas el navegador le
-        // reserva un permiso que no usa nadie. Pulsar otra vez crearia una
-        // segunda suscripcion con otro endpoint.
-        await suscripcion.unsubscribe().catch(() => false);
-        throw fallo;
-      }
+      // Si el POST falla, el hook desuscribe el navegador antes de relanzar:
+      // ver `useGuardarSuscripcion`, que explica por que no puede ser aqui.
+      await guardar.mutateAsync(suscripcion);
 
       setEstado('activo');
     } catch (fallo) {
@@ -126,7 +122,9 @@ export function BotonDePush() {
       }
 
       setError(
-        fallo instanceof Error ? fallo.message : 'No se pudieron activar las notificaciones.',
+        fallo instanceof Error
+          ? textoDelError(fallo)
+          : 'No se pudieron activar las notificaciones.',
       );
     } finally {
       setTrabajando(false);
@@ -151,12 +149,7 @@ export function BotonDePush() {
       //
       // Sin endpoint la API borra TODOS los dispositivos del alumno, que es lo
       // que corresponde cuando este navegador ya no tiene ninguno que nombrar.
-      await pedir(
-        suscripcion === null
-          ? '/push/suscripcion'
-          : `/push/suscripcion?endpoint=${encodeURIComponent(suscripcion.endpoint)}`,
-        { metodo: 'DELETE' },
-      );
+      await borrar.mutateAsync(suscripcion === null ? null : suscripcion.endpoint);
 
       // A partir de aqui el servidor YA NO TIENE la fila, asi que no va a llegar
       // ni un aviso mas pase lo que pase debajo. El estado se pone AHORA, antes
@@ -173,7 +166,9 @@ export function BotonDePush() {
       await suscripcion?.unsubscribe();
     } catch (fallo) {
       setError(
-        fallo instanceof Error ? fallo.message : 'No se pudieron desactivar las notificaciones.',
+        fallo instanceof Error
+          ? textoDelError(fallo)
+          : 'No se pudieron desactivar las notificaciones.',
       );
     } finally {
       setTrabajando(false);

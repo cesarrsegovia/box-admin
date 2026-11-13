@@ -57,9 +57,10 @@ const CENTINELAS = {
    * no representa, asi que ademas de centinela delata a quien convierta por el
    * camino— y la nota es texto libre que el mostrador escribe al lado de lo que
    * alguien pago. De los datos de esta ficha, el que mas se parece a un
-   * `console.info` de depuracion.
+   * `console.info` de depuracion. NO es `25000.10`, que esta escrito en la
+   * pantalla como `placeholder` del campo del monto: ver `bloque-pagos.spec`.
    */
-  montoDelPago: '25000.10',
+  montoDelPago: '31750.10',
   notaDelPago: 'Nota-Marcador-pago-en-mano',
 };
 
@@ -555,6 +556,16 @@ describe('la ficha de una persona', () => {
     expect(screen.getByText(/sin conexion/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument();
     expect(empujar).not.toHaveBeenCalled();
+  });
+
+  it('un 401 al leer la ficha dice que la sesion caduco, no «Unauthorized»', async () => {
+    const cliente = prepararServidor({});
+    pedirEspia.mockRejectedValue(new ErrorDeApi('Unauthorized', 401));
+    await pintar(cliente);
+    await esperar();
+
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 
   /**
@@ -1856,6 +1867,14 @@ describe('lo que dice la API cuando no se pueden cargar', () => {
     expect(screen.getByText('Not Found')).toBeInTheDocument();
     expect(screen.queryByText('No tiene vacaciones cargadas.')).toBeNull();
     expect(document.querySelector('ul[aria-label="Vacaciones"]')).toBeNull();
+  });
+
+  it('un 401 al leer las vacaciones dice que la sesion caduco, no «Unauthorized»', async () => {
+    await montar({ errorDeVacaciones: new ErrorDeApi('Unauthorized', 401) });
+    await esperar();
+
+    expect(screen.getByRole('alert').textContent).toBe(TEXTO_DE_SESION_CADUCADA);
+    expect(document.body.textContent).not.toContain('Unauthorized');
   });
 });
 
