@@ -477,7 +477,7 @@ export class UsuariosService {
         codigo: 'SIN_SALAS',
         mensaje:
           'El usuario no tiene ninguna sala con acceso, asi que no podra reservar. ' +
-          'Asignale salas con PATCH /usuarios/:id/salas.',
+          'Asignale salas desde su ficha, en Salas.',
       });
     }
 

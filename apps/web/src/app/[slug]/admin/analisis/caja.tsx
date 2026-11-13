@@ -76,6 +76,20 @@ export const NOTA_DEL_PENDIENTE =
   'cuenta corriente. Es lo que costaria ponerse al dia con un pack.';
 
 /**
+ * LOS QUE NO ENTRAN EN EL PENDIENTE, DICHO AL LADO DEL NUMERO (Fase 20).
+ *
+ * El servidor suma solo los precios conocidos: un pack "a consultar" ya no
+ * aporta un cero disfrazado de precio. Pero entonces el total es "al menos
+ * esto", y si la pantalla no lo dice se lee como todo lo que falta cobrar.
+ * `sinPrecio` es uno solo y sin desglose; con 0 no se dice nada.
+ */
+export function textoDeSinPrecio(sinPrecio: number): string {
+  return sinPrecio === 1
+    ? 'Mas 1 a consultar: debe, pero no se sabe cuanto, y no entra en este total.'
+    : `Mas ${sinPrecio} a consultar: deben, pero no se sabe cuanto, y no entran en este total.`;
+}
+
+/**
  * Centavos a texto, con la MISMA grafia que el `texto` del contrato.
  *
  * Es una copia deliberada de `aTexto` (`apps/api/src/liquidacion/calcular-importes.ts`),
@@ -162,12 +176,15 @@ function Cifra({
   texto,
   nota,
   enRojo = false,
+  sinPrecio = 0,
 }: {
   clave: string;
   titulo: string;
   texto: string;
   nota?: string;
   enRojo?: boolean;
+  /** Solo la usa el pendiente: cuantos quedaron fuera del total por no tener precio. */
+  sinPrecio?: number;
 }) {
   return (
     <div
@@ -189,6 +206,12 @@ function Cifra({
       {enRojo && (
         <p data-en-perdida className="text-xs font-semibold text-red-700">
           Este mes cerro en perdida.
+        </p>
+      )}
+
+      {sinPrecio > 0 && (
+        <p data-sin-precio className="text-xs font-semibold text-amber-700">
+          {textoDeSinPrecio(sinPrecio)}
         </p>
       )}
 
@@ -308,6 +331,7 @@ function CajaLeida({ caja }: { caja: CajaDelMes }) {
           titulo="Pendiente estimado"
           texto={caja.pendienteEstimado.texto}
           nota={NOTA_DEL_PENDIENTE}
+          sinPrecio={caja.sinPrecio}
         />
       </div>
 

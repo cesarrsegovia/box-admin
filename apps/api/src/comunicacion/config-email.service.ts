@@ -9,7 +9,7 @@ import {
 } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
-import { cifrar, claveDesdeHex, descifrar } from './cifrado';
+import { cifrar, clavesDeApp, descifrar } from './cifrado';
 import type { GuardarPlantillaDto } from './dto/guardar-plantilla.dto';
 import type { GuardarSmtpDto } from './dto/guardar-smtp.dto';
 import { ENVIOS_DE_EMAIL, type DatosSmtp, type EnviosDeEmail } from './envios.interface';
@@ -289,7 +289,7 @@ export class ConfigEmailService {
       );
     }
 
-    const claveCifrada = cifrar(dto.clave, this.claveDeApp());
+    const claveCifrada = cifrar(dto.clave, this.clavesDelEntorno().actual);
 
     // Los campos que se escriben igual al crear y al actualizar. NO lleva
     // tenantId: en el `create` lo pone la extension, y en el `data` de un
@@ -388,7 +388,7 @@ export class ConfigEmailService {
         puerto: fila.puerto,
         seguro: fila.seguro,
         usuario: fila.usuario,
-        clave: descifrar(fila.claveCifrada, this.claveDeApp()),
+        clave: descifrar(fila.claveCifrada, this.clavesDelEntorno().paraDescifrar),
         emailOrigen: fila.emailOrigen,
       },
       copia: fila.emailDestino,
@@ -474,7 +474,11 @@ export class ConfigEmailService {
     return fila === null ? null : { asunto: fila.asunto, cuerpoHtml: fila.cuerpoHtml };
   }
 
-  private claveDeApp(): Buffer {
-    return claveDesdeHex(this.config.get<string>('APP_ENCRYPTION_KEY') as string);
+  /** La actual cifra; la anterior, si la hay, solo descifra (rotacion, Fase 20). */
+  private clavesDelEntorno(): ReturnType<typeof clavesDeApp> {
+    return clavesDeApp(
+      this.config.get<string>('APP_ENCRYPTION_KEY') as string,
+      this.config.get<string>('APP_ENCRYPTION_KEY_ANTERIOR'),
+    );
   }
 }

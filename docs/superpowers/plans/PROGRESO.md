@@ -4019,6 +4019,10 @@ como medido**.
 
 **Vieja, y sigue en pie:**
 
+> **CERRADA (Fase 20, 2026-11-13).** La Fase 20 cerró los 11 puntos que seguían abiertos; la
+> liquidación de la profesora ya estaba resuelta con su propio endpoint. La lista queda como
+> registro; el detalle está en el bloque «Progreso Fase 20 — La deuda vieja», al final.
+
 - **`use-rutinas.ts` no tiene un solo test**, con 3 mutaciones.
 - **Sobre-invalidación de `/mi-pack`** en `use-acciones-de-turno`: medido, 1 → 2 peticiones.
 - **El 403 de anotar le pone una ruta de API delante a quien está en el mostrador.** Es `apps/api`.
@@ -5109,3 +5113,187 @@ Comprobaciones que **ningún test puede hacer**: no hay navegador en el entorno.
 - [ ] Copiar una clave temporal y un código de invitación sigue funcionando.
 - [ ] Copiar sigue funcionando en un navegador real (el canal usa un símbolo interno de user-event
       sólo en tests).
+
+---
+
+# Progreso Fase 20 — La deuda vieja
+
+**Spec:** `docs/superpowers/specs/2026-11-13-fase20-deuda-vieja.md`
+**Plan:** `docs/superpowers/plans/2026-11-13-fase20-deuda-vieja.md` (9 tareas)
+
+Cierra la lista «Vieja, y sigue en pie» de la Fase 13 (~4020): de 12 puntos, 11 seguían abiertos o a
+medias (la liquidación de la profesora ya tenía su endpoint). Dos migraciones, un comando nuevo
+(`cifrado:rotar`) y un ajuste del `docker-compose.yml`.
+
+- [x] T1 — Web chico: spec de `use-rutinas`, la invalidación de `/mi-pack`, «Reasignar»
+- [x] T2 — El texto del 403 de anotar y fuera `listaPasada`
+- [x] T3 — Quitar los campos muertos (con migración)
+- [x] T4 — `centavos` con motivo
+- [x] T5 — Recordatorios marcados por persona (con migración)
+- [x] T6 — Rotar la clave de cifrado
+- [x] T7 — El editor del plan destacado
+- [x] T8 — El contenedor `api` del compose
+- [x] T9 — Verificación, README y tracker
+
+## Los números
+
+Punto de partida (Fase 19, `215cb01`): web **2100 / 101**, api **1435 / 71**, e2e **223 / 13**.
+
+| Medido al cierre       |                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| `apps/web`             | **2131 tests / 102 archivos** (+31 tests, +1 archivo), verde                  |
+| `apps/api`             | **1470 tests / 72 suites** (+35 tests, +1 suite), verde                       |
+| `test:reloj` (+1 año)  | **1470 / 72**, verde                                                          |
+| `test:reloj` (+5 años) | **1470 / 72**, verde                                                          |
+| e2e                    | **233 tests / 13 suites** (+10 tests), verde                                  |
+| `tsc --noEmit`         | limpio en web y en api                                                        |
+| `build`                | OK en web y en api                                                            |
+| `MUTACION TEMPORAL`    | `grep -rn "MUTACION TEMPORAL" apps packages` (sin `dist`) da **cero**         |
+| `prettier --check`     | limpio sobre todo el código tocado (ver «Fuera del plan» por los tres que no) |
+
+Por tarea: tras la T5, web **2123 / 102**, api **1447 / 71** (también con `test:reloj` a +1 y +5
+años), e2e **232 / 13**; la T6 deja la api en **1468 / 72** (la suite nueva es
+`scripts/rotar-cifrado.spec.ts`); la T7, web **2131 / 102**, api **1470 / 72**, e2e **233 / 13**. La
+T8 no mueve tests. El archivo nuevo de la web es `hooks/use-rutinas.spec.tsx`.
+
+Las dos migraciones:
+
+- `20261113150457_fase20_quitar_campos_muertos`: borra de `ausencias` las columnas `todoElDia`,
+  `horaInicio`, `horaFin` y `recuperable`, y de `salas`, `exclusiva`.
+- `20261113170000_fase20_avisos_por_persona`: crea `avisos_diarios` con la clave única
+  `(tenantId, tipo, perfilId, dia)`, FK a `tenants` y FK compuesta a `perfiles` con `ON DELETE CASCADE`.
+
+## Lo que la fase hace
+
+- **T1 — Web chico.**
+  - `hooks/use-rutinas.spec.tsx`: método, ruta y cuerpo de las tres mutaciones, escritos a mano desde
+    el controller, y que cada una invalida `['rutinas', perfilId]` y nada más.
+  - Entrar y salir de la lista de espera ya no invalidan `/mi-pack` (`refrescarAgenda`); reservar y
+    cancelar sí.
+  - «Reasignar» no ofrece turnos que ya empezaron y deshabilita los llenos con «(lleno)».
+- **T2 — El 403 de anotar y `listaPasada`.** Las tres frases (reservas, rutinas, alta de usuario)
+  mandan a «su ficha, en Salas» en vez de nombrar `PATCH /usuarios/:id/salas`. `listaPasada` sale del
+  contrato de mis-clases; el del check-in sigue.
+- **T3 — Los campos muertos.** `Sala.exclusiva`, `Ausencia.recuperable` y la franja horaria
+  (`todoElDia`, `horaInicio`, `horaFin`) salen del esquema, los DTO, `packages/shared`, los servicios y
+  la web. Un cliente que los mande recibe **400** (`forbidNonWhitelisted`), con un test por campo.
+- **T4 — `centavos` con motivo.** `PendienteDeAlumno` es `{ centavos: number }` o
+  `{ centavos: null, motivo: 'a-consultar' | 'sin-pack' }`; `CajaDelMes.sinPrecio` cuenta los que
+  quedaron fuera de `pendienteEstimado`, y la caja dice «Mas N a consultar…».
+- **T5 — Avisos por persona.** Tabla `AvisoDiario`; `recordatorio-pago` y `vencimiento-pack` insertan
+  la marca de cada persona antes de mandarle el aviso, con el helper `jobs/notificaciones/aviso-diario.ts`.
+  Un choque con la clave única es «ya avisado hoy» y se salta; otro error se registra y se sigue con la
+  siguiente persona. `gimnasiosHechos` sale del payload.
+- **T6 — Rotar la clave.** `clavesDeApp` y `descifrar` con una lista de claves (la actual primero);
+  `APP_ENCRYPTION_KEY_ANTERIOR` opcional, con la misma validación, e igual a la actual es error.
+  `src/scripts/rotar-cifrado.ts` y `pnpm --filter @boxadmin/api cifrado:rotar`: el único campo
+  cifrado es `ConfiguracionSMTP.claveCifrada`. Idempotente saltando lo que ya está con la actual. Se
+  probó contra la base de dev y se restauró.
+- **T7 — El editor del plan destacado.** Selector en Configuración → Web con «Ninguno», los packs
+  activos y, si el guardado se dio de baja, «… (dado de baja)». El `value` de cada opción es su
+  posición, no el id.
+- **T8 — El contenedor `api`.** El `command` del compose corre
+  `pnpm install --frozen-lockfile --offline` y `prisma generate` antes de `start:dev`, para que los
+  volúmenes anónimos de `node_modules` no tapen lo que instaló la imagen. ~1 s si no hay nada que
+  cambiar. Probado con `docker compose up -d --build -V api`.
+- **T9 — Cierre.** Verificación completa, sección del README (con el procedimiento de rotación y la
+  advertencia de los QR), este bloque y la lista de la Fase 13 marcada como cerrada.
+
+## Las mutaciones
+
+Cada tarea cerró con su `// MUTACION TEMPORAL`, y al cierre el grep da cero. Las de T1–T4 y T8 no
+quedaron anotadas (la sesión se compactó en medio); las de T5–T7, sí:
+
+| Tarea | Qué se mutó                                       | Qué la atrapó                                                |
+| ----- | ------------------------------------------------- | ------------------------------------------------------------ |
+| T5    | La marca después de `avisar` (recordatorio-pago)  | 6 rojos, entre ellos «la marca se inserta ANTES de mandar»   |
+| T5    | `tipo` fijo en `'recordatorio-pago'` en el helper | «el recordatorio de pago de hoy no tapa el de vencimiento»   |
+| T6    | `descifrar` prueba sólo la primera clave          | 6 rojos (cifrado, config-email, rotar-cifrado)               |
+| T6    | `rotar` no salta lo que ya está con la actual     | 3 rojos, entre ellos «idempotente»                           |
+| T7    | La web manda `''` en vez de `null` con «Ninguno»  | 3 rojos, entre ellos «elegir «Ninguno» y guardar manda null» |
+| T7    | La API sin el tratamiento del `null`              | «un plan destacado null lo QUITA»                            |
+
+## Fuera del plan
+
+- **La API daba 500 con `planDestacadoId: null`** (T7). El selector manda `null` para «Ninguno». Ahora
+  el DTO acepta `string | null` y el service lee `null` igual que omitirlo: sin destacado. No filtra
+  por `activo`: el formulario reenvía el destacado aunque se haya dado de baja, y rechazarlo bloquearía
+  guardar cualquier otro campo.
+- **La landing ya ocultaba un destacado dado de baja**, porque `PublicoService.packs` sólo lee los
+  activos. No hubo que tocarla.
+- **`sin-pack` sólo para un pack ausente del catálogo.** Un pack dado de baja conserva su precio
+  (decisión previa de `packs.service`); hoy `sin-pack` es casi inalcanzable (FK, sin borrado físico).
+- **Morosos (`PagoPendiente`) sigue mostrando 0**, con su aviso; sólo la caja usa el motivo.
+- **Las filas viejas de `AvisoDiario` no se borran.** Del orden de 100–120 MB/año en el caso típico;
+  las de días pasados se pueden borrar sin riesgo si algún día pesan.
+- **El helper `aviso-diario.ts`** no estaba en el plan; evita duplicar el try/catch en los dos jobs.
+- **`prettier --check` sobre lo tocado:** todo el código pasa, incluidos los archivos de `apps/api/src`.
+  Fallan tres que no son código:
+  - `docker-compose.yml`, que **ya fallaba en `HEAD`** (comillas dobles en los puertos y los
+    healthchecks, no en lo agregado);
+  - el plan y el spec de esta fase, por la sangría de las listas y la tabla del §3. El plan de la Fase
+    19 tampoco pasa.
+
+## Deuda anotada
+
+**Cerrada por esta fase:** la lista «Vieja, y sigue en pie» de la Fase 13, entera:
+
+- `use-rutinas.ts` sin tests; la sobre-invalidación de `/mi-pack`; el 403 que nombraba una ruta de
+  API; el job de recordatorios idempotente por gimnasio; la rotación de la clave; el contenedor `api`;
+  los tres campos muertos; «Reasignar» con turnos pasados y llenos; `centavos: 0` con tres sentidos;
+  `planDestacadoId` sin editor; `listaPasada`.
+
+**Nueva de esta fase:**
+
+- ⚠️ **Rotar `APP_ENCRYPTION_KEY` invalida los QR de check-in impresos**: `checkin/firma-qr.ts` firma
+  con un HMAC sobre esa clave y no acepta la anterior. El README lo avisa; hay que reimprimirlos.
+- Rotar cambia el `updatedAt` de la fila SMTP y no deja rastro en `HistorialAccion`.
+- «Reasignar» usa `instanteDelTurno`, que toma la hora como UTC: en Argentina puede esconder turnos de
+  la noche hasta 3 h antes.
+- Los turnos llenos se deshabilitan en «Reasignar» pero no en «Anotar» (comentario ~277).
+- El selector del plan destacado no avisa que el destacado sólo se ve en la landing con «Mostrar los
+  precios» encendido.
+- No hay un test con el pack dado de baja **primero** en el catálogo (menor).
+- El `select asistio` de misClases ya no hace falta.
+- Las 3 frases nuevas del 403 no son uniformes (tilde y sujeto).
+- `prisma format --check` ya fallaba en `HEAD`.
+- Tres copias de la detección de choque con clave única (`checkin.service`, `publicacion.service`,
+  `aviso-diario`).
+- Ningún e2e ejercita los jobs diarios contra la base real.
+- La clave única de `AvisoDiario` empieza por `(tenantId, tipo, …)`: el `Cascade` de perfil no tiene
+  índice propio.
+- Una re-ejecución atascada que cruce la medianoche UTC mandaría un segundo aviso (aceptado).
+
+## Lo que esta fase NO hace
+
+- Ausencias por franja horaria: se quitan; si vuelven, vuelven con su lógica.
+- Una limpieza de `AvisoDiario`.
+- Que los QR de check-in sobrevivan a una rotación de la clave.
+- La deuda de la infraestructura de tests de la Fase 19 (`href`/`data-*`, el símbolo de user-event, la
+  carrera de los `router.push`).
+- Recortar los nombres ya guardados con espacios (Fase 18).
+
+Comandos: `pnpm --filter @boxadmin/web test`, `… exec tsc --noEmit`, `… build`;
+`pnpm --filter @boxadmin/api test`, `… test:reloj` (y con `RELOJ_ANIOS=5`), `… exec tsc --noEmit`,
+`… test:e2e`, `… build`.
+
+## El checklist a mano (para Cesar)
+
+Comprobaciones que **ningún test puede hacer**: no hay navegador en el entorno.
+
+- [ ] Elegir un plan destacado en Configuración → Web, con «Mostrar los precios» encendido, y verlo en
+      la landing. Darlo de baja: la landing deja de mostrarlo.
+- [ ] El selector: «Ninguno» quita el destacado y guarda sin error; un destacado dado de baja aparece
+      como «(dado de baja)» hasta que se elige otro.
+- [ ] En Análisis → Caja, con un alumno con pack «a consultar», se lee «Mas 1 a consultar…».
+- [ ] En «Reasignar», un turno de hoy que ya empezó no aparece; uno lleno aparece deshabilitado, con
+      «(lleno)».
+- [ ] Crear una ausencia desde el panel sigue funcionando y bloquea el día entero.
+- [ ] El contenedor `api`: `docker compose up -d --build api` arranca y contesta; después
+      `docker compose stop api`.
+- [ ] Rotar la clave en un entorno de prueba siguiendo el README, hasta «0 rotados»; el envío SMTP
+      sigue funcionando sin la anterior.
+- [ ] Después de rotar, **el QR de check-in impreso antes ya no sirve**, y el que se reimprime desde
+      Configuración → Check-in sí.
+
+---

@@ -36,12 +36,11 @@ import { FALTA_EL_NOMBRE } from './textos';
 /**
  * Las columnas, declaradas y cerradas.
  *
- * `SalaPublica` trae ademas `id`, `tenantId`, `exclusiva`, `soloCuposLiberados`
- * y los dos de minutos. Ninguno esta aqui:
+ * `SalaPublica` trae ademas `id`, `tenantId`, `soloCuposLiberados` y los dos
+ * de minutos. Ninguno esta aqui:
  *
  * - `tenantId` es justo el dato que la Fase 0 se ocupo de que no cruzara entre
  *   gimnasios, y lo que se pinta viaja al navegador aunque este tapado por CSS;
- * - `exclusiva` es un campo MUERTO —ver la ficha—;
  * - los otros tres son ajuste fino y viven en la ficha. Una tabla de nueve
  *   columnas en el mostrador no se lee.
  *

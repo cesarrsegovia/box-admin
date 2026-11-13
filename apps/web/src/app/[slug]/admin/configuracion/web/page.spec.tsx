@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ConfiguracionWebSalon, RolUsuario } from '@boxadmin/shared';
+import type { ConfiguracionWebSalon, PackPublico, RolUsuario } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
 import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
@@ -53,6 +53,12 @@ const RUTA_DE_LA_WEB = '/config/web-salon';
 const RUTA_DE_LOS_TESTIMONIOS = '/config/web-salon/testimonios';
 const RUTA_DE_LAS_PREGUNTAS = '/config/web-salon/faq';
 
+/**
+ * El catalogo de packs, que lee el selector del plan destacado (Fase 20). Es
+ * `usePacks` de `use-catalogos`: `GET /packs`, activos E inactivos.
+ */
+const RUTA_DE_LOS_PACKS = '/packs';
+
 /** Lo que dice la API cuando algo falla. Palabra por palabra. */
 const MENSAJE_DE_LA_API = 'La base de datos del gimnasio no contesta';
 
@@ -86,6 +92,8 @@ const ID_DEL_SEGUNDO_TESTIMONIO = 'tst-4d10e63f';
 const ID_DE_LA_PRIMERA_PREGUNTA = 'faq-3e81d60c';
 const ID_DE_LA_SEGUNDA_PREGUNTA = 'faq-b7a25194';
 const ID_DEL_PLAN_DESTACADO = 'pack-77c1';
+const ID_DEL_OTRO_PACK_ACTIVO = 'pack-3a90';
+const ID_DEL_PACK_DADO_DE_BAJA = 'pack-e5d2';
 
 const NOMBRE_DEL_PRIMER_TESTIMONIO = 'Lucia Ferrer';
 const NOMBRE_DEL_SEGUNDO_TESTIMONIO = 'Marcos Iriarte';
@@ -167,6 +175,35 @@ const WEB_SIN_CONFIGURAR: ConfiguracionWebSalon = {
   preguntas: [],
 };
 
+/** Un pack del catalogo con lo que no importa aqui ya puesto. */
+function pack(id: string, nombre: string, activo: boolean): PackPublico {
+  return {
+    id,
+    tenantId: 'tenant-1',
+    nombre,
+    salaId: null,
+    tipo: 'MENSUAL',
+    precio: '18500.00',
+    clasesPorMes: 8,
+    clasesTotales: null,
+    cancelacionesPermitidas: null,
+    activo,
+  };
+}
+
+/**
+ * EL CATALOGO, CON UN DADO DE BAJA EN EL MEDIO.
+ *
+ * Dos activos —con uno solo, «elegir ese» y «elegir el primero» son la misma
+ * llamada— y un inactivo entre los dos, que es lo que un selector que no
+ * filtrara por `activo` ofreceria como si se vendiera.
+ */
+const PACKS: PackPublico[] = [
+  pack(ID_DEL_PLAN_DESTACADO, 'Mensual 8', true),
+  pack(ID_DEL_PACK_DADO_DE_BAJA, 'Promo Vieja', false),
+  pack(ID_DEL_OTRO_PACK_ACTIVO, 'Libre', true),
+];
+
 /**
  * LO QUE ESTA PANTALLA TIENE EN LA MANO Y NO DEBERIA SALIR POR NINGUN CANAL.
  *
@@ -193,6 +230,8 @@ vigilarEstosDatos({
   idDeLaPrimeraPregunta: ID_DE_LA_PRIMERA_PREGUNTA,
   idDeLaSegundaPregunta: ID_DE_LA_SEGUNDA_PREGUNTA,
   idDelPlanDestacado: ID_DEL_PLAN_DESTACADO,
+  idDelOtroPackActivo: ID_DEL_OTRO_PACK_ACTIVO,
+  idDelPackDadoDeBaja: ID_DEL_PACK_DADO_DE_BAJA,
   loQueElGimnasioPublica: TAGLINE,
   loQueDijoLaApi: MENSAJE_DE_LA_API,
 });
@@ -269,6 +308,10 @@ interface OpcionesDeMontaje {
   falloAlGuardar?: ErrorDeApi;
   /** Si se pasa, el `POST` y el `DELETE` de las dos listas fallan con esto. */
   falloEnLasListas?: ErrorDeApi;
+  /** Lo que contesta `GET /packs`. */
+  packs?: PackPublico[];
+  /** Si se pasa, `GET /packs` falla con esto. */
+  falloAlLeerLosPacks?: ErrorDeApi;
 }
 
 function montar({
@@ -278,11 +321,19 @@ function montar({
   falloAlLeer,
   falloAlGuardar,
   falloEnLasListas,
+  packs = PACKS,
+  falloAlLeerLosPacks,
 }: OpcionesDeMontaje = {}) {
   let lecturas = 0;
 
   pedirEspia.mockImplementation((ruta: string, opciones?: Opciones) => {
     const metodo = opciones?.metodo ?? 'GET';
+
+    if (ruta === RUTA_DE_LOS_PACKS && metodo === 'GET') {
+      return falloAlLeerLosPacks === undefined
+        ? Promise.resolve(packs)
+        : Promise.reject(falloAlLeerLosPacks);
+    }
 
     if (ruta === RUTA_DE_LA_WEB && metodo === 'GET') {
       lecturas += 1;
@@ -546,7 +597,8 @@ describe('las banderas de que se publica', () => {
 
     await guardarElFormulario();
 
-    expect(llamada(1)).toEqual({
+    // La 0 es la lectura de la web y la 1 la del catalogo de packs.
+    expect(llamada(2)).toEqual({
       ruta: RUTA_DE_LA_WEB,
       metodo: 'PUT',
       cuerpo: {
@@ -557,6 +609,7 @@ describe('las banderas de que se publica', () => {
         mostrarTurnosLibres: true,
         colorPrimario: '#000000',
         colorSecundario: '#ffffff',
+        planDestacadoId: null,
       },
     });
   });
@@ -579,7 +632,7 @@ describe('las banderas de que se publica', () => {
 
     await guardarElFormulario();
 
-    expect(llamada(1).cuerpo).toEqual({
+    expect(llamada(2).cuerpo).toEqual({
       activa: false,
       mostrarPrecios: false,
       mostrarTestimonios: false,
@@ -587,6 +640,7 @@ describe('las banderas de que se publica', () => {
       mostrarTurnosLibres: false,
       colorPrimario: '#000000',
       colorSecundario: '#ffffff',
+      planDestacadoId: null,
     });
   });
 
@@ -608,7 +662,7 @@ describe('las banderas de que se publica', () => {
     await escribirEnElCampo('tagline', '');
     await guardarElFormulario();
 
-    const cuerpo = llamada(1).cuerpo as Record<string, unknown>;
+    const cuerpo = llamada(2).cuerpo as Record<string, unknown>;
 
     expect('tagline' in cuerpo).toBe(false);
     expect(cuerpo.planDestacadoId).toBe(ID_DEL_PLAN_DESTACADO);
@@ -712,7 +766,7 @@ describe('apagar la web publica', () => {
 
     await pulsar('Apagar la web');
 
-    expect(llamada(1)).toEqual({
+    expect(llamada(2)).toEqual({
       ruta: RUTA_DE_LA_WEB,
       metodo: 'PUT',
       cuerpo: {
@@ -791,8 +845,8 @@ describe('apagar la web publica', () => {
     await pulsar('Encender la web publica');
 
     expect(parrafosDelDialogo()).toEqual([]);
-    expect(llamada(1).metodo).toBe('PUT');
-    expect((llamada(1).cuerpo as Record<string, unknown>).activa).toBe(true);
+    expect(llamada(2).metodo).toBe('PUT');
+    expect((llamada(2).cuerpo as Record<string, unknown>).activa).toBe(true);
   });
 
   /** Lo que falla al apagar se pinta DENTRO del dialogo, no detras. */
@@ -835,7 +889,7 @@ describe('los testimonios', () => {
     await escribirEnElCampo('testimonio-orden', '7');
     await pulsar('Agregar el testimonio');
 
-    expect(llamada(1)).toEqual({
+    expect(llamada(2)).toEqual({
       ruta: RUTA_DE_LOS_TESTIMONIOS,
       metodo: 'POST',
       cuerpo: {
@@ -845,10 +899,11 @@ describe('los testimonios', () => {
       },
     });
 
-    // La lista entera: la lectura, el alta, y la relectura que dispara la
-    // invalidacion. Ni un `PUT` ni una ruta de mas.
+    // La lista entera: las dos lecturas, el alta, y la relectura que dispara
+    // la invalidacion —que NO relee el catalogo—. Ni un `PUT` ni una ruta de mas.
     expect(rutasPedidas()).toEqual([
       `GET ${RUTA_DE_LA_WEB}`,
+      `GET ${RUTA_DE_LOS_PACKS}`,
       `POST ${RUTA_DE_LOS_TESTIMONIOS}`,
       `GET ${RUTA_DE_LA_WEB}`,
     ]);
@@ -862,7 +917,7 @@ describe('los testimonios', () => {
     await escribirEnElCampo('testimonio-texto', 'Vengo hace dos años.');
     await pulsar('Agregar el testimonio');
 
-    expect(llamada(1).cuerpo).toEqual({ nombre: 'Ana Quiroga', texto: 'Vengo hace dos años.' });
+    expect(llamada(2).cuerpo).toEqual({ nombre: 'Ana Quiroga', texto: 'Vengo hace dos años.' });
   });
 
   /**
@@ -887,7 +942,7 @@ describe('los testimonios', () => {
 
     await pulsar(`Borrar el testimonio de ${NOMBRE_DEL_SEGUNDO_TESTIMONIO}`);
 
-    expect(llamada(1)).toEqual({
+    expect(llamada(2)).toEqual({
       ruta: `${RUTA_DE_LOS_TESTIMONIOS}/${ID_DEL_SEGUNDO_TESTIMONIO}`,
       metodo: 'DELETE',
       cuerpo: undefined,
@@ -931,7 +986,7 @@ describe('las preguntas frecuentes', () => {
 
     await pulsar(`Borrar la pregunta: ${LA_SEGUNDA_PREGUNTA}`);
 
-    expect(llamada(1)).toEqual({
+    expect(llamada(2)).toEqual({
       ruta: `${RUTA_DE_LAS_PREGUNTAS}/${ID_DE_LA_SEGUNDA_PREGUNTA}`,
       metodo: 'DELETE',
       cuerpo: undefined,
@@ -943,7 +998,7 @@ describe('las preguntas frecuentes', () => {
     await escribirEnElCampo('pregunta-respuesta', 'Si, cuatro, con agua caliente todo el dia.');
     await pulsar('Agregar la pregunta');
 
-    expect(llamada(3)).toEqual({
+    expect(llamada(4)).toEqual({
       ruta: RUTA_DE_LAS_PREGUNTAS,
       metodo: 'POST',
       cuerpo: { pregunta: 'Hay duchas?', respuesta: 'Si, cuatro, con agua caliente todo el dia.' },
@@ -951,6 +1006,173 @@ describe('las preguntas frecuentes', () => {
 
     // Ni una sola peticion toco la ruta de los testimonios.
     expect(rutasPedidas().filter((linea) => linea.includes('testimonios'))).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// El plan destacado (Fase 20)
+// ---------------------------------------------------------------------------
+
+const PLAN_DESTACADO = 'Plan destacado';
+
+function selectorDelPlan(): HTMLSelectElement {
+  return screen.getByRole('combobox', { name: PLAN_DESTACADO });
+}
+
+/** Los textos de las opciones, en orden, para afirmarlos por igualdad. */
+function opcionesDelPlan(): string[] {
+  return [...selectorDelPlan().options].map((opcion) => opcion.textContent ?? '');
+}
+
+function planElegido(): string {
+  return selectorDelPlan().selectedOptions[0]?.textContent ?? '';
+}
+
+async function elegirPlan(texto: string): Promise<void> {
+  const usuario = userEvent.setup();
+  await usuario.selectOptions(selectorDelPlan(), screen.getByRole('option', { name: texto }));
+  await esperar();
+}
+
+/** El cuerpo del `PUT` del formulario: la 0 y la 1 son las dos lecturas. */
+function cuerpoDelGuardado(): Record<string, unknown> {
+  const guardado = llamada(2);
+  expect([guardado.metodo, guardado.ruta]).toEqual(['PUT', RUTA_DE_LA_WEB]);
+
+  return guardado.cuerpo as Record<string, unknown>;
+}
+
+describe('el plan destacado', () => {
+  /**
+   * LOS ACTIVOS Y «NINGUNO», Y NADA MAS.
+   *
+   * El catalogo trae un dado de baja EN EL MEDIO: un selector que no filtrara
+   * por `activo` lo ofreceria como si se vendiera. Por igualdad sobre la lista
+   * entera, en el orden del catalogo.
+   */
+  it('lista los packs activos y «Ninguno», con el guardado elegido', async () => {
+    await montarYEsperar({ web: WEB_COMPLETA });
+
+    expect(opcionesDelPlan()).toEqual(['Ninguno', 'Mensual 8', 'Libre']);
+    expect(planElegido()).toBe('Mensual 8');
+  });
+
+  it('sin destacado guardado, esta en «Ninguno»', async () => {
+    await montarYEsperar({ web: { ...WEB_COMPLETA, planDestacadoId: null } });
+
+    expect(opcionesDelPlan()).toEqual(['Ninguno', 'Mensual 8', 'Libre']);
+    expect(planElegido()).toBe('Ninguno');
+  });
+
+  /**
+   * Se elige el SEGUNDO activo: con el primero, «manda el elegido» y «manda el
+   * primero del catalogo» serian la misma llamada.
+   */
+  it('elegir otro pack y guardar manda SU id', async () => {
+    await montarYEsperar({ web: WEB_COMPLETA });
+
+    await elegirPlan('Libre');
+    await guardarElFormulario();
+
+    expect(cuerpoDelGuardado().planDestacadoId).toBe(ID_DEL_OTRO_PACK_ACTIVO);
+  });
+
+  /**
+   * «NINGUNO» ES `null`, NO `''` NI LA CLAVE AUSENTE POR DESCUIDO.
+   *
+   * Un `''` llega a la API como un id que no existe y es un 400; el `null` es
+   * el borrado que entiende `WebSalonService.guardar`.
+   */
+  it('elegir «Ninguno» y guardar manda null', async () => {
+    await montarYEsperar({ web: WEB_COMPLETA });
+
+    await elegirPlan('Ninguno');
+    await guardarElFormulario();
+
+    const cuerpo = cuerpoDelGuardado();
+    expect('planDestacadoId' in cuerpo).toBe(true);
+    expect(cuerpo.planDestacadoId).toBeNull();
+  });
+
+  /**
+   * EL DESTACADO DADO DE BAJA SE VE COMO TAL, Y GUARDAR SIN TOCARLO LO CONSERVA.
+   *
+   * La landing ya no lo muestra —lee solo los packs activos—, pero la
+   * configuracion lo sigue apuntando. Un selector que lo dibujara como
+   * «Ninguno» mentiria, y guardar el tagline lo borraria sin que nadie lo
+   * eligiera.
+   */
+  it('un destacado dado de baja se muestra «(dado de baja)» y se conserva', async () => {
+    await montarYEsperar({ web: { ...WEB_COMPLETA, planDestacadoId: ID_DEL_PACK_DADO_DE_BAJA } });
+
+    expect(opcionesDelPlan()).toEqual([
+      'Ninguno',
+      'Mensual 8',
+      'Libre',
+      'Promo Vieja (dado de baja)',
+    ]);
+    expect(planElegido()).toBe('Promo Vieja (dado de baja)');
+
+    await escribirEnElCampo('tagline', 'Otra cosa');
+    await guardarElFormulario();
+
+    expect(cuerpoDelGuardado().planDestacadoId).toBe(ID_DEL_PACK_DADO_DE_BAJA);
+
+    // Y el id no se escribio en ningun atributo para conseguirlo.
+    expect(
+      atributosDeDentroDelCuerpo().filter((atributo) =>
+        atributo.includes(ID_DEL_PACK_DADO_DE_BAJA),
+      ),
+    ).toEqual([]);
+  });
+
+  /** Y se puede salir de el eligiendo otro. */
+  it('del dado de baja se sale eligiendo otro', async () => {
+    await montarYEsperar({ web: { ...WEB_COMPLETA, planDestacadoId: ID_DEL_PACK_DADO_DE_BAJA } });
+
+    await elegirPlan('Mensual 8');
+    await guardarElFormulario();
+
+    expect(cuerpoDelGuardado().planDestacadoId).toBe(ID_DEL_PLAN_DESTACADO);
+  });
+
+  /** Un id que el catalogo no conoce: no hay nombre que poner, pero se conserva. */
+  it('un destacado que no esta en el catalogo se muestra «(no disponible)» y se conserva', async () => {
+    await montarYEsperar({ web: { ...WEB_COMPLETA, planDestacadoId: 'pack-0000' } });
+
+    expect(opcionesDelPlan()).toEqual([
+      'Ninguno',
+      'Mensual 8',
+      'Libre',
+      'Plan guardado (no disponible)',
+    ]);
+    expect(planElegido()).toBe('Plan guardado (no disponible)');
+
+    await guardarElFormulario();
+
+    expect(cuerpoDelGuardado().planDestacadoId).toBe('pack-0000');
+  });
+
+  /**
+   * SIN CATALOGO NO HAY SELECTOR, PERO EL DESTACADO NO SE PIERDE.
+   *
+   * Un selector con solo «Ninguno» —que es lo que queda sin catalogo— dibujaria
+   * el fallo como «no hay destacado», y guardar lo borraria.
+   */
+  it('si el catalogo no se puede leer lo dice, y guardar conserva el destacado', async () => {
+    await montarYEsperar({
+      web: WEB_COMPLETA,
+      falloAlLeerLosPacks: new ErrorDeApi(MENSAJE_DE_LA_API, 503),
+    });
+
+    expect(screen.queryByRole('combobox', { name: PLAN_DESTACADO })).toBeNull();
+    expect(textoDe('[data-fallo="packs"]')).toBe(
+      `No se pudo leer la lista de packs: ${MENSAJE_DE_LA_API}`,
+    );
+
+    await guardarElFormulario();
+
+    expect(cuerpoDelGuardado().planDestacadoId).toBe(ID_DEL_PLAN_DESTACADO);
   });
 });
 
@@ -1233,7 +1455,7 @@ describe('la puerta de rol', () => {
   it('un SUPERADMIN entra, porque la puerta es una jerarquia', async () => {
     await montarYEsperar({ rol: 'SUPERADMIN', web: WEB_COMPLETA });
 
-    expect(rutasPedidas()).toEqual([`GET ${RUTA_DE_LA_WEB}`]);
+    expect(rutasPedidas()).toEqual([`GET ${RUTA_DE_LA_WEB}`, `GET ${RUTA_DE_LOS_PACKS}`]);
     expect(casillasDelDocumento()).toHaveLength(4);
   });
 });
@@ -1307,6 +1529,10 @@ describe('lo que la pantalla NO escribe en los atributos del marcado', () => {
     ID_DE_LA_PRIMERA_PREGUNTA,
     ID_DE_LA_SEGUNDA_PREGUNTA,
     ID_DEL_PLAN_DESTACADO,
+    // El selector del plan destacado (Fase 20) tiene los ids de los packs en
+    // la mano: los `value` de sus opciones son posiciones, no ids.
+    ID_DEL_OTRO_PACK_ACTIVO,
+    ID_DEL_PACK_DADO_DE_BAJA,
   ];
 
   it('ningun id del contrato ancho viaja en un atributo', async () => {

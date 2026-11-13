@@ -8,6 +8,7 @@ import type {
   TipoCancelacion,
   TurnoPublico,
 } from '@boxadmin/shared';
+import { desdeFechaISO, instanteDelTurno } from '@boxadmin/shared';
 import { Tabla, type ColumnaDeTabla } from '@/componentes/tabla';
 import { Aviso, Boton, Tarjeta } from '@/componentes/ui';
 import { ErrorDeApi } from '@/lib/cliente';
@@ -186,7 +187,18 @@ type AccionEnCurso =
   | { tipo: 'reasignar'; reserva: ReservaEnTurno }
   | null;
 
-export function BloqueDeAnotados({ turno }: { turno: TurnoPublico }) {
+export function BloqueDeAnotados({
+  turno,
+  ahora,
+}: {
+  turno: TurnoPublico;
+  /**
+   * El reloj contra el que «Reasignar» descarta los turnos que ya empezaron.
+   * Ausente = la hora de verdad, leida al abrir el panel. Existe para que el
+   * spec fije la hora y sus fixtures no caduquen solas.
+   */
+  ahora?: Date;
+}) {
   const { data: reservas, isPending, error, refetch } = useReservasDelTurno(turno.id);
 
   const [accion, setAccion] = useState<AccionEnCurso>(null);
@@ -295,7 +307,12 @@ export function BloqueDeAnotados({ turno }: { turno: TurnoPublico }) {
         ) : accion.tipo === 'cancelar' ? (
           <PanelDeCancelar turno={turno} reserva={accion.reserva} alVolver={cerrar} />
         ) : (
-          <PanelDeReasignar turno={turno} reserva={accion.reserva} alVolver={cerrar} />
+          <PanelDeReasignar
+            turno={turno}
+            reserva={accion.reserva}
+            ahora={ahora}
+            alVolver={cerrar}
+          />
         )}
 
         <Tabla
@@ -450,14 +467,22 @@ function PanelDeCancelar({
  * asignadas ese alumno— no se ve en esta pantalla. Y el turno actual no se
  * ofrece: reasignar a donde ya esta es el 409 de «ya tiene una reserva activa
  * en el turno destino».
+ *
+ * LOS QUE YA EMPEZARON NO SE OFRECEN: mover a alguien a una clase que ya esta
+ * en curso, o que fue ayer, no es algo que el mostrador quiera hacer. Se mira
+ * el INSTANTE de inicio y no el dia: un turno de hoy de hace media hora es tan
+ * pasado como uno de ayer. Con `instanteDelTurno`, la convencion de horas de
+ * todo el sistema (y su limitacion conocida de huso).
  */
 function PanelDeReasignar({
   turno,
   reserva,
+  ahora,
   alVolver,
 }: {
   turno: TurnoPublico;
   reserva: ReservaEnTurno;
+  ahora?: Date;
   alVolver: () => void;
 }) {
   const reasignar = useReasignar(turno.id);
@@ -465,10 +490,17 @@ function PanelDeReasignar({
 
   const [destino, setDestino] = useState('');
   const [fallo, setFallo] = useState<FalloLeido | null>(null);
+  // El reloj se lee UNA vez, al abrir: leerlo en cada render haria que una
+  // opcion desapareciera de la lista mientras alguien la esta mirando.
+  const [reloj] = useState(() => ahora ?? new Date());
 
   const idControl = useId();
 
-  const posibles = (turnos ?? []).filter((candidato) => candidato.id !== turno.id);
+  const posibles = (turnos ?? []).filter(
+    (candidato) =>
+      candidato.id !== turno.id &&
+      instanteDelTurno(desdeFechaISO(candidato.fecha), candidato.horaInicio) > reloj,
+  );
 
   async function confirmar(): Promise<void> {
     if (destino === '') return;
@@ -508,14 +540,20 @@ function PanelDeReasignar({
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
         >
           <option value="">Elegi el turno destino</option>
-          {posibles.map((candidato) => (
-            // La ocupacion va EN LA OPCION: el 409 de «el turno destino esta
-            // completo» se evita mirando, no leyendolo despues de mandarlo.
-            <option key={candidato.id} value={candidato.id}>
-              {candidato.fecha} {candidato.horaInicio} · {candidato.nombre} (
-              {candidato.reservasActivas}/{candidato.cupo})
-            </option>
-          ))}
+          {posibles.map((candidato) => {
+            const lleno = candidato.reservasActivas >= candidato.cupo;
+
+            return (
+              // La ocupacion va EN LA OPCION: el 409 de «el turno destino esta
+              // completo» se evita mirando, no leyendolo despues de mandarlo.
+              // Los LLENOS SE VEN, deshabilitados: esconderlos haria creer a
+              // quien esta en el mostrador que esa clase no existe.
+              <option key={candidato.id} value={candidato.id} disabled={lleno}>
+                {candidato.fecha} {candidato.horaInicio} · {candidato.nombre} (
+                {candidato.reservasActivas}/{candidato.cupo}){lleno ? ' (lleno)' : ''}
+              </option>
+            );
+          })}
         </select>
       </div>
 

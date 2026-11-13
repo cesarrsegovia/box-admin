@@ -115,9 +115,13 @@ export class GuardarWebSalonDto {
    * de ESTE gimnasio antes de escribirlo: la FK compuesta ya lo impide en la
    * base, pero su violacion llega como un error de Postgres que nadie traduce y
    * sale como un 500 opaco en vez de un 400 que explica que pasa.
+   *
+   * `null` es «Ninguno» (lo manda el selector de Configuracion -> Web): quita
+   * el destacado, igual que omitirlo. `@IsOptional` ya deja pasar el `null`
+   * sin validar; el tipo lo dice para que el service no lo olvide.
    */
   @IsOptional()
   @IsString()
   @MaxLength(40)
-  planDestacadoId?: string;
+  planDestacadoId?: string | null;
 }

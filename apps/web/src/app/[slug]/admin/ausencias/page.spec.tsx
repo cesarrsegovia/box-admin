@@ -97,12 +97,6 @@ function unaAusencia(cambios: Partial<AusenciaPublica> = {}): AusenciaPublica {
     salaId: 's1',
     desde: '2026-12-24',
     hasta: '2026-12-26',
-    todoElDia: true,
-    horaInicio: null,
-    horaFin: null,
-    // `false` a proposito: el default de la columna es `true`, asi que una
-    // pantalla que lo dibujara mal igual acertaria con el valor por defecto.
-    recuperable: false,
     motivo: CENTINELAS.motivoDelCierre,
     ...cambios,
   };
@@ -116,7 +110,6 @@ function unaSala(cambios: Partial<SalaPublica> = {}): SalaPublica {
     activa: true,
     visibleAlumnos: true,
     soloCuposLiberados: false,
-    exclusiva: false,
     cupoBase: 12,
     minMinutosCancelar: null,
     minMinutosAnotarse: null,
@@ -330,7 +323,7 @@ describe('el listado de cierres', () => {
   it('muestra ESTAS columnas y solo estas', () => {
     montar();
 
-    expect(columnasDelDocumento()).toEqual(['Sala', 'Fechas', 'Franja', 'Motivo', 'Acciones']);
+    expect(columnasDelDocumento()).toEqual(['Sala', 'Fechas', 'Motivo', 'Acciones']);
   });
 
   it('cada fila tiene EXACTAMENTE una celda por columna, con este contenido', () => {
@@ -339,13 +332,7 @@ describe('el listado de cierres', () => {
     montar();
 
     expect(filasDelDocumento()).toEqual([
-      [
-        'Sala Principal',
-        '2026-12-24 a 2026-12-26',
-        'Todo el dia',
-        CENTINELAS.motivoDelCierre,
-        'Borrar',
-      ],
+      ['Sala Principal', '2026-12-24 a 2026-12-26', CENTINELAS.motivoDelCierre, 'Borrar'],
     ]);
   });
 
@@ -377,59 +364,6 @@ describe('el listado de cierres', () => {
     ]);
   });
 
-  /**
-   * UNA FILA CON HORAS GUARDADAS NO PROMETE UN CIERRE PARCIAL.
-   *
-   * El contrato sigue devolviendo `todoElDia`, `horaInicio` y `horaFin`, y
-   * filas asi puede haberlas: cargadas por `curl` antes de que existiera esta
-   * pantalla, o por una version anterior de ella. Pero ningun consumidor mira
-   * la hora —los tres deciden con `fechaEnRango(fecha, desde, hasta)`—, asi que
-   * ese cierre CANCELA EL DIA ENTERO.
-   *
-   * Pintar «18:00 a 20:00» seria prometer que a las 10 hay clase. Se dice lo
-   * que pasa de verdad, y se avisa de que el dato guardado dice otra cosa, sin
-   * repetir las horas: son justo lo que no se puede leer sin entenderlo al
-   * reves.
-   */
-  it('una fila con horas guardadas se lee como lo que es: el dia entero cerrado', () => {
-    montar({
-      ausencias: [
-        unaAusencia({ id: 'a1', todoElDia: true }),
-        unaAusencia({ id: 'a2', todoElDia: false, horaInicio: '18:00', horaFin: '20:00' }),
-      ],
-    });
-
-    expect(filasDelDocumento().map((celdas) => celdas[2])).toEqual([
-      'Todo el dia',
-      'Todo el dia (el tramo horario guardado no se aplica)',
-    ]);
-
-    // Y las horas no estan en el marcado: lo que se pinta viaja al navegador
-    // aunque este tapado por CSS, y aqui lo que importa es que nadie las lea.
-    expect(document.body.innerHTML).not.toContain('18:00');
-    expect(document.body.innerHTML).not.toContain('20:00');
-  });
-
-  /**
-   * Y NO SE MIRA SOLO `todoElDia`.
-   *
-   * El service hoy pone las horas en null cuando el cierre es de dia completo,
-   * asi que `todoElDia: true` con horas no deberia existir. «No deberia» no es
-   * «no puede»: el contrato devuelve los tres campos y la celda no tiene por
-   * que depender de esa limpieza para no mentir. Este caso es el unico que
-   * distingue la condicion que hay escrita de un `if (!todoElDia)`.
-   */
-  it('una fila incoherente —dia completo CON horas— tampoco las enseña', () => {
-    montar({
-      ausencias: [unaAusencia({ todoElDia: true, horaInicio: '18:00', horaFin: '20:00' })],
-    });
-
-    expect(filasDelDocumento().map((celdas) => celdas[2])).toEqual([
-      'Todo el dia (el tramo horario guardado no se aplica)',
-    ]);
-    expect(document.body.innerHTML).not.toContain('18:00');
-  });
-
   it('un cierre de un solo dia no se pinta como un rango', () => {
     montar({ ausencias: [unaAusencia({ desde: '2026-12-25', hasta: '2026-12-25' })] });
 
@@ -440,7 +374,7 @@ describe('el listado de cierres', () => {
     // Una celda en blanco se lee como «no cargo la pantalla».
     montar({ ausencias: [unaAusencia({ motivo: null })] });
 
-    expect(filasDelDocumento().map((celdas) => celdas[3])).toEqual(['Sin motivo']);
+    expect(filasDelDocumento().map((celdas) => celdas[2])).toEqual(['Sin motivo']);
   });
 
   it('una sala que no esta en el catalogo tampoco deja la celda vacia', () => {
@@ -475,45 +409,33 @@ describe('el listado de cierres', () => {
 });
 
 // ---------------------------------------------------------------------------
-// El campo muerto
+// Los campos que se quitaron
 // ---------------------------------------------------------------------------
 
 /**
- * `recuperable` NO SE DIBUJA, NI EN LA TABLA NI EN EL ALTA.
+ * `recuperable` Y LA FRANJA HORARIA SE QUITARON EN LA FASE 20.
  *
- * Es un campo muerto: la columna existe con `@default(true)`, el DTO lo acepta,
- * el service lo escribe con `dto.recuperable ?? true` y lo mapea al contrato
- * —y NADIE LO LEE—. Ni `generacion-mes.service.ts`, que es quien aplica las
- * ausencias al plan del mes, ni `calendario.datos.ts`, ni
- * `liquidacion.datos.ts`: los tres mapean la fila a `{ salaId, desde, hasta }`.
+ * Se guardaban y NADIE LOS LEIA: `generacion-mes.service.ts`,
+ * `calendario.datos.ts` y `liquidacion.datos.ts` deciden con
+ * `fechaEnRango(fecha, desde, hasta)`. Ya no estan en el schema, ni en el DTO,
+ * ni en `AusenciaPublica`: un cierre es siempre de dias enteros.
  *
- * Es el peor de los dos campos muertos de la fase porque EL NOMBRE PROMETE
- * ALGO CONCRETO: un admin que marque un cierre como recuperable va a creer que
- * a los alumnos se les devuelve la clase, y no se les devuelve nada. Ofrecerlo
- * con una advertencia al lado tampoco sirve: una advertencia permanente se
- * vuelve invisible a las dos semanas y lo que queda es la casilla. Queda como
- * deuda anotada en la cabecera de `page.tsx`, no como control.
- *
- * Este test existe para que el proximo que lea `AusenciaPublica` no lo agregue
- * «porque faltaba».
+ * Este test fija que la pantalla tampoco los nombra. Si vuelven, vuelven con
+ * su logica, no como un control que promete algo que nadie cumple.
  */
-describe('el campo muerto', () => {
-  it('NO dibuja el campo recuperable', () => {
+describe('los campos que se quitaron', () => {
+  it('NO dibuja recuperable ni una franja', () => {
     // Afirmá sobre el MARCADO: `queryByRole` consulta el arbol de
     // accesibilidad, que ya excluye por su cuenta lo que lleva `hidden`, asi
     // que un control escondido pasaria en verde y seguiria en el HTML.
-    montar({
-      ausencias: [
-        unaAusencia({ id: 'a1', recuperable: true }),
-        unaAusencia({ id: 'a2', recuperable: false }),
-      ],
-    });
+    montar();
 
     expect(document.body.innerHTML).not.toMatch(/recuperable/i);
+    expect(document.body.innerHTML).not.toMatch(/franja|tramo horario/i);
 
     // Y los dos conjuntos ENTEROS, que es lo que no depende de como se llame:
     // un control o una columna con otro nombre rompen esto igual.
-    expect(columnasDelDocumento()).toEqual(['Sala', 'Fechas', 'Franja', 'Motivo', 'Acciones']);
+    expect(columnasDelDocumento()).toEqual(['Sala', 'Fechas', 'Motivo', 'Acciones']);
     expect(controlesDelFormulario('Nuevo cierre')).toEqual([
       'Que cierra',
       'Desde',
@@ -726,7 +648,7 @@ describe('quien puede escribir', () => {
     expect(document.body.innerHTML).not.toMatch(/crear cierre/i);
     expect(document.body.innerHTML).not.toMatch(/borrar/i);
     // Y la columna de acciones no queda como un hueco: no existe.
-    expect(columnasDelDocumento()).toEqual(['Sala', 'Fechas', 'Franja', 'Motivo']);
+    expect(columnasDelDocumento()).toEqual(['Sala', 'Fechas', 'Motivo']);
   });
 
   it('un ADMIN_SALON si los ve', () => {
@@ -790,8 +712,6 @@ describe('el alta de un cierre', () => {
       salaId: 's1',
       desde: '2026-12-24',
       hasta: '2026-12-26',
-      // Un booleano de verdad, no la cadena «true».
-      todoElDia: true,
       motivo: CENTINELAS.motivoDelCierre,
     });
   });
@@ -809,7 +729,7 @@ describe('el alta de un cierre', () => {
     await completarElAlta({ 'Que cierra': 'todo-el-salon' });
     await enviarElAlta();
 
-    expect(Object.keys(cuerpoEnviado())).toEqual(['desde', 'hasta', 'todoElDia', 'motivo']);
+    expect(Object.keys(cuerpoEnviado())).toEqual(['desde', 'hasta', 'motivo']);
     // Y el centinela del selector no se escapa a la API.
     expect(JSON.stringify(cuerpoEnviado())).not.toContain('todo-el-salon');
   });
@@ -845,7 +765,7 @@ describe('el alta de un cierre', () => {
     await completarElAlta({ Motivo: '' });
     await enviarElAlta();
 
-    expect(Object.keys(cuerpoEnviado())).toEqual(['salaId', 'desde', 'hasta', 'todoElDia']);
+    expect(Object.keys(cuerpoEnviado())).toEqual(['salaId', 'desde', 'hasta']);
   });
 
   it('tras un alta buena el formulario queda limpio', async () => {
@@ -868,15 +788,9 @@ describe('el alta de un cierre', () => {
 /**
  * EL CIERRE ES SIEMPRE DE DIA COMPLETO.
  *
- * La franja no la honra NINGUN consumidor. Verificado uno por uno:
- * `generacion-mes.service.ts` decide con `fechaEnRango(fecha, a.desde,
- * a.hasta)`, `calendario.datos.ts` mapea la fila a `{ salaId, desde, hasta }` y
- * `liquidacion.datos.ts` a eso mismo mas `motivo`. Ninguno mira la hora.
- *
- * O sea que un cierre de 18:00 a 20:00 CANCELA EL DIA ENTERO. No es un campo
- * inerte como `recuperable` —ese se guarda y no hace nada—: este hace algo, y
- * DE MAS, se lleva por delante los turnos de la mañana; y el sintoma aparece a
- * un mes de distancia, cuando el mes publicado sale mal.
+ * La franja no la honraba NINGUN consumidor —los tres deciden con
+ * `fechaEnRango(fecha, desde, hasta)`— y en la Fase 20 se quito de la API: un
+ * cierre «de 18:00 a 20:00» cancelaba el dia entero.
  *
  * Son DOS tests y no uno porque son dos fallos distintos: el control podria no
  * dibujarse y el cuerpo llevar las horas igual —un `horaInicio: ''` colado en
@@ -914,35 +828,28 @@ describe('la franja horaria, que ya no se ofrece', () => {
 
     // Las claves EXACTAS, no un `not.toHaveProperty`: una clave de mas con
     // otro nombre —`tramo`, `horario`— rompe esto igual.
-    expect(Object.keys(cuerpoEnviado())).toEqual([
-      'salaId',
-      'desde',
-      'hasta',
-      'todoElDia',
-      'motivo',
-    ]);
+    expect(Object.keys(cuerpoEnviado())).toEqual(['salaId', 'desde', 'hasta', 'motivo']);
     expect(JSON.stringify(cuerpoEnviado())).not.toMatch(/hora/i);
   });
 
   /**
-   * `todoElDia: true` VIAJA, aunque ya no haya interruptor que lo mueva.
+   * NINGUN CAMPO QUITADO VIAJA, NI SIQUIERA `todoElDia: true`.
    *
-   * Es la mitad que el test de arriba no cubre: sin horas y sin control, la
-   * tentacion es borrar tambien la clave. El service la resuelve con
-   * `dto.todoElDia ?? true`, asi que omitirla funciona HOY y depende de un
-   * default del servidor; el dia que ese default cambie, cada cierre de esta
-   * pantalla pasaria a ser una franja sin horas. Es un valor, no un hueco.
+   * Hasta la Fase 20 esta pantalla mandaba `todoElDia: true` fijo. La columna
+   * se quito, y el `ValidationPipe` de la API corre con
+   * `forbidNonWhitelisted`: una clave que el DTO ya no declara es un 400, y
+   * con ella dejaria de poder cargarse un solo cierre.
    */
-  it('`todoElDia: true` viaja siempre, aunque el interruptor ya no exista', async () => {
+  it('el cuerpo no lleva ninguno de los campos que se quitaron', async () => {
     montar();
 
     await completarElAlta();
     await enviarElAlta();
 
     const cuerpo = cuerpoEnviado();
-    expect('todoElDia' in cuerpo).toBe(true);
-    // Un booleano de verdad, no la cadena «true» ni un `1`.
-    expect(cuerpo.todoElDia).toBe(true);
+    for (const quitado of ['todoElDia', 'horaInicio', 'horaFin', 'recuperable']) {
+      expect(cuerpo).not.toHaveProperty(quitado);
+    }
   });
 });
 
@@ -974,13 +881,8 @@ describe('lo que dice la API cuando no', () => {
   });
 
   /**
-   * SE FUE «horaFin debe ser posterior a horaInicio».
-   *
-   * Ese 400 lo tira el `!todoElDia` del service, y esta pantalla manda
-   * `todoElDia: true` fijo: el mensaje ya no puede llegar, y un test que
-   * fabricara el error con `errorAlEscribir` estaria probando el doble, no la
-   * pantalla. Lo que si queda fijado —en el bloque de la franja— es que el
-   * cuerpo no lleva horas, que es lo que hace inalcanzable ese camino.
+   * SE FUE «horaFin debe ser posterior a horaInicio»: la franja horaria se
+   * quito de la API en la Fase 20 y ese 400 ya no existe.
    */
   it('una sala que ya no existe se dice con el texto del service', async () => {
     montar({

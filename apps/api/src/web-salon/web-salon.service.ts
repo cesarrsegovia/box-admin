@@ -278,9 +278,14 @@ export class WebSalonService {
    * que nadie traduce y sale como un 500 opaco. Comprobarlo antes lo convierte
    * en un 400 que dice que pasa. El `findFirst` va con el filtro de tenant
    * inyectado, asi que el pack de otro gimnasio no existe para esta consulta.
+   *
+   * `null` es «Ninguno» y vale lo mismo que omitirlo: sin destacado. Y NO se
+   * filtra por `activo`: el formulario reenvia el destacado tal cual aunque se
+   * haya dado de baja, y rechazarlo bloquearia guardar cualquier otro campo.
+   * La landing ya no lo muestra porque `PublicoService.packs` lee solo activos.
    */
-  private async planDestacadoDeEsteGimnasio(id: string | undefined): Promise<string | null> {
-    if (id === undefined) return null;
+  private async planDestacadoDeEsteGimnasio(id: string | null | undefined): Promise<string | null> {
+    if (id === undefined || id === null) return null;
 
     const pack = await this.prisma.db.pack.findFirst({ where: { id }, select: { id: true } });
     if (pack === null) {

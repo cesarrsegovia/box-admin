@@ -93,8 +93,8 @@ export class MisClasesService {
       horaFin: turno.horaFin,
       cupo: turno.cupo,
       reservasActivas: turno.reservas.length,
-      // Basta con que una tenga la marca: pasar lista escribe todas de golpe.
-      listaPasada: turno.reservas.some((reserva) => reserva.asistio !== null),
+      // Sin `listaPasada` desde la Fase 20: era `reservas.some(asistio !== null)`
+      // y un solo check-in por QR lo encendia con la lista sin pasar.
     }));
   }
 

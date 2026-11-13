@@ -36,7 +36,15 @@ export interface CajaDelMes {
   bonificado: Importe;
   costoProfesoras: Importe;
   margen: Importe;
+  /** Suma SOLO a los que deben con precio conocido (un pack de precio 0 cuenta, y suma 0). */
   pendienteEstimado: Importe;
+  /**
+   * Cuantos de los que deben quedaron FUERA de `pendienteEstimado` porque no se
+   * sabe cuanto deben: su pack esta "a consultar" o ya no esta en el catalogo.
+   * Sin este numero, el total se leeria como completo siendo mas chico que la
+   * verdad. Uno solo, sin desglose.
+   */
+  sinPrecio: number;
 }
 
 /**

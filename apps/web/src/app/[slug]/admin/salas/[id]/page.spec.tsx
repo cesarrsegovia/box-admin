@@ -62,7 +62,6 @@ function unaSala(cambios: Partial<SalaPublica> = {}): SalaPublica {
     activa: true,
     visibleAlumnos: true,
     soloCuposLiberados: false,
-    exclusiva: false,
     cupoBase: null,
     minMinutosCancelar: null,
     minMinutosAnotarse: null,
@@ -201,8 +200,8 @@ describe('los ajustes de la sala', () => {
   /**
    * LISTA BLANCA de controles: los OCHO y ninguno mas.
    *
-   * `SalaPublica` trae NUEVE campos editables. El noveno es `exclusiva` y no
-   * se dibuja: ver el test de abajo.
+   * `SalaPublica` trae OCHO campos editables. Hubo un noveno, `exclusiva`, que
+   * se quito en la Fase 20: ver el test de abajo.
    */
   it('dibuja ESTOS ajustes y solo estos', () => {
     montar({ sala: unaSala({ cupoBase: 12, minMinutosCancelar: 30 }) });
@@ -222,13 +221,12 @@ describe('los ajustes de la sala', () => {
   });
 
   /**
-   * `exclusiva` ES UN CAMPO MUERTO.
+   * `exclusiva` ERA UN CAMPO MUERTO.
    *
-   * Se escribe en el alta (`salas.service.ts`, `exclusiva: dto.exclusiva ??
-   * false`) y se mapea al contrato en `aSalaPublica`. Y ahi se acaba: ninguna
-   * regla del sistema lo lee —ni la disponibilidad, ni el planificador del mes,
-   * ni los packs, ni la visibilidad—. Un interruptor que no cambia nada es peor
-   * que no tenerlo.
+   * Se guardaba y ninguna regla del sistema lo leia —ni la disponibilidad, ni
+   * el planificador del mes, ni los packs, ni la visibilidad—, y en la Fase 20
+   * se quito de punta a punta. Un interruptor que no cambia nada es peor que no
+   * tenerlo; si vuelve, vuelve con su logica.
    *
    * SE AFIRMA SOBRE EL MARCADO, no con `queryByRole`. `queryByRole` consulta el
    * arbol de accesibilidad, que ya excluye por su cuenta lo que lleva `hidden`,
@@ -236,7 +234,7 @@ describe('los ajustes de la sala', () => {
    * ese test en verde y seguiria en el HTML que llego al navegador.
    */
   it('NO dibuja el campo exclusiva', () => {
-    montar({ sala: unaSala({ exclusiva: true }) });
+    montar();
 
     expect(document.body.innerHTML).not.toMatch(/exclusiv/i);
   });

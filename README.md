@@ -2675,6 +2675,85 @@ Lo que las Fases 17 y 18 dejaron como «sigue». Ninguna función nueva y ningú
 - **El reloj adelantado en los e2e y en la web.**
 - Ver `docs/superpowers/plans/PROGRESO.md`.
 
+## La deuda vieja — Fase 20
+
+Cierra la lista «Vieja, y sigue en pie» que venía de la Fase 13. Hay dos migraciones:
+`20261113150457_fase20_quitar_campos_muertos` y `20261113170000_fase20_avisos_por_persona`.
+
+- **Una ausencia es siempre de días enteros.** Se quitaron del esquema, de los DTO, de
+  `packages/shared` y de la web los campos que se guardaban y nadie leía: `Sala.exclusiva`,
+  `Ausencia.recuperable` y la franja horaria de una ausencia (`todoElDia`, `horaInicio`, `horaFin`).
+  Como el `ValidationPipe` lleva `forbidNonWhitelisted`, **un cliente que todavía los mande recibe
+  400**.
+- **`listaPasada` ya no está** en la respuesta de mis-clases (el del check-in sigue).
+- **El 403 de anotar ya no nombra una ruta de API.** Dice «Esta persona no tiene acceso a la sala de
+  este turno. Asignásela desde su ficha, en Salas.», con su variante en rutinas y en el alta.
+- **`centavos: null` con motivo.** En la caja del mes, `PendienteDeAlumno` es `{ centavos: number }`
+  (0 es «cuesta 0») o `{ centavos: null, motivo: 'a-consultar' | 'sin-pack' }`. `pendienteEstimado`
+  suma sólo los precios conocidos y `CajaDelMes.sinPrecio` cuenta cuántos quedaron fuera; Análisis →
+  Caja lo dice («Mas N a consultar…»). `sin-pack` es para un pack que ya no está en el catálogo: uno
+  dado de baja conserva su precio, así que hoy es casi inalcanzable. Morosos sigue mostrando 0, con su
+  aviso.
+- **Los jobs diarios marcan por persona.** `recordatorio-pago` y `vencimiento-pack` insertan una marca
+  en `AvisoDiario` (`@@unique([tenantId, tipo, perfilId, dia])`) **antes** de mandar cada aviso
+  (`jobs/notificaciones/aviso-diario.ts`). Si choca con la clave única, esa persona ya recibió el aviso
+  hoy y se salta. Un corte pierde a lo sumo el aviso de la persona marcada y no enviada, y un fallo al
+  marcar a alguien se registra sin abortar a los demás. La marca por gimnasio del payload se fue. Las
+  filas viejas no se borran; las de días pasados se pueden borrar sin riesgo si algún día pesan.
+- **«Reasignar»** no ofrece los turnos que ya empezaron, y los llenos se ven deshabilitados con
+  «(lleno)».
+- **El plan destacado tiene editor** en Configuración → Web: «Ninguno» y los packs activos. Si el
+  destacado se da de baja, el selector lo muestra como «(dado de baja)» hasta que se elija otro, y la
+  landing ya no lo muestra (sólo lee los packs activos). `planDestacadoId: null` quita el destacado
+  (antes daba 500). El destacado sólo se ve en la landing con «Mostrar los precios» encendido.
+- **El hook `use-rutinas` tiene spec**, y entrar o salir de la lista de espera ya no invalida
+  `/mi-pack`.
+
+### Rotar la clave de cifrado
+
+`APP_ENCRYPTION_KEY` cifra las contraseñas SMTP (`ConfiguracionSMTP.claveCifrada`, la única columna
+cifrada). `cifrar` usa siempre la actual; `descifrar` prueba la actual y, si hay,
+`APP_ENCRYPTION_KEY_ANTERIOR`. El formato `v1:…` no cambia.
+
+1. Generar la nueva:
+   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+2. En el entorno, **la nueva va en `APP_ENCRYPTION_KEY`** y **la vieja en
+   `APP_ENCRYPTION_KEY_ANTERIOR`**. Las dos son de 64 caracteres hex; si son iguales, la API no
+   arranca.
+3. Desplegar. Desde ahí se lee lo viejo y se escribe con la nueva.
+4. Correr `pnpm --filter @boxadmin/api cifrado:rotar`, que re-cifra con la actual lo que estaba con la
+   anterior. Es idempotente: lo que ya está con la actual lo saltea. Informa rotados, al día y
+   fallidos; los fallidos (ninguna clave los descifra) salen con el id del gimnasio, que tiene que
+   volver a cargar su contraseña SMTP, y el comando termina con código 1.
+5. **Repetirlo hasta que informe 0 rotados** (y 0 fallidos).
+6. Quitar `APP_ENCRYPTION_KEY_ANTERIOR` y volver a desplegar.
+
+> ⚠️ **Rotar la clave invalida los QR de check-in ya impresos.** `checkin/firma-qr.ts` firma con un
+> HMAC sobre `APP_ENCRYPTION_KEY` y **no acepta la anterior**: desde el despliegue del paso 3, los QR
+> viejos dejan de servir. Hay que **reimprimir el QR de cada gimnasio** desde Configuración → Check-in.
+
+Además, rotar cambia el `updatedAt` de la fila SMTP y no deja rastro en `HistorialAccion`.
+
+### El contenedor `api`
+
+Los volúmenes anónimos de `node_modules` sobreviven a cada recreación y tapaban el `node_modules` de
+la imagen nueva (así se rompió con `@nestjs/throttler`). Ahora el `command` del servicio corre primero
+`pnpm install --frozen-lockfile --offline` (sale del store de la imagen, sin red; ~1 s) y
+`prisma generate`, y recién después `pnpm start:dev`. Se arranca con:
+
+```bash
+docker compose up -d --build api
+```
+
+`-V` ya no hace falta, aunque no molesta.
+
+### Lo que esta fase NO trae
+
+- **Ausencias por franja horaria**: se quitaron; si vuelven, vuelven con su lógica.
+- **Una limpieza de `AvisoDiario`.**
+- **Que los QR de check-in sobrevivan a una rotación.**
+- Ver `docs/superpowers/plans/PROGRESO.md`.
+
 ## Tests
 
 Unitarios:

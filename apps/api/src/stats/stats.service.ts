@@ -91,11 +91,21 @@ const MS_POR_DIA = 86_400_000;
  */
 const SIN_PACK = 'Sin pack';
 
-/** Un pendiente de un alumno concreto. La Task 7 lo desglosa; la caja lo suma. */
-export interface PendienteDeAlumno {
-  perfilId: string;
-  centavos: number;
-}
+/**
+ * Un pendiente de un alumno concreto. La Task 7 lo desglosa; la caja lo suma.
+ *
+ * `centavos: null` CON SU MOTIVO, y no un cero (Fase 20). Un cero quiere decir
+ * "su pack cuesta 0", que es un precio conocido; no saber cuanto debe alguien
+ * es otra cosa, y sumarlo como cero achicaba el total sin decirlo.
+ *
+ * - `a-consultar`: el pack existe y no tiene precio.
+ * - `sin-pack`: el `packId` no esta en el catalogo. Quien no tiene pack ni
+ *   siquiera llega aqui (`perfilesConPack` lo descarta), y un pack dado de baja
+ *   conserva su precio; ver `PerfilConPack.packEnCatalogo`.
+ */
+export type PendienteDeAlumno =
+  | { perfilId: string; centavos: number }
+  | { perfilId: string; centavos: null; motivo: 'a-consultar' | 'sin-pack' };
 
 /**
  * Quien debe, y cuanto se estima que debe.
@@ -106,8 +116,9 @@ export interface PendienteDeAlumno {
  *
  * ES UN ESTIMADO Y POR ESO SE LLAMA ASI: el sistema no lleva cuenta corriente.
  * Es lo que costaria ponerse al dia con un pack, no una deuda calculada contra
- * un saldo. Un pack sin precio ("a consultar") aporta cero y no un NaN: no
- * saber cuanto debe alguien no es lo mismo que romper el reporte entero.
+ * un saldo. Un pack sin precio ("a consultar") no aporta un NaN —no saber
+ * cuanto debe alguien no es lo mismo que romper el reporte entero— pero
+ * TAMPOCO un cero: aporta `null` con su motivo, y quien suma decide.
  */
 export function pendientesDe(
   perfiles: PerfilConPack[],
@@ -115,10 +126,15 @@ export function pendientesDe(
 ): PendienteDeAlumno[] {
   return perfiles
     .filter((perfil) => !alDia.has(perfil.perfilId))
-    .map((perfil) => ({
-      perfilId: perfil.perfilId,
-      centavos: perfil.precioPack === null ? 0 : aCentavos(perfil.precioPack),
-    }));
+    .map((perfil): PendienteDeAlumno => {
+      if (!perfil.packEnCatalogo) {
+        return { perfilId: perfil.perfilId, centavos: null, motivo: 'sin-pack' };
+      }
+      if (perfil.precioPack === null) {
+        return { perfilId: perfil.perfilId, centavos: null, motivo: 'a-consultar' };
+      }
+      return { perfilId: perfil.perfilId, centavos: aCentavos(perfil.precioPack) };
+    });
 }
 
 /**
@@ -266,7 +282,8 @@ export class StatsService {
       // margen puede quedar en rojo: un mes flojo con las clases dadas es
       // exactamente eso, y el numero tiene que poder decirlo.
       margen: importe(cobrado - costoProfesoras),
-      pendienteEstimado: importe(pendienteEstimado),
+      pendienteEstimado: importe(pendienteEstimado.centavos),
+      sinPrecio: pendienteEstimado.sinPrecio,
     };
   }
 
@@ -313,14 +330,26 @@ export class StatsService {
    * cerro— que no cambia al volver a pedirlo manana. Para un mes futuro da
    * "todos pendientes", y es literalmente cierto: nadie pago diciembre todavia.
    */
-  private async pendienteEstimado(anio: number, mes: number): Promise<number> {
+  private async pendienteEstimado(
+    anio: number,
+    mes: number,
+  ): Promise<{ centavos: number; sinPrecio: number }> {
     const perfiles = await this.datos.perfilesConPack();
     const alDia = await this.datos.perfilesAlDia(
       perfiles.map((perfil) => perfil.perfilId),
       ultimoDiaDelMesUtc(anio, mes),
     );
 
-    return pendientesDe(perfiles, alDia).reduce((total, fila) => total + fila.centavos, 0);
+    // Suma SOLO los conocidos y cuenta aparte los que no: el total de la caja
+    // es "al menos esto", y la pantalla lo dice con `sinPrecio`.
+    let centavos = 0;
+    let sinPrecio = 0;
+    for (const fila of pendientesDe(perfiles, alDia)) {
+      if (fila.centavos === null) sinPrecio += 1;
+      else centavos += fila.centavos;
+    }
+
+    return { centavos, sinPrecio };
   }
 
   /**
@@ -415,11 +444,13 @@ export class StatsService {
    * contaba como ausencia igual — la mutacion que esta fase declara como la mas
    * peligrosa, en version chica y viviendo dentro del codigo correcto.
    *
-   * `listaPasada` SIGUE SIENDO CORRECTO DONDE NACIO y por eso no se toco alli:
-   * en `MisClasesService` decide si mostrarle a la profesora la lista de un
-   * turno, que es una pregunta sobre el TURNO. Aqui la pregunta es sobre cada
-   * reserva, asi que era la lente equivocada; traerlo prestado no fue reutilizar
-   * una regla, fue reutilizar una que contestaba otra cosa.
+   * Desde la Fase 20 `MisClasesService` ya no publica `listaPasada`: el
+   * contrato de mis-clases lo perdio porque un solo check-in por QR lo
+   * encendia con la lista sin pasar. La marca por reserva vive ahora solo en
+   * el check-in (`eleccion-de-reserva.ts`, que es otro `listaPasada`, sobre UNA
+   * reserva). Aqui la pregunta es sobre cada reserva, asi que la lente del
+   * turno era la equivocada; traerlo prestado no fue reutilizar una regla, fue
+   * reutilizar una que contestaba otra cosa.
    *
    * CANCELACION: separada en RECUPERABLE y DEFINITIVA, nunca sumadas.
    * Mezclarlas esconde lo unico accionable que tienen: la recuperable es
@@ -656,7 +687,11 @@ export class StatsService {
           // Un pack borrado deja al alumno con un nombre que no existe. `null`
           // y no `''`: "no se sabe cual" y "se llama vacio" son cosas distintas.
           packNombre: pack?.nombre ?? null,
-          pendienteEstimado: importe(fila.centavos),
+          // `PagoPendiente` no cambio de forma en la Fase 20: un precio
+          // desconocido se sigue pintando como 0, y la pantalla de morosos ya
+          // avisa al lado que ese cero no es estar al dia. La caja si separa los
+          // dos casos (`CajaDelMes.sinPrecio`).
+          pendienteEstimado: importe(fila.centavos ?? 0),
           cancelacionesDelMes: cancelaciones.get(fila.perfilId) ?? 0,
         };
       })

@@ -1,12 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Ausencia } from '@prisma/client';
-import {
-  aFechaISO,
-  comparaHoras,
-  desdeFechaISO,
-  type AusenciaPublica,
-  type JwtPayload,
-} from '@boxadmin/shared';
+import { aFechaISO, desdeFechaISO, type AusenciaPublica, type JwtPayload } from '@boxadmin/shared';
 import { HistorialService } from '../common/historial/historial.service';
 import { PrismaService, type ClientePrismaTx } from '../prisma/prisma.service';
 import { CacheDeStats } from '../stats/cache-de-stats';
@@ -26,10 +20,6 @@ export function aAusenciaPublica(ausencia: Ausencia): AusenciaPublica {
     salaId: ausencia.salaId,
     desde: aFechaISO(ausencia.desde),
     hasta: aFechaISO(ausencia.hasta),
-    todoElDia: ausencia.todoElDia,
-    horaInicio: ausencia.horaInicio,
-    horaFin: ausencia.horaFin,
-    recuperable: ausencia.recuperable,
     motivo: ausencia.motivo,
   };
 }
@@ -51,24 +41,6 @@ export class AusenciasService {
       throw new BadRequestException('hasta no puede ser anterior a desde');
     }
 
-    const todoElDia = dto.todoElDia ?? true;
-
-    if (!todoElDia) {
-      if (!dto.horaInicio || !dto.horaFin) {
-        throw new BadRequestException(
-          'Un cierre parcial necesita horaInicio y horaFin. Si cierra el dia entero, usa todoElDia.',
-        );
-      }
-      if (comparaHoras(dto.horaFin, dto.horaInicio) <= 0) {
-        throw new BadRequestException('horaFin debe ser posterior a horaInicio');
-      }
-    }
-
-    // Con todoElDia, el tramo horario no significa nada: se descarta en vez de
-    // guardarse a medias y confundir al motor.
-    const horaInicio = todoElDia ? null : (dto.horaInicio as string);
-    const horaFin = todoElDia ? null : (dto.horaFin as string);
-
     // Sin salaId el cierre es del salon entero y no hay nada que comprobar.
     if (dto.salaId) {
       const sala = await this.prisma.db.sala.findFirst({ where: { id: dto.salaId } });
@@ -84,10 +56,6 @@ export class AusenciasService {
           salaId: dto.salaId ?? null,
           desde: desdeFechaISO(dto.desde),
           hasta: desdeFechaISO(dto.hasta),
-          todoElDia,
-          horaInicio,
-          horaFin,
-          recuperable: dto.recuperable ?? true,
           motivo: dto.motivo ?? null,
         },
       });
@@ -102,7 +70,6 @@ export class AusenciasService {
             salaId: dto.salaId ?? null,
             desde: dto.desde,
             hasta: dto.hasta,
-            todoElDia,
           },
         },
         cliente,

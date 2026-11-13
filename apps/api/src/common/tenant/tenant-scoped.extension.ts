@@ -35,6 +35,8 @@ export const MODELOS_CON_TENANT = [
   'WebSalonConfig',
   'Testimonio',
   'PreguntaFrecuente',
+  // Fase 20: la marca por persona de los jobs diarios.
+  'AvisoDiario',
 ] as const;
 
 /** Modelos que se aíslan a través de una relación: modelo -> campo de relación. */

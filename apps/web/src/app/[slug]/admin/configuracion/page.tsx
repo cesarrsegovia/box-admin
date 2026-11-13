@@ -131,7 +131,7 @@ const LAS_SECCIONES = [
  * registro del servidor, que quien esta en el mostrador no ve nunca.
  *
  * Aun asi se dibuja, y la diferencia con `exclusiva`, `recuperable` y la
- * franja horaria de la Fase 10 es que aquellos no hacian NADA: si Redis esta
+ * franja horaria —quitados en la Fase 20— es que aquellos no hacian NADA: si Redis esta
  * caido, este POST falla. O sea que encolar SI demuestra algo verdadero —que
  * la API alcanza la cola— y mas chico que «todo funciona». La respuesta a eso
  * no es esconderlo, es nombrarlo bien.

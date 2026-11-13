@@ -139,21 +139,15 @@ const TURNO_A = 'turno-de-las-nueve';
 const TURNO_B = 'turno-de-las-once';
 
 /**
- * LA CLASE DE LAS NUEVE, CON `listaPasada: true` **POR UN QR Y NADA MAS**.
+ * LA CLASE DE LAS NUEVE.
  *
- * Este fijo es el caso que la pantalla existe para no creerse, y es POSIBLE en
- * la API palabra por palabra: `listaPasada` sale de
- * `reservas.some(r => r.asistio !== null)`, y el check-in por QR escribe
- * `asistio: true` en `CheckinService.escribir`. O sea que **una sola** persona
- * que escanea al entrar deja este campo en `true` con la lista sin pasar.
- *
- * ⚠️ POR ESO VIENE CON `ALUMNOS_CON_UN_QR` Y NO CON UNA LISTA SIN MARCAR.
- * `listaPasada: true` sobre tres `asistio: null` es una respuesta que la API NO
- * PUEDE DAR —el `.some()` seria falso—, y un fijo imposible vuelve decorativa
- * cualquier afirmacion hecha encima. El fijo tiene que ser el caso real: UNO
- * marcado por el QR, los otros dos en `null`, y el booleano gritando «hecha».
+ * Hasta la Fase 20 este fijo traia `listaPasada: true` por un QR y nada mas: la
+ * API lo calculaba como `reservas.some(r => r.asistio !== null)`, y **una sola**
+ * persona que escaneaba al entrar lo encendia con la lista sin pasar. El
+ * contrato ya no trae ese campo; lo que sigue pudiendo pasar es que el QR deje
+ * UNA marca en la lista, y eso es `ALUMNOS_CON_UN_QR`, no la clase.
  */
-const CLASE_CON_QR: ClaseDelProfesor = {
+const CLASE_A: ClaseDelProfesor = {
   turnoId: TURNO_A,
   salaId: 'sala-1',
   salaNombre: 'Sala grande',
@@ -163,19 +157,7 @@ const CLASE_CON_QR: ClaseDelProfesor = {
   horaFin: '10:00',
   cupo: 12,
   reservasActivas: 3,
-  listaPasada: true,
 };
-
-/**
- * LA MISMA CLASE, byte por byte, salvo el booleano. Es el control.
- *
- * Esta va con `ALUMNOS_SIN_MARCAR` —nadie tiene estado—, que es lo que hace
- * cierto su `listaPasada: false`. Los dos fijos son posibles y los dos tienen
- * numeros DISTINTOS, que es lo que obliga al test de la ausencia a comparar
- * «el texto salvo los numeros» en vez de dos cadenas identicas por
- * construccion.
- */
-const CLASE_SIN_QR: ClaseDelProfesor = { ...CLASE_CON_QR, listaPasada: false };
 
 const CLASE_B: ClaseDelProfesor = {
   turnoId: TURNO_B,
@@ -187,7 +169,6 @@ const CLASE_B: ClaseDelProfesor = {
   horaFin: '12:00',
   cupo: 8,
   reservasActivas: 2,
-  listaPasada: false,
 };
 
 /** TRES ANOTADOS Y NINGUNO MARCADO. Lo que dice la agenda: «faltan 3 de 3». */
@@ -208,7 +189,7 @@ const ALUMNOS_SIN_MARCAR: AlumnoEnClase[] = [
 /**
  * LA MISMA LISTA CON **UN** QR ENCIMA: «faltan 2 de 3».
  *
- * Es el fijo que acompaña a `CLASE_CON_QR`, y los tres numeros que produce son
+ * Es el fijo que acompaña a `CLASE_A`, y los tres numeros que produce son
  * los tres DISTINTOS —anotados 3, marcados 1, faltan 2—, que es justamente lo
  * que una lista sin marcar no puede dar: alli `faltan` y `anotados` valen los
  * dos 3, asi que un conteo que devolviera los anotados en vez de los que faltan
@@ -245,7 +226,7 @@ const ALUMNOS_TODOS_MARCADOS: AlumnoEnClase[] = [
 ];
 
 /** La agenda de siempre: las dos clases, en el orden en que las manda el service. */
-const AGENDA: ClaseDelProfesor[] = [CLASE_CON_QR, CLASE_B];
+const AGENDA: ClaseDelProfesor[] = [CLASE_A, CLASE_B];
 
 /** Las listas de cada turno, por id: el doble responde por RUTA, no por orden. */
 const LISTAS: Record<string, AlumnoEnClase[]> = {
@@ -399,8 +380,8 @@ function textoDeLaPantalla(): string {
  * Los dos montajes del test de la ausencia tienen listas distintas —una con el
  * QR y otra sin nada—, porque tienen que ser los dos POSIBLES. O sea que sus
  * cuentas difieren a proposito: «faltan 2 de 3» y «faltan 3 de 3». Lo que se
- * compara es todo lo demas, y si ahi aparece un cartel que solo sale con
- * `listaPasada`, las dos cadenas dejan de ser iguales.
+ * compara es todo lo demas, y si ahi aparece un cartel que sale de la marca
+ * del QR, las dos cadenas dejan de ser iguales.
  */
 function textoSinNumeros(): string {
   return textoDeLaPantalla().replace(/\d/g, '#');
@@ -420,27 +401,32 @@ async function escribirElRango(desde: string, hasta: string): Promise<void> {
 // El cartel que no esta
 // ---------------------------------------------------------------------------
 
-describe('la agenda no se cree el «lista pasada» de la API', () => {
+describe('la agenda no dibuja ninguna marca de «lista pasada»', () => {
   /**
    * EL TEST QUE MIDE UNA AUSENCIA, Y POR QUE NO BUSCA LA FRASE.
    *
+   * Desde la Fase 20 el contrato de mis-clases ya no trae `listaPasada`: que la
+   * pantalla no lo lea de la API lo garantiza el tipo. Lo que este test sigue
+   * fijando es que NADIE LO CALCULE POR OTRO LADO —p. ej. un
+   * `lista.some(a => a.asistio !== null)` sobre el detalle, que repetiria la
+   * misma mentira: un solo QR encenderia «hecha» con la lista sin pasar—.
+   *
    * Buscar `'lista pasada'` mataria UN cartel escrito de UNA manera. Un tilde
    * verde, un `aria-label="ya esta"`, una clase CSS distinta o un «hecha» lo
-   * esquivan todos sin despeinarse, y entonces este test pasaria en verde
-   * sobre la mentira que existe para impedir.
+   * esquivan todos sin despeinarse.
    *
    * Asi que se mide por DIFERENCIA. Se monta dos veces la misma clase —una con
-   * el QR encima y otra sin nada— y se compara **el texto salvo los numeros**.
-   * Los numeros TIENEN que diferir: los dos fijos son posibles y por eso sus
-   * cuentas son 2 de 3 y 3 de 3. Todo lo demas tiene que ser identico, y si la
-   * pantalla usara el booleano PARA LO QUE SEA —un cartel, un tilde, una
-   * palabra— dejaria de serlo.
+   * el QR en su lista y otra sin nada— y se compara **el texto salvo los
+   * numeros**. Los numeros TIENEN que diferir: las dos listas son posibles y
+   * por eso sus cuentas son 2 de 3 y 3 de 3. Todo lo demas tiene que ser
+   * identico, y si la pantalla usara la marca del QR PARA LO QUE SEA —un
+   * cartel, un tilde, una palabra— dejaria de serlo.
    *
    * Y SE COMPRUEBA QUE EL TEXTO NO ESTA VACIO antes de compararlos, que es el
    * caso ciego de este test: dos pantallas en blanco tambien son identicas.
    */
-  it('NO dice «lista pasada» en ningun sitio', async () => {
-    await montarYEsperar({ agenda: [CLASE_CON_QR], listas: { [TURNO_A]: ALUMNOS_CON_UN_QR } });
+  it('una marca de QR en la lista no cambia nada salvo los numeros', async () => {
+    await montarYEsperar({ agenda: [CLASE_A], listas: { [TURNO_A]: ALUMNOS_CON_UN_QR } });
 
     const conQr = textoSinNumeros();
     // El control del caso ciego: hubo pantalla, y la cuenta llego a pintarse.
@@ -451,12 +437,11 @@ describe('la agenda no se cree el «lista pasada» de la API', () => {
     cleanup();
     vi.clearAllMocks();
 
-    await montarYEsperar({ agenda: [CLASE_SIN_QR], listas: { [TURNO_A]: ALUMNOS_SIN_MARCAR } });
+    await montarYEsperar({ agenda: [CLASE_A], listas: { [TURNO_A]: ALUMNOS_SIN_MARCAR } });
 
-    // Los dos montajes difieren DE VERDAD: en el booleano y en los numeros. Sin
-    // estas dos lineas, dos fijos iguales por un descuido harian pasar el test
-    // sin medir nada, y el enmascarado de los digitos lo taparia.
-    expect(CLASE_CON_QR.listaPasada).not.toBe(CLASE_SIN_QR.listaPasada);
+    // Los dos montajes difieren DE VERDAD en los numeros. Sin esta linea, dos
+    // listas iguales por un descuido harian pasar el test sin medir nada, y el
+    // enmascarado de los digitos lo taparia.
     expect(cuentaDe(TURNO_A).texto).not.toBe(numerosConQr);
 
     expect(textoSinNumeros()).toBe(conQr);
@@ -583,10 +568,10 @@ describe('una peticion por clase, y el tope a partir del cual no se pide', () =>
   /**
    * PASADO EL TOPE **NO SE PIDE NADA** Y SE DICE QUE NO SE PIDIO.
    *
-   * La tentacion es caer al `listaPasada` que ya viene en la agenda, que es
-   * gratis. Seria la peor de las salidas: un si/no que puede ser falso, y
-   * mintiendo SOLO en los rangos largos, que es donde nadie va a ir a
-   * comprobarlo. Aqui no se pide y se dice.
+   * Hasta la Fase 20 la tentacion era caer al `listaPasada` que venia gratis en
+   * la agenda: un si/no que podia ser falso, mintiendo SOLO en los rangos
+   * largos, que es donde nadie va a ir a comprobarlo. El contrato ya no lo
+   * trae, y la regla sigue: aqui no se pide y se dice.
    */
   it('con mas clases que el tope, no sale ni una peticion de detalle', async () => {
     const muchas = Array.from({ length: MAX_CLASES_CON_DETALLE + 1 }, (_, i) => ({

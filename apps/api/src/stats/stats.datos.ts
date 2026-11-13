@@ -31,8 +31,22 @@ export interface PagoParaCaja {
 export interface PerfilConPack {
   perfilId: string;
   packId: string;
-  /** Dos decimales, o `null` cuando el pack es "a consultar" (precio sin fijar). */
+  /**
+   * Dos decimales, o `null` cuando el pack es "a consultar" (precio sin fijar).
+   * Solo dice algo si `packEnCatalogo` es `true`.
+   */
   precioPack: string | null;
+  /**
+   * `false` cuando el `packId` no aparece en el catalogo del gimnasio.
+   *
+   * Hasta la Fase 20 ese caso y el "a consultar" llegaban los dos como
+   * `precioPack: null` y no habia forma de separarlos despues. Hoy la FK
+   * compuesta de `Perfil.pack` y la baja logica de `Pack` lo hacen inalcanzable
+   * por la API; queda escrito porque es la otra mitad del `?? null` de abajo.
+   * Un pack DADO DE BAJA (`activo: false`) SI esta en el catalogo y conserva su
+   * precio: no es este caso.
+   */
+  packEnCatalogo: boolean;
 }
 
 /** Un turno del mes, reducido a lo que las metricas operativas necesitan. */
@@ -228,15 +242,21 @@ export class StatsDatos {
       packs.map((pack) => [pack.id, pack.precio === null ? null : pack.precio.toFixed(2)]),
     );
 
-    return perfiles.map((perfil) => ({
-      perfilId: perfil.id,
+    return perfiles.map((perfil) => {
       // El `where` ya descarto los nulos; el `?? ''` solo existe porque Prisma
       // tipa la columna como opcional y TypeScript no sabe leer el `where`.
-      packId: perfil.packId ?? '',
-      // Un pack que ya no esta o cuyo precio esta "a consultar" vale null, no
-      // cero: son dos cosas distintas y el reporte las dice distinto.
-      precioPack: precioPorPack.get(perfil.packId ?? '') ?? null,
-    }));
+      const packId = perfil.packId ?? '';
+
+      return {
+        perfilId: perfil.id,
+        packId,
+        // "A consultar" vale null, no cero. Y un pack que no esta vale null
+        // TAMBIEN, pero con `packEnCatalogo: false`: son dos motivos distintos y
+        // `pendientesDe` los devuelve distintos.
+        precioPack: precioPorPack.get(packId) ?? null,
+        packEnCatalogo: precioPorPack.has(packId),
+      };
+    });
   }
 
   /**

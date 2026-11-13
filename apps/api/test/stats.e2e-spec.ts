@@ -330,6 +330,37 @@ describe('Fase 6A — la analitica cuadra contra los datos (e2e)', () => {
     expect(despues.cobrado.texto).toBe('12345.67');
   });
 
+  // --- 4b. El pendiente con motivo (Fase 20) --------------------------------
+
+  it('el pendiente de la caja suma solo los precios conocidos y cuenta los "a consultar"', async () => {
+    // Contra la base de verdad y no el doble: el doble de Prisma ignora el
+    // `select`, asi que solo aqui se ve que la consulta de `perfilesConPack`
+    // trae lo necesario para separar "a consultar" de "cuesta 0".
+    const e = await montar('f20-sin-precio');
+
+    async function pack(nombre: string, precio?: string): Promise<string> {
+      const { body } = await request(servidor)
+        .post('/packs')
+        .set(auth(e.gym.adminToken))
+        .send({ nombre, tipo: 'MENSUAL', clasesPorMes: 8, ...(precio ? { precio } : {}) })
+        .expect(201);
+      return body.id;
+    }
+
+    const conPrecio = await pack('8 clases', '8500.00');
+    const aConsultar = await pack('A consultar');
+    const gratis = await pack('Prueba', '0.00');
+    for (const packId of [conPrecio, aConsultar, aConsultar, gratis]) {
+      await crearAlumnoPorInvitacion(app, e.gym, [e.salaId], { packId });
+    }
+
+    // Un mes que nadie pago todavia: los cuatro deben.
+    const body = await caja(e, 2099, 1);
+
+    expect(body.pendienteEstimado).toEqual({ centavos: centavosDe('8500.00'), texto: '8500.00' });
+    expect(body.sinPrecio).toBe(2);
+  });
+
   // --- 5. Los roles ---------------------------------------------------------
 
   it('ADMIN_OPERATIVO no puede ver la caja ni la liquidacion', async () => {

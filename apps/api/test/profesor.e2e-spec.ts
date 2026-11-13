@@ -716,6 +716,29 @@ describe('Fase 4 — el profesor como entidad real (e2e)', () => {
       return turno.body.id;
     }
 
+    // Fase 20: el contrato de mis-clases ya no trae `listaPasada`. Se mira con
+    // la lista YA PASADA, que es cuando el campo viejo habria valido `true`.
+    it('con la lista pasada, la agenda no trae listaPasada', async () => {
+      const e = await montar('p4-sin-lista-pasada');
+      const turnoId = await claseYaDada(e);
+
+      await request(servidor)
+        .post(`/mis-clases/${turnoId}/asistencia`)
+        .set(auth(e.fati.token))
+        .send({ presentes: [e.alumnoPerfilId] })
+        .expect(201);
+
+      const clases = await request(servidor)
+        .get('/mis-clases')
+        .query({ desde: '2020-01-06', hasta: '2020-01-06' })
+        .set(auth(e.fati.token))
+        .expect(200);
+
+      expect(clases.body).toHaveLength(1);
+      expect(clases.body[0].turnoId).toBe(turnoId);
+      expect(clases.body[0]).not.toHaveProperty('listaPasada');
+    });
+
     it('es idempotente y marca ausente a quien no esta en la lista', async () => {
       const e = await montar('p4-lista-ok');
       const turnoId = await claseYaDada(e);

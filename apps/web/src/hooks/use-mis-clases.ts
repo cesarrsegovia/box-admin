@@ -184,16 +184,16 @@ export function usePasarLista(turnoId: string) {
       //    cambio.
       void cliente.invalidateQueries({ queryKey: clavesDeMisClases.alumnos(turnoId) });
 
-      // 2. La agenda, TODOS LOS RANGOS. `ClaseDelProfesor.listaPasada` sale de
-      //    `reservas.some(r => r.asistio !== null)`, asi que la fila de esta
-      //    clase acaba de cambiar; y la agenda es quien va a contar cuantos
-      //    quedan sin marcar. Se invalida la rama entera y no un rango
+      // 2. La agenda, TODOS LOS RANGOS: es quien va a contar cuantos quedan
+      //    sin marcar en esta clase, y ese numero acaba de cambiar. (Hasta la
+      //    Fase 20 la fila de la agenda traia ademas `listaPasada`; el contrato
+      //    ya no lo trae, y la cuenta es razon suficiente.) Se invalida la rama entera y no un rango
       //    concreto porque este hook NO SABE que rangos hay cacheados: la
       //    pantalla de la clase no recibe el rango de la agenda que la trajo, y
       //    una clase del 3 de octubre vive en cualquier rango que la contenga
       //    —la semana, el mes, "los ultimos 30 dias"—. Invalidar solo el rango
       //    que este hook pudiera imaginarse dejaria a los demas mostrando
-      //    `listaPasada: false` sobre una clase que ya se paso.
+      //    «faltan N» sobre una clase que ya se paso.
       void cliente.invalidateQueries({ queryKey: ['mis-clases', 'agenda'] });
 
       // LA RESPUESTA NO SE ESCRIBE EN LA CACHE con `setQueryData`, aunque el

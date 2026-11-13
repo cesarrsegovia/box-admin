@@ -14,10 +14,6 @@ const FILA = {
   // tiene que devolver y el de contencion esconderia.
   desde: new Date('2026-09-28T00:00:00.000Z'),
   hasta: new Date('2026-10-03T00:00:00.000Z'),
-  todoElDia: true,
-  horaInicio: null,
-  horaFin: null,
-  recuperable: true,
   motivo: 'Feriado',
   createdAt: new Date(),
 };
@@ -162,78 +158,23 @@ describe('AusenciasService.crear', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('400 si todoElDia es false y falta horaInicio o horaFin', async () => {
-    const { servicio } = crearServicio();
+  /**
+   * SIEMPRE DIAS ENTEROS (Fase 20): la franja horaria y `recuperable` se
+   * quitaron porque nadie los aplicaba. Lo que se escribe y lo que se devuelve
+   * son estas claves y ninguna mas.
+   */
+  it('escribe y devuelve solo sala, fechas y motivo', async () => {
+    const { servicio, ausencia } = crearServicio();
 
-    await expect(
-      servicio.crear(ADMIN, { ...BASE, todoElDia: false, horaInicio: '14:00' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    const creada = await servicio.crear(ADMIN, { ...BASE, motivo: 'Feriado' });
 
-    await expect(
-      servicio.crear(ADMIN, { ...BASE, todoElDia: false, horaFin: '18:00' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-
-    await expect(servicio.crear(ADMIN, { ...BASE, todoElDia: false })).rejects.toBeInstanceOf(
-      BadRequestException,
+    const data = ausencia.create.mock.calls[0][0].data;
+    expect(Object.keys(data).sort()).toEqual(
+      ['desde', 'hasta', 'motivo', 'salaId', 'tenantId'].sort(),
     );
-  });
-
-  it('400 si horaFin no es posterior a horaInicio', async () => {
-    const { servicio } = crearServicio();
-
-    await expect(
-      servicio.crear(ADMIN, {
-        ...BASE,
-        todoElDia: false,
-        horaInicio: '18:00',
-        horaFin: '14:00',
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-
-    await expect(
-      servicio.crear(ADMIN, {
-        ...BASE,
-        todoElDia: false,
-        horaInicio: '18:00',
-        horaFin: '18:00',
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('con todoElDia true ignora el tramo horario y lo guarda como null', async () => {
-    const { servicio, ausencia } = crearServicio();
-
-    const creada = await servicio.crear(ADMIN, {
-      ...BASE,
-      todoElDia: true,
-      horaInicio: '14:00',
-      horaFin: '18:00',
-    });
-
-    // Guardarlo a medias confundiria al motor: si cierra el dia entero, el
-    // tramo no significa nada.
-    const data = ausencia.create.mock.calls[0][0].data;
-    expect(data.todoElDia).toBe(true);
-    expect(data.horaInicio).toBeNull();
-    expect(data.horaFin).toBeNull();
-    expect(creada.horaInicio).toBeNull();
-    expect(creada.horaFin).toBeNull();
-  });
-
-  it('guarda el tramo horario de un cierre parcial', async () => {
-    const { servicio, ausencia } = crearServicio();
-
-    await servicio.crear(ADMIN, {
-      ...BASE,
-      todoElDia: false,
-      horaInicio: '14:00',
-      horaFin: '18:00',
-    });
-
-    const data = ausencia.create.mock.calls[0][0].data;
-    expect(data.todoElDia).toBe(false);
-    expect(data.horaInicio).toBe('14:00');
-    expect(data.horaFin).toBe('18:00');
+    expect(Object.keys(creada).sort()).toEqual(
+      ['desde', 'hasta', 'id', 'motivo', 'salaId', 'tenantId'].sort(),
+    );
   });
 });
 

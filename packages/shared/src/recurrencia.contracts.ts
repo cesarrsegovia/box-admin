@@ -34,12 +34,8 @@ export interface AusenciaPublica {
   /** `null` = todo el salon. */
   salaId: string | null;
   desde: string;
+  /** Siempre dias enteros: `desde` y `hasta` incluidos. */
   hasta: string;
-  todoElDia: boolean;
-  /** `HH:MM`, solo si `todoElDia` es false. */
-  horaInicio: string | null;
-  horaFin: string | null;
-  recuperable: boolean;
   motivo: string | null;
 }
 

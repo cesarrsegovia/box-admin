@@ -7,7 +7,7 @@ import type { DatosDiarios } from './colas';
 import { RecordatorioPagoProcessor } from './recordatorio-pago.processor';
 
 type Fila = Record<string, any>;
-/** El job tal como lo pide el processor: el payload mas su marca por gimnasio. */
+/** El job tal como lo pide el processor. */
 type JobDelProcessor = Parameters<RecordatorioPagoProcessor['process']>[0];
 
 const FUEGO = { id: 'gym-1', nombre: 'Box Fuego', activo: true, slug: 'box-fuego' };
@@ -71,9 +71,19 @@ interface Escenario {
   perfiles?: Fila[];
   /** Los que `PagosService` dice que estan al dia. */
   alDia?: string[];
-  job?: Partial<DatosDiarios & { gimnasiosHechos?: string[] }>;
-  /** Cuantas veces revienta `updateData` antes de funcionar. */
-  fallosAlMarcar?: number;
+  job?: Partial<DatosDiarios>;
+  /**
+   * Marcas que YA estaban en `AvisoDiario` antes de esta ejecucion. Sin `tipo`
+   * ni `dia`, valen los de esta ejecucion: el caso de un job que vuelve a correr
+   * el mismo dia.
+   */
+  marcas?: { perfilId: string; tipo?: string; dia?: string }[];
+  /**
+   * Como revienta el `create` de la marca para un perfil concreto: `'otro'` es
+   * un error cualquiera (la base caida, un timeout); `'adapter'` es la unicidad
+   * violada tal como la entrega el adapter `pg` de Prisma 7, SIN `code`.
+   */
+  fallosAlMarcar?: Record<string, 'otro' | 'adapter'>;
   /**
    * Anota cada pausa en `pasos`, y la hace resolver en un tick POSTERIOR.
    *
@@ -108,6 +118,21 @@ function crearEscenario(escenario: Escenario = {}) {
   /** El contexto en que se pidio cada cosa. */
   const contextoAlListarTenants: string[] = [];
   const tenantsConsultados: string[] = [];
+  /** El `dia` con el que se intento cada marca, en ISO. */
+  const diasMarcados: string[] = [];
+
+  // Las filas que ya habia en `AvisoDiario`. Por defecto, del tipo y del dia de
+  // ESTA ejecucion: el dia sale del `ahoraISO` del job, o de hoy si no viene.
+  const diaDelJob = (
+    escenario.job?.ahoraISO ? escenario.job.ahoraISO : new Date().toISOString()
+  ).slice(0, 10);
+  const marcas = new Set(
+    (escenario.marcas ?? []).map((marca) => {
+      const tenantId = perfiles.find((p) => p.id === marca.perfilId)?.tenantId as string;
+      const dia = new Date(`${marca.dia ?? diaDelJob}T00:00:00.000Z`).toISOString();
+      return `${tenantId}|${marca.tipo ?? 'recordatorio-pago'}|${marca.perfilId}|${dia}`;
+    }),
+  );
 
   function tenantActual(): string {
     const ctx = getTenantContext();
@@ -156,6 +181,39 @@ function crearEscenario(escenario: Escenario = {}) {
         return perfiles.filter((fila) => fila.tenantId === tenantId && cumple(fila, where ?? {}));
       },
     },
+    // LA MARCA POR PERSONA. El doble hace lo que hace la base: la clave unica
+    // `(tenantId, tipo, perfilId, dia)` rechaza la segunda fila con P2002. Y lo
+    // que hace la extension: exige contexto de tenant, y el `tenantId` de la
+    // fila es el del contexto.
+    avisoDiario: {
+      async create({ data }: { data: Fila }): Promise<Fila> {
+        const tenantId = tenantActual();
+        const dia = (data.dia as Date).toISOString();
+        pasos.push(`marca:${data.perfilId}`);
+        diasMarcados.push(dia);
+
+        const fallo = escenario.fallosAlMarcar?.[data.perfilId as string];
+        if (fallo === 'otro') throw new Error('la base no respondio');
+        if (fallo === 'adapter') {
+          throw Object.assign(new Error('Unique constraint failed'), {
+            name: 'DriverAdapterError',
+            cause: { kind: 'UniqueConstraintViolation' },
+          });
+        }
+
+        if (data.tenantId !== tenantId) {
+          throw new Error(
+            `marca con tenantId ${String(data.tenantId)} dentro del gimnasio ${tenantId}`,
+          );
+        }
+        const clave = `${tenantId}|${data.tipo}|${data.perfilId}|${dia}`;
+        if (marcas.has(clave)) {
+          throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+        }
+        marcas.add(clave);
+        return data;
+      },
+    },
   };
 
   const perfilesAlDia = jest.fn(async (_cliente: unknown, ids: string[], _ahora?: Date) => {
@@ -167,36 +225,13 @@ function crearEscenario(escenario: Escenario = {}) {
     return Promise.resolve();
   });
 
-  // El doble del JOB guarda lo que se le escribe con `updateData`, que es como
-  // se comporta el de verdad: esos datos viven en Redis, y la siguiente
-  // ejecucion del mismo job —un reintento, o un atasco que lo devuelve a la
-  // cola— los relee de ahi.
-  //
-  // ⚠️ DIVERGE DEL REAL EN UN PUNTO, Y ESTA ESCRITO PARA QUE NO SEA UNA TRAMPA
-  // CON FECHA: el `updateData` de BullMQ hace `this.data = data` **antes** de
-  // esperar la escritura a Redis (`bullmq/dist/cjs/classes/job.js`), asi que
-  // cuando la escritura falla el objeto en memoria YA quedo con la marca que
-  // Redis no tiene. Este doble solo asigna si la escritura fue bien.
-  //
-  // Hoy da igual, y por un motivo concreto: el error aborta el `process`, asi
-  // que nadie vuelve a leer `job.data` en esa ejecucion. Empezaria a importar el
-  // dia que alguien capture ese error y siga —por ejemplo, para no perder los
-  // gimnasios que faltan—: ahi el doble seria MAS OPTIMISTA QUE LA REALIDAD,
-  // porque en produccion el bucle veria el gimnasio como marcado y aqui no. Si
-  // se toca ese camino, este doble se cambia primero.
-  const fallos = { restantes: escenario.fallosAlMarcar ?? 0 };
+  // El JOB ya no guarda marca: desde la Fase 20 vive en `AvisoDiario`. Se le
+  // deja un `updateData` espiado solo para poder decir que NADIE lo llama: el
+  // payload es de quien encola, y el worker no se escribe nada a si mismo.
   const job = {
     id: 'job-diario',
     data: { ...escenario.job } as Fila,
-    async updateData(nuevos: Fila): Promise<void> {
-      if (fallos.restantes > 0) {
-        fallos.restantes -= 1;
-        pasos.push('marca-fallida');
-        throw new Error('Redis rechazo la actualizacion del job');
-      }
-      pasos.push(`marca:${((nuevos.gimnasiosHechos as string[]) ?? []).join(',')}`);
-      job.data = nuevos;
-    },
+    updateData: jest.fn(),
   };
 
   const processor = new RecordatorioPagoProcessor(
@@ -241,6 +276,8 @@ function crearEscenario(escenario: Escenario = {}) {
     pasos,
     pausas,
     pausar,
+    diasMarcados,
+    updateData: job.updateData,
     contextoAlListarTenants,
     tenantsConsultados,
   };
@@ -460,84 +497,134 @@ describe('RecordatorioPagoProcessor', () => {
     await processor.process(job);
 
     expect(pasos).toEqual([
-      'marca:gym-1',
       'log:Box Fuego: 1 recordatorios de pago sobre 2 alumnos con pack',
+      'marca:perfil-ana',
       'aviso:perfil-ana',
-      'marca:gym-1,gym-2',
       'log:Box Hielo: 1 recordatorios de pago sobre 1 alumnos con pack',
+      'marca:perfil-gus',
       'aviso:perfil-gus',
       expect.stringContaining('Recordatorio de pago: 2 avisos en 2 gimnasios'),
     ]);
   });
 
   // --------------------------------------------------------------------------
-  // LA MARCA POR GIMNASIO. `attempts: 1` NO impide una segunda ejecucion: el
-  // camino de job atascado de BullMQ re-encola sin mirar `attempts`, y con un
-  // repetible ni siquiera tiene tope (`moveStalledJobsToWait-9.js`). Un deploy a
-  // las 09:00 basta. Sin marca, la tanda entera sale dos veces.
+  // LA MARCA POR PERSONA (`AvisoDiario`). `attempts: 1` NO impide una segunda
+  // ejecucion: el camino de job atascado de BullMQ re-encola sin mirar
+  // `attempts`, y con un repetible ni siquiera tiene tope
+  // (`moveStalledJobsToWait-9.js`). Un deploy a las 09:00 basta. Sin marca, la
+  // tanda entera sale dos veces.
   // --------------------------------------------------------------------------
 
-  it('en una segunda ejecucion del mismo job, los gimnasios ya marcados se saltan', async () => {
+  it('quien ya tiene la marca de hoy NO recibe el aviso, y los demas si', async () => {
     const { processor, job, avisar } = crearEscenario({
       tenants: [FUEGO, HIELO],
-      perfiles: [ANA, alumno('perfil-gus', 'gym-2', 'Gus')],
-      // Asi llega el job cuando BullMQ lo devuelve a la cola por atasco: con lo
-      // que el worker anterior alcanzo a escribirse a si mismo.
-      job: { gimnasiosHechos: ['gym-1'] },
+      perfiles: [ANA, BETO, alumno('perfil-gus', 'gym-2', 'Gus')],
+      // Asi esta la base cuando BullMQ devuelve el job a la cola por atasco:
+      // con las marcas que el worker anterior alcanzo a insertar.
+      marcas: [{ perfilId: 'perfil-ana' }],
     });
 
     const resultado = await processor.process(job);
 
-    // Ana NO recibe un segundo correo; Gus, que se quedo sin procesar, si.
-    expect(destinatarios(avisar)).toEqual(['gus@correo.test']);
-    expect(resultado).toEqual({ avisados: 1 });
+    // Ana NO recibe un segundo correo; Beto, en el MISMO gimnasio, si —con la
+    // marca por gimnasio de antes se lo habria perdido—, y Gus tambien.
+    expect(destinatarios(avisar)).toEqual(['beto@correo.test', 'gus@correo.test']);
+    // Cuenta lo que salio en ESTA ejecucion: Ana no.
+    expect(resultado).toEqual({ avisados: 2 });
   });
 
-  it('con todos los gimnasios ya marcados no se manda absolutamente nada', async () => {
+  it('la unicidad violada se reconoce tambien como la entrega el adapter `pg`, sin `code`', async () => {
+    // Con Prisma 7 y el adapter `pg`, el P2002 puede llegar como
+    // DriverAdapterError con `cause.kind`. Si solo se mirara `code`, esa
+    // persona caeria en la rama de "fallo raro" —que tambien la salta, pero
+    // ademas grita un error falso en el log—. Aqui se fija que NO grita.
+    const errores = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { processor, job, avisar } = crearEscenario({
+      perfiles: [ANA, BETO],
+      fallosAlMarcar: { 'perfil-ana': 'adapter' },
+    });
+
+    await processor.process(job);
+
+    expect(destinatarios(avisar)).toEqual(['beto@correo.test']);
+    expect(errores).not.toHaveBeenCalled();
+  });
+
+  it('una marca de OTRO tipo o de OTRO dia no tapa el recordatorio de hoy', async () => {
+    // La clave es (tenant, tipo, perfil, dia): el aviso de vencimiento de hoy no
+    // es el recordatorio de pago, y el recordatorio de ayer no es el de hoy.
+    const { processor, job, avisar } = crearEscenario({
+      perfiles: [ANA, BETO],
+      job: { ahoraISO: '2026-10-07T09:00:00.000Z' },
+      marcas: [
+        { perfilId: 'perfil-ana', tipo: 'vencimiento-pack' },
+        { perfilId: 'perfil-beto', dia: '2026-10-06' },
+      ],
+    });
+
+    await processor.process(job);
+
+    expect(destinatarios(avisar)).toEqual(['ana@correo.test', 'beto@correo.test']);
+  });
+
+  it('un fallo al marcar a UNA persona no aborta la tanda: esa se salta, las demas reciben', async () => {
+    const errores = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const { processor, job, avisar } = crearEscenario({
       tenants: [FUEGO, HIELO],
-      perfiles: [ANA, alumno('perfil-gus', 'gym-2', 'Gus')],
-      job: { gimnasiosHechos: ['gym-1', 'gym-2'] },
+      perfiles: [ANA, BETO, alumno('perfil-gus', 'gym-2', 'Gus')],
+      fallosAlMarcar: { 'perfil-ana': 'otro' },
+    });
+
+    const resultado = await processor.process(job);
+
+    // Ana se queda sin aviso hoy —perder antes que duplicar: sin marca no se
+    // sabe si ya lo recibio—, pero ni Beto ni el gimnasio siguiente lo pagan.
+    expect(destinatarios(avisar)).toEqual(['beto@correo.test', 'gus@correo.test']);
+    expect(resultado).toEqual({ avisados: 2 });
+    // Y queda en el log, con el perfil y el motivo: es el unico rastro.
+    expect(errores).toHaveBeenCalledTimes(1);
+    expect(String(errores.mock.calls[0]?.[0])).toContain('perfil-ana');
+    expect(String(errores.mock.calls[0]?.[0])).toContain('la base no respondio');
+  });
+
+  it('la marca se inserta ANTES de mandar, persona por persona', async () => {
+    const { processor, job, pasos } = crearEscenario({ perfiles: [ANA, BETO] });
+
+    await processor.process(job);
+
+    expect(pasos).toEqual([
+      'marca:perfil-ana',
+      'aviso:perfil-ana',
+      'marca:perfil-beto',
+      'aviso:perfil-beto',
+    ]);
+  });
+
+  it('la marca lleva el tipo, el perfil y el DIA DEL JOB, no el del reloj', async () => {
+    // `ahoraISO` a las 23:30 de un dia que el reloj real no es: si el dia saliera
+    // de `new Date()` suelto, la marca caeria en hoy y no en el 7.
+    const { processor, job, diasMarcados } = crearEscenario({
+      perfiles: [ANA],
+      job: { ahoraISO: '2026-10-07T23:30:00.000Z' },
     });
 
     await processor.process(job);
 
-    expect(avisar).not.toHaveBeenCalled();
+    // Medianoche UTC: la columna es `@db.Date`.
+    expect(diasMarcados).toEqual(['2026-10-07T00:00:00.000Z']);
   });
 
-  it('la marca se escribe ANTES de avisar, y el test lo prueba con un fallo inyectado', async () => {
-    // El test de orden por si solo no alcanza: ya paso en las tasks anteriores
-    // que el `pasos` esperado sobrevivia a invertir las dos lineas. Con
-    // `updateData` reventando, el orden se vuelve observable por sus
-    // CONSECUENCIAS: si la marca va antes, no salio ni un correo y el job
-    // propaga el error; si fuera despues, el correo ya estaria mandado y ademas
-    // sin marcar, o sea repetido en la siguiente ejecucion.
-    const { processor, job, avisar, pasos } = crearEscenario({
-      perfiles: [ANA, BETO],
-      fallosAlMarcar: 1,
-    });
-
-    await expect(processor.process(job)).rejects.toThrow('Redis rechazo la actualizacion del job');
-
-    expect(avisar).not.toHaveBeenCalled();
-    expect(pasos).toEqual(['marca-fallida']);
-  });
-
-  it('marcar un gimnasio no pisa lo que el job ya traia marcado', async () => {
-    const { processor, job } = crearEscenario({
-      tenants: [FUEGO, HIELO],
-      perfiles: [ANA, alumno('perfil-gus', 'gym-2', 'Gus')],
-      job: { ahoraISO: '2026-10-07T00:00:00.000Z', gimnasiosHechos: ['gym-1'] },
+  it('ya no escribe nada en el payload del job', async () => {
+    // La marca por gimnasio de `job.updateData` se fue: el payload es de quien
+    // encola, y un blip de Redis al escribirlo abortaba la tanda entera.
+    const { processor, job, updateData } = crearEscenario({
+      job: { ahoraISO: '2026-10-07T00:00:00.000Z' },
     });
 
     await processor.process(job);
 
-    // La lista crece, y el resto del payload sigue ahi: se escribe sobre
-    // `job.data`, no en su lugar.
-    expect(job.data).toEqual({
-      ahoraISO: '2026-10-07T00:00:00.000Z',
-      gimnasiosHechos: ['gym-1', 'gym-2'],
-    });
+    expect(updateData).not.toHaveBeenCalled();
+    expect(job.data).toEqual({ ahoraISO: '2026-10-07T00:00:00.000Z' });
   });
 
   // --------------------------------------------------------------------------
@@ -626,13 +713,15 @@ describe('RecordatorioPagoProcessor — ritmo entre envios', () => {
     await processor.process(job);
 
     expect(pasos).toEqual([
-      'marca:gym-1',
+      'marca:perfil-ana',
       'aviso:perfil-ana',
       'pausa-ini:200',
       'pausa-fin',
+      'marca:perfil-beto',
       'aviso:perfil-beto',
       'pausa-ini:200',
       'pausa-fin',
+      'marca:perfil-carla',
       'aviso:perfil-carla',
       'pausa-ini:200',
       'pausa-fin',

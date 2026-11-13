@@ -512,6 +512,50 @@ describe('Fase 2 — motor de recurrencia (e2e)', () => {
       });
       expect(delDiaCerrado).toBeNull();
     });
+
+    /**
+     * UNA AUSENCIA ES SIEMPRE DE DIAS ENTEROS DESDE LA FASE 20.
+     *
+     * `recuperable` y la franja (`todoElDia`, `horaInicio`, `horaFin`) se
+     * guardaban y ningun consumidor los leia: un cierre «de 18 a 20» cancelaba
+     * el dia entero. Se quitaron, y el `forbidNonWhitelisted` del pipe global
+     * hace que un cliente que todavia los mande reciba un 400 que los nombra.
+     * Cada campo por separado: un 400 por el primero taparia que el segundo se
+     * siguiera aceptando.
+     */
+    it.each([
+      ['recuperable', { recuperable: true }],
+      ['todoElDia', { todoElDia: true }],
+      ['horaInicio', { horaInicio: '18:00' }],
+      ['horaFin', { horaFin: '20:00' }],
+    ])('mandar %s al crear una ausencia es 400 y lo nombra', async (campo, extra) => {
+      const salaId = await crearSala({ cupoBase: 5 });
+
+      const { body } = await request(servidor)
+        .post('/ausencias')
+        .set(auth(gym.adminToken))
+        .send({ salaId, desde: MARTES[1], hasta: MARTES[1], ...extra })
+        .expect(400);
+
+      expect(body.message).toContain(`property ${campo} should not exist`);
+    });
+
+    it('ni el alta ni el listado de ausencias devuelven los campos quitados', async () => {
+      const salaId = await crearSala({ cupoBase: 5 });
+      const creada = await crearAusencia({ salaId, desde: MARTES[1], hasta: MARTES[1] });
+
+      const { body: lista } = await request(servidor)
+        .get('/ausencias')
+        .set(auth(gym.adminToken))
+        .expect(200);
+
+      expect(lista).toHaveLength(1);
+      for (const ausencia of [creada, lista[0]]) {
+        expect(Object.keys(ausencia).sort()).toEqual(
+          ['desde', 'hasta', 'id', 'motivo', 'salaId', 'tenantId'].sort(),
+        );
+      }
+    });
   });
 
   // 6 — Vacaciones ---------------------------------------------------------

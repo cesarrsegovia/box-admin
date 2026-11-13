@@ -30,10 +30,6 @@ export class ActualizarSalaDto {
   soloCuposLiberados?: boolean;
 
   @IsOptional()
-  @IsBoolean()
-  exclusiva?: boolean;
-
-  @IsOptional()
   @IsInt()
   @Min(1)
   cupoBase?: number;

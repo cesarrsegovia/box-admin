@@ -214,6 +214,21 @@ describe('ReservasService.crear', () => {
     );
   });
 
+  // Quien lee este 403 es el admin en el mostrador, no un cliente de la API:
+  // la frase le dice DONDE se arregla en la web, sin rutas de la API.
+  it('el 403 de sala dice, entero, donde se asigna la sala', async () => {
+    const { servicio, perfil } = crearServicio();
+    perfil.findFirst.mockResolvedValue({ ...PERFIL, salas: [{ salaId: 'sala-9' }] });
+
+    const error = await servicio.crear(ADMIN, 'turno-1', { perfilId: 'perf-1' }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect(error.message).toBe(
+      'Esta persona no tiene acceso a la sala de este turno. Asignásela desde su ficha, en Salas.',
+    );
+    expect(error.message).not.toContain('PATCH');
+  });
+
   it('404 si el turno no existe en este gimnasio', async () => {
     const { servicio, turno } = crearServicio();
     turno.findFirst.mockResolvedValue(null);

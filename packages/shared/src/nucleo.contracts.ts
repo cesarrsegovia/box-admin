@@ -33,7 +33,6 @@ export interface SalaPublica {
   activa: boolean;
   visibleAlumnos: boolean;
   soloCuposLiberados: boolean;
-  exclusiva: boolean;
   /** `null` = hereda de la configuracion del tenant (que no existe hasta Fase 2). */
   cupoBase: number | null;
   minMinutosCancelar: number | null;

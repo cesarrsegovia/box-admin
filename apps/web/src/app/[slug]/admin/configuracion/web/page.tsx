@@ -3,11 +3,12 @@
 import { type FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { type ConfiguracionWebSalon, rolAlcanza } from '@boxadmin/shared';
+import { type ConfiguracionWebSalon, type PackPublico, rolAlcanza } from '@boxadmin/shared';
 import { Confirmar } from '@/componentes/confirmar';
 import { Campo } from '@/componentes/formulario';
 import { Aviso, Boton } from '@/componentes/ui';
 import { textoDelError } from '@/lib/errores-de-api';
+import { usePacks } from '@/hooks/use-catalogos';
 import { useConfigWebSalon, useGuardarWebSalon } from '@/hooks/use-configuracion';
 import { useRolDeQuienMira } from '../../rol-del-panel';
 import { CampoLargo, ListaDePreguntas, ListaDeTestimonios } from './listas';
@@ -57,18 +58,28 @@ import { CampoLargo, ListaDePreguntas, ListaDeTestimonios } from './listas';
  * seria un 400 (`@IsUrl`, `@IsHexColor`) en vez de un borrado.
  *
  * ---------------------------------------------------------------------------
- * `planDestacadoId` SE DEVUELVE TAL CUAL Y NO SE DIBUJA. DECISION, NO OLVIDO.
+ * `planDestacadoId` VIAJA SIEMPRE, Y SE ELIGE DE LA LISTA DE PACKS (FASE 20).
  *
  * Con el reemplazo completo, un `planDestacadoId` que no viaje vuelve a `null`:
  * guardar el tagline borraria el plan destacado de la landing sin decirselo a
- * nadie. Asi que viaja, con el valor que trajo el servidor.
+ * nadie. Asi que va en el borrador como cualquier campo, sembrado con lo que
+ * trajo el servidor, y viaja SIEMPRE: con el id elegido o con `null` para
+ * «Ninguno» —que el service lee como borrado, igual que omitirlo—. No `''`:
+ * eso es un id que no existe y un 400.
  *
- * Y no se dibuja un editor porque lo unico que esta pantalla tiene de el es un
- * identificador opaco: elegirlo de verdad pide la LISTA de packs, que es otra
- * consulta (`usePacks`) y otro endpoint, y esta tarea tiene seis. Una caja de
- * texto para pegar a mano un id de base de datos no es un editor, es una
- * trampa. Queda anotado como lo que falta, no tapado con algo que parezca que
- * funciona.
+ * El selector sale del catalogo (`usePacks`, activos e inactivos) y ofrece
+ * solo los ACTIVOS: la landing publica solo esos, y destacar uno dado de baja
+ * seria destacar algo que no sale. Pero si el destacado GUARDADO esta dado de
+ * baja —o el catalogo no lo conoce— se dibuja como una opcion mas, «<nombre>
+ * (dado de baja)» o «Plan guardado (no disponible)», elegida: dibujarlo como
+ * «Ninguno» mentiria, y guardar otro campo lo borraria sin que nadie lo
+ * eligiera. Queda ahi hasta que se elija otro. La landing, mientras tanto, ya
+ * no lo muestra: `PublicoService.packs` lee solo los activos.
+ *
+ * LOS `value` DE LAS OPCIONES SON POSICIONES, NO IDS: el id de un pack es de
+ * lo ancho (ver la regla 2) y no se escribe en el marcado. Sin catalogo —si
+ * falla la lectura— no hay selector sino el motivo, y el destacado guardado
+ * viaja intacto.
  *
  * ---------------------------------------------------------------------------
  * EL INTERRUPTOR MAESTRO ESCRIBE SOLO, Y ESCRIBE LO DEL SERVIDOR.
@@ -101,6 +112,9 @@ const PRINCIPIO_DEL_FALLO_DE_LECTURA = 'No se pudo leer la configuracion de la w
 const PRINCIPIO_DEL_FALLO_DE_GUARDADO = 'No se pudo guardar la web: ';
 
 const TEXTO_DEL_EXITO = 'Cambios guardados.';
+
+/** Lo que se dice cuando no se puede leer el catalogo del selector del plan destacado. */
+const PRINCIPIO_DEL_FALLO_DE_LOS_PACKS = 'No se pudo leer la lista de packs: ';
 
 /** Que esta pasando AHORA con el sitio, que es lo primero que hay que saber. */
 const ESTADO_ENCENDIDA =
@@ -161,6 +175,9 @@ interface Borrador {
   mostrarTestimonios: boolean;
   mostrarFAQ: boolean;
   mostrarTurnosLibres: boolean;
+
+  /** El id del pack destacado, o `null` para «Ninguno». No es texto tecleado. */
+  planDestacadoId: string | null;
 }
 
 /**
@@ -200,18 +217,15 @@ function borradorDe(web: ConfiguracionWebSalon): Borrador {
     mostrarTestimonios: web.mostrarTestimonios,
     mostrarFAQ: web.mostrarFAQ,
     mostrarTurnosLibres: web.mostrarTurnosLibres,
+    planDestacadoId: web.planDestacadoId,
   };
 }
 
 /**
  * El cuerpo del `PUT`. Ver el docblock de arriba: los cinco booleanos SIEMPRE,
- * los textos vacios OMITIDOS, y el `planDestacadoId` de vuelta tal cual.
+ * los textos vacios OMITIDOS, y el `planDestacadoId` SIEMPRE, `null` incluido.
  */
-function cuerpoDeLaWeb(
-  campos: Borrador,
-  activa: boolean,
-  planDestacadoId: string | null,
-): Record<string, unknown> {
+function cuerpoDeLaWeb(campos: Borrador, activa: boolean): Record<string, unknown> {
   const cuerpo: Record<string, unknown> = {
     activa,
     mostrarPrecios: campos.mostrarPrecios,
@@ -225,9 +239,46 @@ function cuerpoDeLaWeb(
     if (valor !== '') cuerpo[clave] = valor;
   }
 
-  if (planDestacadoId !== null) cuerpo.planDestacadoId = planDestacadoId;
+  cuerpo.planDestacadoId = campos.planDestacadoId;
 
   return cuerpo;
+}
+
+/** Una opcion del selector del plan destacado. `clave` es su `value`: una posicion. */
+interface OpcionDePlan {
+  clave: string;
+  id: string | null;
+  texto: string;
+}
+
+/**
+ * Las opciones del selector: «Ninguno», los activos en el orden del catalogo
+ * y, si el destacado guardado no esta entre ellos, el guardado al final.
+ *
+ * Ver el docblock de arriba. Se calcula contra lo GUARDADO y no contra el
+ * borrador: elegir otro no hace desaparecer la opcion del dado de baja hasta
+ * guardar, asi que se puede volver a ella.
+ */
+function opcionesDelPlan(packs: PackPublico[], guardado: string | null): OpcionDePlan[] {
+  const activos = packs.filter((pack) => pack.activo);
+  const opciones: OpcionDePlan[] = [
+    { clave: 'ninguno', id: null, texto: 'Ninguno' },
+    ...activos.map((pack, indice) => ({ clave: `${indice}`, id: pack.id, texto: pack.nombre })),
+  ];
+
+  if (guardado !== null && !activos.some((pack) => pack.id === guardado)) {
+    const delCatalogo = packs.find((pack) => pack.id === guardado);
+    opciones.push({
+      clave: 'guardado',
+      id: guardado,
+      texto:
+        delCatalogo === undefined
+          ? 'Plan guardado (no disponible)'
+          : `${delCatalogo.nombre} (dado de baja)`,
+    });
+  }
+
+  return opciones;
 }
 
 /** «a, b y c». Con una sola parte, la parte; con ninguna, nada. */
@@ -305,10 +356,68 @@ function Interruptor({
   );
 }
 
+/**
+ * El selector del plan destacado. Recibe la consulta del catalogo entera para
+ * dibujar los tres estados: cargando, el motivo del fallo, o el selector.
+ */
+function SelectorDelPlan({
+  packs,
+  guardado,
+  elegido,
+  alElegir,
+}: {
+  packs: ReturnType<typeof usePacks>;
+  guardado: string | null;
+  elegido: string | null;
+  alElegir: (id: string | null) => void;
+}) {
+  if (packs.isPending) {
+    return <p className="text-sm text-slate-500">Cargando los packs…</p>;
+  }
+
+  if (packs.data === undefined) {
+    return (
+      <Aviso tono="error">
+        <span data-fallo="packs">
+          {PRINCIPIO_DEL_FALLO_DE_LOS_PACKS}
+          {textoDelError(packs.error)}
+        </span>
+      </Aviso>
+    );
+  }
+
+  const opciones = opcionesDelPlan(packs.data, guardado);
+  const actual = opciones.find((opcion) => opcion.id === elegido) ?? opciones[0];
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor="plan-destacado" className="text-sm font-medium text-slate-700">
+        Plan destacado
+      </label>
+      <select
+        id="plan-destacado"
+        value={actual?.clave}
+        onChange={(evento) => {
+          const opcion = opciones.find((o) => o.clave === evento.target.value);
+          if (opcion !== undefined) alElegir(opcion.id);
+        }}
+        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+      >
+        {opciones.map((opcion) => (
+          <option key={opcion.clave} value={opcion.clave}>
+            {opcion.texto}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 /** La pantalla ya pasada la puerta. Aqui dentro viven TODOS los hooks. */
 function PantallaDeLaWeb() {
   const { slug } = useParams<{ slug: string }>();
   const config = useConfigWebSalon();
+  const packs = usePacks();
 
   /**
    * DOS MUTACIONES CONTRA EL MISMO `PUT`, Y HACEN FALTA LAS DOS.
@@ -376,7 +485,7 @@ function PantallaDeLaWeb() {
     evento.preventDefault();
     if (web === undefined) return;
 
-    guardar.mutate(cuerpoDeLaWeb(campos, web.activa, web.planDestacadoId), {
+    guardar.mutate(cuerpoDeLaWeb(campos, web.activa), {
       // Al volver, manda otra vez el servidor: la invalidacion refresca la
       // consulta y el borrador tiene que soltar el mando para que lo que se
       // vea sea lo guardado y no lo tecleado.
@@ -392,7 +501,7 @@ function PantallaDeLaWeb() {
   function cambiarLaWeb(activa: boolean): void {
     if (web === undefined) return;
 
-    interruptor.mutate(cuerpoDeLaWeb(borradorDe(web), activa, web.planDestacadoId), {
+    interruptor.mutate(cuerpoDeLaWeb(borradorDe(web), activa), {
       onSuccess: () => setApagando(false),
     });
   }
@@ -461,6 +570,15 @@ function PantallaDeLaWeb() {
             consecuencia={CONSECUENCIA_DE_LOS_PRECIOS}
             marcado={campos.mostrarPrecios}
             alCambiar={(valor) => cambiar({ mostrarPrecios: valor })}
+          />
+
+          {/* Junto a los precios porque solo se ve con ellos: el destacado es
+              una marca sobre la lista de precios de la landing. */}
+          <SelectorDelPlan
+            packs={packs}
+            guardado={web.planDestacadoId}
+            elegido={campos.planDestacadoId}
+            alElegir={(id) => cambiar({ planDestacadoId: id })}
           />
 
           <Interruptor

@@ -86,7 +86,6 @@ function unaSala(id: string, nombre: string): SalaPublica {
     activa: true,
     visibleAlumnos: true,
     soloCuposLiberados: false,
-    exclusiva: false,
     cupoBase: null,
     minMinutosCancelar: null,
     minMinutosAnotarse: null,

@@ -18,7 +18,6 @@ const SALA = {
   activa: true,
   visibleAlumnos: true,
   soloCuposLiberados: false,
-  exclusiva: false,
   cupoBase: null,
   minMinutosCancelar: null,
   minMinutosAnotarse: null,
@@ -296,6 +295,24 @@ describe('UsuariosService.crearAlumno', () => {
     });
 
     expect(alta.advertencias.map((a) => a.codigo)).toContain('SIN_SALAS');
+  });
+
+  it('el mensaje de SIN_SALAS dice, entero, donde se asignan las salas', async () => {
+    const { servicio, sala } = crearServicio();
+    sala.findMany.mockResolvedValue([]);
+
+    const alta = await servicio.crearAlumno(ADMIN, {
+      nombreCompleto: 'Ana',
+      email: 'ana@gym.com',
+      salaIds: [],
+    });
+
+    const sinSalas = alta.advertencias.find((a) => a.codigo === 'SIN_SALAS');
+    expect(sinSalas?.mensaje).toBe(
+      'El usuario no tiene ninguna sala con acceso, asi que no podra reservar. ' +
+        'Asignale salas desde su ficha, en Salas.',
+    );
+    expect(sinSalas?.mensaje).not.toContain('PATCH');
   });
 
   it('advierte SIN_PACK si el alumno no trae pack', async () => {

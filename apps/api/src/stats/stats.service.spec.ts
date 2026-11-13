@@ -9,7 +9,7 @@ import { ConsultaPagosPendientesDto } from './dto/consulta-pagos-pendientes.dto'
 import { ConsultaRangoDto } from './dto/consulta-rango.dto';
 import { ConsultaTurnosLibresDto } from './dto/consulta-turnos-libres.dto';
 import { StatsDatos } from './stats.datos';
-import { StatsService } from './stats.service';
+import { pendientesDe, StatsService } from './stats.service';
 
 const ACTOR = { sub: 'admin-1', tenantId: 'gym-1', rol: 'ADMIN_SALON' } as never;
 
@@ -1064,7 +1064,8 @@ describe('StatsService.operativo: asistencia', () => {
   });
 
   it('basta con que UNA reserva viva tenga la marca para que el turno cuente', async () => {
-    // La misma regla que `MisClasesService` publica como `listaPasada`: pasar
+    // La regla que `MisClasesService` publicaba como `listaPasada` hasta la
+    // Fase 20, cuando salio del contrato de mis-clases: pasar
     // lista escribe todas las reservas del turno de golpe, presentes y
     // ausentes. Exigir que las tengan TODAS dejaria fuera turnos con la lista
     // perfectamente pasada en cuanto Prisma devolviera una fila a medio migrar.
@@ -1804,6 +1805,148 @@ describe('StatsService.pagosPendientes', () => {
     const pendientes = await servicio.pagosPendientes(ACTOR, {});
 
     expect(pendientes.map((fila) => fila.nombreCompleto)).toEqual(['Bruno Diaz', 'Zoe Vega']);
+  });
+
+  it('un pack que ya no esta en el catalogo tambien aporta cero en el desglose', async () => {
+    // `PagoPendiente` no cambia de forma en la Fase 20: el desglose sigue
+    // pintando 0 con su aviso de "un cero no es estar al dia". Lo que si cambia
+    // es la caja, que ya no suma ese cero como si fuera un precio.
+    const { servicio } = crear({
+      ...PADRON,
+      perfiles: [{ id: 'debe', usuarioId: 'u-2', packId: 'pack-borrado' }],
+    });
+
+    const pendientes = await servicio.pagosPendientes(ACTOR, {});
+
+    expect(
+      pendientes.map((fila) => [fila.perfilId, fila.pendienteEstimado, fila.packNombre]),
+    ).toEqual([['debe', { centavos: 0, texto: '0.00' }, null]]);
+  });
+});
+
+/**
+ * `centavos` CON MOTIVO (Fase 20).
+ *
+ * Antes, `pendientesDe` ponia 0 tanto al pack "a consultar" como al que no
+ * aparece en el catalogo, y la caja los sumaba como si costaran cero: un total
+ * que se veia exacto y era mas chico que la verdad, sin decirlo.
+ *
+ * LOS PERFILES SALEN DE `StatsDatos.perfilesConPack()` SOBRE EL PRISMA FALSO, no
+ * se escriben a mano: un `PerfilConPack` escrito en el test hablaria el idioma
+ * del codigo, y lo que se quiere fijar es que la CONSULTA distingue los casos.
+ */
+describe('pendientesDe: centavos con motivo', () => {
+  async function pendientesDeLaBase(tablas: Partial<Tablas>) {
+    const db = prismaFalso(tablas);
+    const pagos = new PagosService(
+      { db } as never,
+      {} as never,
+      new CacheDeStats(clienteFalso().cliente),
+    );
+    const datos = new StatsDatos({ db } as never, pagos);
+
+    return pendientesDe(await datos.perfilesConPack(), new Set());
+  }
+
+  it('un pack sin precio es "a consultar": centavos null, no cero', async () => {
+    const pendientes = await pendientesDeLaBase({
+      usuarios: alumnosEnAlta('u-1'),
+      perfiles: [{ id: 'p-1', usuarioId: 'u-1', packId: 'pack-x' }],
+      packs: [{ id: 'pack-x', nombre: 'A consultar', precio: null }],
+    });
+
+    expect(pendientes).toStrictEqual([{ perfilId: 'p-1', centavos: null, motivo: 'a-consultar' }]);
+  });
+
+  it('un pack que ya no esta en el catalogo es "sin-pack"', async () => {
+    const pendientes = await pendientesDeLaBase({
+      usuarios: alumnosEnAlta('u-1'),
+      perfiles: [{ id: 'p-1', usuarioId: 'u-1', packId: 'pack-borrado' }],
+      packs: [{ id: 'otro', nombre: 'Otro', precio: '100.00' }],
+    });
+
+    expect(pendientes).toStrictEqual([{ perfilId: 'p-1', centavos: null, motivo: 'sin-pack' }]);
+  });
+
+  it('un pack que cuesta 0 es un precio conocido: centavos 0 y SIN motivo', async () => {
+    // `toStrictEqual` y no `toEqual`: este ultimo da por igual un objeto con
+    // `motivo: undefined` y uno sin la clave.
+    const pendientes = await pendientesDeLaBase({
+      usuarios: alumnosEnAlta('u-1'),
+      perfiles: [{ id: 'p-1', usuarioId: 'u-1', packId: 'gratis' }],
+      packs: [{ id: 'gratis', nombre: 'Prueba', precio: '0.00' }],
+    });
+
+    expect(pendientes).toStrictEqual([{ perfilId: 'p-1', centavos: 0 }]);
+    expect(pendientes[0]).not.toHaveProperty('motivo');
+  });
+
+  it('un pack con precio lleva sus centavos y SIN motivo', async () => {
+    const pendientes = await pendientesDeLaBase({
+      usuarios: alumnosEnAlta('u-1'),
+      perfiles: [{ id: 'p-1', usuarioId: 'u-1', packId: 'pack-8' }],
+      packs: [{ id: 'pack-8', nombre: '8 clases', precio: '8500.00' }],
+    });
+
+    expect(pendientes).toStrictEqual([{ perfilId: 'p-1', centavos: 850_000 }]);
+  });
+});
+
+describe('StatsService.caja: los que quedaron sin precio', () => {
+  /** Cuatro alumnos que deben: uno de cada caso. Nadie pago en 2099. */
+  const CUATRO_CASOS: Partial<Tablas> = {
+    usuarios: alumnosEnAlta('u-1', 'u-2', 'u-3', 'u-4'),
+    perfiles: [
+      { id: 'con-precio', usuarioId: 'u-1', packId: 'pack-8' },
+      { id: 'a-consultar', usuarioId: 'u-2', packId: 'pack-x' },
+      { id: 'gratis', usuarioId: 'u-3', packId: 'pack-0' },
+      { id: 'pack-borrado', usuarioId: 'u-4', packId: 'no-esta' },
+    ],
+    packs: [
+      { id: 'pack-8', nombre: '8 clases', precio: '8500.00' },
+      { id: 'pack-x', nombre: 'A consultar', precio: null },
+      { id: 'pack-0', nombre: 'Prueba', precio: '0.00' },
+    ],
+  };
+
+  it('el total suma solo los conocidos y dice cuantos quedaron fuera', async () => {
+    const { servicio } = crear(CUATRO_CASOS);
+
+    const caja = await servicio.caja(ACTOR, { anio: 2099, mes: 1 });
+
+    expect(caja.pendienteEstimado).toEqual({ centavos: 850_000, texto: '8500.00' });
+    // El de precio 0 NO cuenta como "sin precio": su precio se conoce y es cero.
+    expect(caja.sinPrecio).toBe(2);
+  });
+
+  it('con todos los precios conocidos, sinPrecio es 0', async () => {
+    const { servicio } = crear({
+      ...CUATRO_CASOS,
+      perfiles: CUATRO_CASOS.perfiles?.slice(0, 1),
+    });
+
+    const caja = await servicio.caja(ACTOR, { anio: 2099, mes: 1 });
+
+    expect(caja.sinPrecio).toBe(0);
+  });
+
+  it('el que esta al dia no cuenta como sin precio aunque su pack sea a consultar', async () => {
+    const { servicio } = crear({
+      ...CUATRO_CASOS,
+      perfiles: CUATRO_CASOS.perfiles?.slice(0, 2),
+      pagos: [
+        pago({
+          perfilId: 'a-consultar',
+          cubreDesde: dia('2099-01-01'),
+          cubreHasta: dia('2099-01-31'),
+        }),
+      ],
+    });
+
+    const caja = await servicio.caja(ACTOR, { anio: 2099, mes: 1 });
+
+    expect(caja.sinPrecio).toBe(0);
+    expect(caja.pendienteEstimado.centavos).toBe(850_000);
   });
 });
 

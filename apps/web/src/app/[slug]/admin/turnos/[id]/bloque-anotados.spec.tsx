@@ -9,6 +9,7 @@ import type {
   TurnoPublico,
   UsuarioResumen,
 } from '@boxadmin/shared';
+import { aFechaISO } from '@boxadmin/shared';
 import { ErrorDeApi } from '@/lib/cliente';
 import { TEXTO_DE_SESION_CADUCADA } from '@/lib/sesion-caducada';
 import { vigilarEstosDatos } from '@/test/espia-de-consola';
@@ -113,6 +114,16 @@ const PERSONAS = [
   unUsuario({ id: 'u-beto', perfilId: 'p-beto', nombreCompleto: 'Beto Diaz', email: 'b@gym.test' }),
 ];
 
+/**
+ * EL RELOJ DEL SPEC, FIJO E INYECTADO.
+ *
+ * «Reasignar» deja de ofrecer los turnos que ya empezaron, asi que lo que se ve
+ * depende de la hora. Las fixtures de abajo son de noviembre de 2026: con el
+ * reloj de verdad caducarian solas y el spec se pondria rojo un dia cualquiera
+ * sin que nadie tocara nada. Se le pasa este `ahora` al bloque por prop.
+ */
+const AHORA_POR_DEFECTO = new Date('2026-11-01T12:00:00.000Z');
+
 const OTROS_TURNOS = [
   unTurno({ id: 't1' }),
   unTurno({ id: 't2', nombre: 'Flow', fecha: '2026-11-05', horaInicio: '19:00', horaFin: '20:00' }),
@@ -198,6 +209,7 @@ interface OpcionesDeMontaje {
   personas?: UsuarioResumen[];
   turnos?: TurnoPublico[];
   creada?: ReservaCreada;
+  ahora?: Date;
 }
 
 function prepararServidor(opciones: OpcionesDeMontaje): QueryClient {
@@ -246,7 +258,10 @@ function pintar(opciones: OpcionesDeMontaje): QueryClient {
 
   render(
     <QueryClientProvider client={cliente}>
-      <BloqueDeAnotados turno={opciones.turno ?? unTurno()} />
+      <BloqueDeAnotados
+        turno={opciones.turno ?? unTurno()}
+        ahora={opciones.ahora ?? AHORA_POR_DEFECTO}
+      />
     </QueryClientProvider>,
   );
 
@@ -845,6 +860,101 @@ describe('reasignar una reserva', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Que destinos se ofrecen: ni pasados, y los llenos a la vista pero sin elegir
+// ---------------------------------------------------------------------------
+
+describe('los destinos de reasignar', () => {
+  /**
+   * Todo RELATIVO a este `ahora`, que se inyecta: nada caduca. Las 18:30 UTC,
+   * que es la convencion de horas del sistema (`instanteDelTurno`).
+   */
+  const AHORA = new Date('2027-03-10T18:30:00.000Z');
+  const UN_DIA = 24 * 60 * 60 * 1000;
+  const HOY = aFechaISO(AHORA);
+  const AYER = aFechaISO(new Date(AHORA.getTime() - UN_DIA));
+  const MANANA = aFechaISO(new Date(AHORA.getTime() + UN_DIA));
+
+  const ACTUAL = unTurno({ id: 't1', fecha: MANANA, horaInicio: '08:00', horaFin: '09:00' });
+  /** De HOY y media hora atras: la fecha sola no lo delata. */
+  const YA_EMPEZO = unTurno({ id: 't-ya-empezo', fecha: HOY, horaInicio: '18:00' });
+  /** De AYER pero a una hora POSTERIOR a la de ahora: la hora sola no lo delata. */
+  const DE_AYER = unTurno({ id: 't-de-ayer', fecha: AYER, horaInicio: '20:00', horaFin: '21:00' });
+  /** De HOY mas tarde y con lugar. */
+  const MAS_TARDE = unTurno({
+    id: 't-mas-tarde',
+    fecha: HOY,
+    horaInicio: '19:00',
+    horaFin: '20:00',
+    cupo: 10,
+    reservasActivas: 3,
+    lugaresLibres: 7,
+  });
+  const LLENO = unTurno({
+    id: 't-lleno',
+    fecha: MANANA,
+    horaInicio: '10:00',
+    horaFin: '11:00',
+    cupo: 10,
+    reservasActivas: 10,
+    lugaresLibres: 0,
+  });
+
+  async function abrirConLosDestinos(): Promise<HTMLOptionElement[]> {
+    await montar({
+      turno: ACTUAL,
+      turnos: [ACTUAL, YA_EMPEZO, DE_AYER, MAS_TARDE, LLENO],
+      ahora: AHORA,
+    });
+    await abrirReasignarDe(ANOTADA_CENTINELA);
+
+    return [...screen.getByLabelText('Turno destino').querySelectorAll('option')];
+  }
+
+  function laOpcion(opciones: HTMLOptionElement[], id: string): HTMLOptionElement | undefined {
+    return opciones.find((opcion) => opcion.value === id);
+  }
+
+  it('un turno de HOY que ya empezo no se ofrece', async () => {
+    const opciones = await abrirConLosDestinos();
+
+    expect(laOpcion(opciones, 't-ya-empezo')).toBeUndefined();
+  });
+
+  it('un turno de un dia anterior no se ofrece, aunque su hora sea posterior a la de ahora', async () => {
+    const opciones = await abrirConLosDestinos();
+
+    expect(laOpcion(opciones, 't-de-ayer')).toBeUndefined();
+  });
+
+  it('un turno lleno se ve, deshabilitado y con «(lleno)»', async () => {
+    const opciones = await abrirConLosDestinos();
+    const lleno = laOpcion(opciones, 't-lleno');
+
+    expect(
+      lleno,
+      'el lleno tiene que verse: quien esta en el mostrador sabe que existe',
+    ).toBeDefined();
+    expect(lleno?.disabled).toBe(true);
+    expect(lleno?.textContent).toContain('(lleno)');
+  });
+
+  it('un turno futuro con lugar se ofrece habilitado y sin «(lleno)»', async () => {
+    const opciones = await abrirConLosDestinos();
+    const libre = laOpcion(opciones, 't-mas-tarde');
+
+    expect(libre).toBeDefined();
+    expect(libre?.disabled).toBe(false);
+    expect(libre?.textContent).not.toContain('lleno');
+  });
+
+  it('se ofrecen EXACTAMENTE los futuros, en el orden en que llegan', async () => {
+    const opciones = await abrirConLosDestinos();
+
+    expect(opciones.map((opcion) => opcion.value)).toEqual(['', 't-mas-tarde', 't-lleno']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Los dos errores que NO se tratan como el resto del panel
 // ---------------------------------------------------------------------------
 
@@ -875,6 +985,30 @@ describe('los dos errores distintos', () => {
     expect(screen.getByText(/no tiene acceso a la sala/i)).toBeInTheDocument();
     expect(screen.queryByText(/hace falta ser/i)).toBeNull();
     expect(screen.queryByText(/tu rol no alcanza/i)).toBeNull();
+  });
+
+  /**
+   * EL 403 DE ANOTAR SE LEE TAL CUAL, ENTERO.
+   *
+   * Desde la Fase 20 la API ya no dice «PATCH /usuarios/:id/salas»: dice donde
+   * se arregla en la web. Por eso el bloque no lo traduce, y el test lo fija con
+   * la frase EXACTA que tira `ReservasService.crear` —igualdad sobre el texto
+   * del nodo, no una subcadena: cortar la mitad que dice «desde su ficha»
+   * seguiria pasando un `toContain`—.
+   */
+  it('el 403 de sala al anotar se lee entero, con la frase de la API', async () => {
+    const frase =
+      'Esta persona no tiene acceso a la sala de este turno. Asignásela desde su ficha, en Salas.';
+    await montar();
+    laApiFalla(new ErrorDeApi(frase, 403));
+
+    await clicEn('Anotar a alguien');
+    await userEvent.setup().selectOptions(screen.getByLabelText('Persona a anotar'), 'p-beto');
+    await clicEn('Anotar');
+
+    expect(screen.getByText(frase)).toBeInTheDocument();
+    expect(screen.queryByText(/forbidden/i)).toBeNull();
+    expect(screen.queryByText(/hace falta ser/i)).toBeNull();
   });
 
   /**

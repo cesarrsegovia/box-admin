@@ -43,51 +43,15 @@ import { useRolDeQuienMira } from '../rol-del-panel';
  * vuelve a crear. Por eso la columna de acciones tiene un solo boton.
  *
  * ---------------------------------------------------------------------------
- * `recuperable` NO SE DIBUJA, Y ES DEUDA ANOTADA, NO UN CONTROL.
+ * UN CIERRE ES SIEMPRE DE DIAS ENTEROS.
  *
- * El campo existe de punta a punta —columna en el schema con `@default(true)`,
- * `@IsOptional()` en el DTO, `dto.recuperable ?? true` al escribir y
- * `recuperable` en `AusenciaPublica`— y NADIE LO LEE: ni
- * `generacion-mes.service.ts`, que es quien aplica las ausencias al plan del
- * mes, ni `calendario.datos.ts`, ni `liquidacion.datos.ts`. Los tres mapean la
- * fila a `{ salaId, desde, hasta }` y tiran el resto.
- *
- * Es el peor de los campos muertos de la fase porque EL NOMBRE PROMETE ALGO
- * CONCRETO: un admin que marque un cierre como recuperable va a creer que a
- * los alumnos se les devuelve la clase, y no se les devuelve nada —la
- * devolucion de una clase es otra cosa, el `tipo=recuperable` de cancelar una
- * reserva—. Ofrecerlo con una advertencia al lado tampoco sirve: una
- * advertencia permanente se vuelve invisible a las dos semanas y lo que queda
- * es la casilla.
- *
- * Hay un test —«NO dibuja el campo recuperable»— que afirma sobre el MARCADO
- * para que el proximo que lea `AusenciaPublica` no lo agregue «porque
- * faltaba».
- * ---------------------------------------------------------------------------
- * LA FRANJA HORARIA TAMPOCO SE OFRECE, Y ES PEOR QUE `recuperable`.
- *
- * `todoElDia`, `horaInicio` y `horaFin` existen de punta a punta —el DTO los
- * acepta, el service los valida y los guarda, `AusenciaPublica` los devuelve— y
- * NINGUN CONSUMIDOR MIRA LA HORA. Verificado uno por uno:
- *
- * - `generacion-mes.service.ts`, que es quien aplica los cierres al plan del
- *   mes, decide con `(a.salaId === null || a.salaId === sala.id) &&
- *   fechaEnRango(fecha, a.desde, a.hasta)`: la hora no entra en la condicion;
- * - `calendario.datos.ts` mapea la fila a `{ salaId, desde, hasta }`;
- * - `liquidacion.datos.ts` mapea a eso mismo mas `motivo`, y
- *   `calcular-liquidacion.ts` la usa otra vez solo con `fechaEnRango`.
- *
- * O sea que un cierre cargado «de 18:00 a 20:00» NO cierra dos horas: CANCELA
- * EL DIA ENTERO, al publicar el mes y al pintar el calendario. `recuperable` es
- * un campo inerte —se guarda y no hace nada—; este HACE ALGO, Y DE MAS: se lleva
- * por delante los turnos de la mañana que deberian existir, y el sintoma
- * aparece a un mes de distancia, cuando el mes publicado sale mal.
- *
- * Por eso el formulario no tiene interruptor ni campos de hora y el cuerpo
- * manda siempre `todoElDia: true`. Y por eso la tabla NO PINTA las horas de una
- * fila que las traiga —puede haberlas, cargadas por `curl` antes de que
- * existiera esta pantalla—: enseñar «18:00 a 20:00» le prometeria al admin un
- * cierre parcial que no existe. Ver `textoDeFranja`.
+ * Hasta la Fase 20 el cierre tenia ademas `recuperable` y una franja horaria
+ * (`todoElDia`, `horaInicio`, `horaFin`). Ningun consumidor los leia:
+ * `generacion-mes.service.ts`, `calendario.datos.ts` y `liquidacion.datos.ts`
+ * deciden con `fechaEnRango(fecha, desde, hasta)`, asi que un cierre «de 18:00
+ * a 20:00» cancelaba el dia entero. Se quitaron de punta a punta —schema, DTO,
+ * contrato— y la API rechaza con 400 a quien todavia los mande. Por eso el
+ * formulario no tiene interruptor ni campos de hora, y el cuerpo no los lleva.
  * ---------------------------------------------------------------------------
  */
 
@@ -211,38 +175,6 @@ function textoDeFechas(ausencia: { desde: string; hasta: string }): string {
     : `${ausencia.desde} a ${ausencia.hasta}`;
 }
 
-/**
- * TODO CIERRE ES DE DIA COMPLETO, Y LA TABLA DICE ESO AUNQUE EL DATO DIGA OTRA
- * COSA.
- *
- * Las horas no se pintan nunca. No es que no interesen: es que pintarlas seria
- * la mentira. Un cierre guardado «de 18:00 a 20:00» no cierra dos horas —los
- * tres consumidores deciden con `fechaEnRango(fecha, desde, hasta)` y ninguno
- * mira la hora—, cancela el dia entero. Una celda que dijera «18:00 a 20:00»
- * le prometeria al admin que a las 10 hay clase, y no la hay.
- *
- * Y la columna no desaparece por eso. Filas con horas puede haberlas ya,
- * cargadas por `curl` antes de que existiera esta pantalla, y el contrato las
- * sigue devolviendo: quien cargo una cree que cerro una franja. Callarse
- * dejaria esa creencia intacta. Asi que la fila lo DICE —«el tramo horario
- * guardado no se aplica»— sin repetir las horas, que es lo unico que no se
- * puede leer sin entenderlo al reves.
- *
- * Se mira tambien `horaInicio`/`horaFin` y no solo `todoElDia`: el service hoy
- * pone las horas en null cuando el cierre es de dia completo, pero esta celda
- * no tiene por que depender de eso para no mentir.
- */
-function textoDeFranja(ausencia: {
-  todoElDia: boolean;
-  horaInicio: string | null;
-  horaFin: string | null;
-}): string {
-  const traeHoras =
-    !ausencia.todoElDia || ausencia.horaInicio !== null || ausencia.horaFin !== null;
-
-  return traeHoras ? 'Todo el dia (el tramo horario guardado no se aplica)' : 'Todo el dia';
-}
-
 /** El motivo es opcional en el DTO: vacio se DICE, no se deja un hueco. */
 function textoDeMotivo(motivo: string | null): string {
   return motivo === null || motivo.trim() === '' ? 'Sin motivo' : motivo;
@@ -251,10 +183,12 @@ function textoDeMotivo(motivo: string | null): string {
 /**
  * Las columnas, declaradas y cerradas.
  *
- * `AusenciaPublica` trae ademas `id`, `tenantId` y `recuperable`. Ninguno esta
- * aqui: el `tenantId` es justo el dato que la Fase 0 se ocupo de que no
- * cruzara entre gimnasios y lo que se pinta viaja al navegador aunque este
- * tapado por CSS; `recuperable` es el campo muerto de la cabecera.
+ * `AusenciaPublica` trae ademas `id` y `tenantId`. Ninguno esta aqui: el
+ * `tenantId` es justo el dato que la Fase 0 se ocupo de que no cruzara entre
+ * gimnasios y lo que se pinta viaja al navegador aunque este tapado por CSS.
+ *
+ * No hay columna de franja: un cierre es siempre de dias enteros —ver la
+ * cabecera— y una columna que dijera siempre lo mismo no informa nada.
  *
  * La columna de acciones SOLO EXISTE para quien puede escribir: una columna
  * vacia para el operativo seria un hueco que se lee como una averia.
@@ -269,7 +203,6 @@ function columnasDeAusencias({
   const columnas: ColumnaDeTabla<AusenciaPublica>[] = [
     { encabezado: 'Sala', celda: (ausencia) => textoDeSala(ausencia.salaId, nombresDeSala) },
     { encabezado: 'Fechas', celda: textoDeFechas },
-    { encabezado: 'Franja', celda: textoDeFranja },
     { encabezado: 'Motivo', celda: (ausencia) => textoDeMotivo(ausencia.motivo) },
   ];
 
@@ -319,18 +252,11 @@ const TODO_EL_SALON = 'todo-el-salon';
 /**
  * Los campos que la API nombra en sus 400. En un solo sitio.
  *
- * NO ESTAN `horaInicio`, `horaFin` NI `todoElDia`, y eso se comprobo contra el
- * DTO y el service antes de sacarlos: los tres mensajes que los nombran
- * —«horaInicio debe tener formato HH:MM en 24 h», «horaFin debe ser posterior
- * a horaInicio», «Un cierre parcial necesita horaInicio y horaFin»— los dispara
- * el `@Matches` de un campo que esta pantalla NO MANDA, o el `!todoElDia` del
- * service, que con `todoElDia: true` fijo no se alcanza.
- *
- * Y si alguna vez llegaran igual, estar fuera de la lista es lo correcto: un
- * campo de esta lista sin control que lo pinte se TRAGA la frase —`porCampo`
- * se la queda y no se dibuja en ningun sitio—, mientras que lo que no casa con
- * ningun campo sale en el cartel de arriba. Mejor una frase rara visible que
- * una frase correcta invisible.
+ * Solo los que tienen control en el formulario: un campo de esta lista sin
+ * control que lo pinte se TRAGA la frase —`porCampo` se la queda y no se dibuja
+ * en ningun sitio—, mientras que lo que no casa con ningun campo sale en el
+ * cartel de arriba. Mejor una frase rara visible que una frase correcta
+ * invisible.
  */
 const CAMPOS_DE_AUSENCIA = [
   'salaId',
@@ -416,19 +342,8 @@ function AltaDeAusencia({ salas }: { salas: readonly SalaPublica[] }) {
       ...(valores.sala === TODO_EL_SALON ? {} : { salaId: valores.sala }),
       desde: valores.desde,
       hasta: valores.hasta,
-      /**
-       * `todoElDia` VIAJA SIEMPRE, aunque ya no haya interruptor que lo mueva.
-       *
-       * El service lo resuelve con `dto.todoElDia ?? true`, asi que omitirlo
-       * daria hoy el mismo resultado y seria exactamente la puerta que esto
-       * cierra: el dia que ese default cambie, un cierre de dia completo
-       * pasaria a ser una franja sin horas. Es un valor, no un hueco.
-       *
-       * Y las horas NO VIAJAN NUNCA: no hay franja que mandar, y mandarlas
-       * dejaria en el cuerpo la huella de un cierre parcial que el motor no
-       * respeta. Con `todoElDia: true` el service las descarta igual.
-       */
-      todoElDia: true,
+      // Ni `todoElDia` ni horas ni `recuperable`: se quitaron en la Fase 20 y
+      // la API rechaza con 400 una clave que su DTO ya no declara.
       // El motivo es opcional: vacio se OMITE. Un `motivo: ''` se guardaria
       // como una cadena vacia, que no es lo mismo que «no puso motivo».
       ...(valores.motivo.trim() === '' ? {} : { motivo: valores.motivo.trim() }),

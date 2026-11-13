@@ -468,6 +468,50 @@ describe('Fase 6B — la web publica del salon (e2e)', () => {
       const despues = await request(servidor).get('/public/salon/web-packs').expect(200);
       expect(despues.body.packs).toEqual([{ nombre: 'Total 20', precio: null, destacado: false }]);
     });
+
+    /**
+     * EL DESTACADO DADO DE BAJA SE CONSERVA AL GUARDAR, Y «NINGUNO» ES `null`.
+     *
+     * El editor de Configuracion -> Web (Fase 20) reenvia el destacado tal cual
+     * cuando nadie lo toco, aunque el pack este dado de baja: si el `PUT` lo
+     * rechazara, guardar el tagline seria imposible hasta elegir otro plan. La
+     * landing no lo muestra igual (ver el caso de arriba): `packs()` solo lee
+     * los activos.
+     *
+     * Y elegir «Ninguno» manda `planDestacadoId: null`, que tiene que ser un
+     * borrado y no un 500: `@IsOptional` deja pasar el `null` y, sin tratarlo,
+     * llegaba a Prisma como `where: { id: null }`.
+     */
+    it('un destacado dado de baja se conserva al guardar, y null lo quita', async () => {
+      const e = await montar('web-destacado');
+      await publicarWeb(e.gym, { mostrarPrecios: true, planDestacadoId: e.packDestacadoId });
+
+      await request(servidor)
+        .delete(`/packs/${e.packDestacadoId}`)
+        .set(auth(e.gym.adminToken))
+        .expect(200);
+
+      await publicarWeb(e.gym, { mostrarPrecios: true, planDestacadoId: e.packDestacadoId });
+      const conservado = await request(servidor)
+        .get('/config/web-salon')
+        .set(auth(e.gym.adminToken))
+        .expect(200);
+      expect(conservado.body.planDestacadoId).toBe(e.packDestacadoId);
+
+      const landing = await request(servidor).get('/public/salon/web-destacado').expect(200);
+      expect(landing.body.packs).toEqual([{ nombre: 'Total 20', precio: null, destacado: false }]);
+
+      await request(servidor)
+        .put('/config/web-salon')
+        .set(auth(e.gym.adminToken))
+        .send({ activa: true, mostrarPrecios: true, planDestacadoId: null })
+        .expect(200);
+      const sinDestacado = await request(servidor)
+        .get('/config/web-salon')
+        .set(auth(e.gym.adminToken))
+        .expect(200);
+      expect(sinDestacado.body.planDestacadoId).toBeNull();
+    });
   });
 
   describe('los caminos al 404 son indistinguibles entre si', () => {

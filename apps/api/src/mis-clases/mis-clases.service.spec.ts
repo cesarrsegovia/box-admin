@@ -86,17 +86,16 @@ describe('MisClasesService.misClases', () => {
     expect(clases.map((c) => c.turnoId)).toEqual(['t-fati']);
   });
 
-  it('listaPasada es false mientras nadie paso lista', async () => {
-    const db = prismaFalso({ turnos: [TURNO_DE_FATI] });
-    const servicio = new MisClasesService({ db } as never, historialFalso, cacheFalso as never);
-
-    const [clase] = await servicio.misClases(ACTOR, RANGO);
-
-    expect(clase!.listaPasada).toBe(false);
-    expect(clase!.reservasActivas).toBe(2);
-  });
-
-  it('listaPasada es true en cuanto alguna reserva tiene la marca', async () => {
+  /**
+   * FUERA `listaPasada` DESDE LA FASE 20.
+   *
+   * Era `reservas.some(r => r.asistio !== null)`, y un solo check-in por QR lo
+   * ponia en `true` con la lista sin pasar: un si/no que podia mentir y que
+   * ninguna pantalla dibujaba. Se fija con una reserva YA MARCADA, que es el
+   * caso donde el campo viejo habria salido en `true`: con todas en `null` un
+   * campo que solo apareciera al encenderse pasaria este test sin enterarse.
+   */
+  it('la clase ya no trae listaPasada, ni con una reserva marcada', async () => {
     const db = prismaFalso({
       turnos: [{ ...TURNO_DE_FATI, reservas: [{ asistio: true }, { asistio: null }] }],
     });
@@ -104,7 +103,8 @@ describe('MisClasesService.misClases', () => {
 
     const [clase] = await servicio.misClases(ACTOR, RANGO);
 
-    expect(clase!.listaPasada).toBe(true);
+    expect(clase).not.toHaveProperty('listaPasada');
+    expect(clase!.reservasActivas).toBe(2);
   });
 
   it('un usuario sin perfil no tiene clases propias: 404', async () => {

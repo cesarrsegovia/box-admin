@@ -23,14 +23,9 @@ import { FALTA_EL_NOMBRE } from '../textos';
 /**
  * LA FICHA DE UNA SALA: sus OCHO ajustes, y ni uno mas.
  *
- * `SalaPublica` trae NUEVE campos editables y aqui se dibujan ocho. El que
- * falta es `exclusiva`, y falta a proposito: es un campo MUERTO. Se escribe en
- * el alta (`salas.service.ts`, `exclusiva: dto.exclusiva ?? false`), se mapea
- * al contrato (`aSalaPublica`) y ahi se acaba — ninguna regla del sistema lo
- * lee: ni la disponibilidad, ni el planificador del mes, ni los packs, ni la
- * visibilidad. Un interruptor que no cambia nada es peor que no tenerlo: el
- * admin lo activa creyendo que reserva la sala para alguien y no pasa
- * absolutamente nada. Cuando el campo signifique algo, se dibuja.
+ * `SalaPublica` trae OCHO campos editables y aqui se dibujan los ocho. Hubo
+ * un noveno, `exclusiva`, que se guardaba y ninguna regla del sistema leia: se
+ * quito de punta a punta en la Fase 20. Si vuelve, vuelve con su logica.
  *
  * LOS OCHO SE GUARDAN POR SEPARADO, en vez de con un «Guardar» unico. No es
  * estetica: los cuatro heredables tienen un `null` con significado, y un

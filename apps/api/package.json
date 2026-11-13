@@ -19,7 +19,8 @@
     "db:generate": "dotenv -e ../../.env -- prisma generate",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "db:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
-    "db:studio": "dotenv -e ../../.env -- prisma studio"
+    "db:studio": "dotenv -e ../../.env -- prisma studio",
+    "cifrado:rotar": "dotenv -e ../../.env -- ts-node src/scripts/rotar-cifrado.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1134.0",

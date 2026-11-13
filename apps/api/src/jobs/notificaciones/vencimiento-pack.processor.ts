@@ -5,26 +5,25 @@ import { comienzoDeHoyUtc, fechaLegible } from '@boxadmin/shared';
 import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-context';
 import { MensajeroService } from '../../comunicacion/mensajero.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { marcarAvisoDeHoy } from './aviso-diario';
 import { VENCIMIENTO_PACK_QUEUE, type DatosDiarios } from './colas';
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
 /**
- * La marca de idempotencia, POR GIMNASIO y escrita ANTES de mandar. El porque
- * entero —que `attempts: 1` no impide una segunda ejecucion porque el camino de
- * job atascado de BullMQ re-encola sin mirarlo, y por que la marca no va por job
- * ni por destinatario— esta en la cabecera de `recordatorio-pago.processor.ts`,
- * con el archivo y la linea de BullMQ que lo demuestran. No se repite aqui para
- * no tener dos copias que algun dia digan cosas distintas.
+ * La marca de idempotencia, POR PERSONA Y DIA en `AvisoDiario` con
+ * `tipo: 'vencimiento-pack'`, insertada ANTES de mandar. El porque entero —que
+ * `attempts: 1` no impide una segunda ejecucion porque el camino de job atascado
+ * de BullMQ re-encola sin mirarlo, el intercambio frente a la marca por gimnasio
+ * de antes y el costo— esta en la cabecera de `recordatorio-pago.processor.ts`.
+ * No se repite aqui para no tener dos copias que algun dia digan cosas
+ * distintas.
  *
- * SI VALE LA PENA REPETIR EL PRECIO, porque es lo que mas sorprende: un fallo de
- * `updateData` no solo se lleva la tanda de ese gimnasio, ABORTA EL `process`
- * ENTERO, y con `attempts: 1` los gimnasios que aun no se habian recorrido se
- * quedan sin aviso ese dia. Lo que NO rompe es el cron: la siguiente iteracion
- * se programa al recoger el job, no al completarlo (`nextJobFromJobData`, en
- * `bullmq/dist/cjs/classes/worker.js`), asi que manana vuelve a disparar.
+ * Lo que vale repetir: un corte pierde a lo sumo el aviso de la persona marcada
+ * y no enviada, y un fallo al marcar a una persona se registra y se salta a esa
+ * persona sola; ya no aborta la tanda.
  */
-type JobDiario = Job<DatosDiarios & { gimnasiosHechos?: string[] }>;
+type JobDiario = Job<DatosDiarios>;
 
 /**
  * EL AVISO DE VENCIMIENTO DE PACK. UN JOB, N EMAILS, igual que su gemelo el
@@ -33,7 +32,7 @@ type JobDiario = Job<DatosDiarios & { gimnasiosHechos?: string[] }>;
  * 1. SE ENCOLA CON `attempts: 1`, explicito en `RegistroDeCrones`. Reintentar
  *    una tanda a medias no recupera nada y duplica lo ya mandado. Y como eso NO
  *    basta —el camino de job atascado re-encola sin mirar `attempts`—, lleva
- *    ademas la marca por gimnasio de `JobDiario`.
+ *    ademas la marca por persona de `JobDiario`.
  * 2. SE CUENTA ANTES DE MANDAR, un `logger.log` por gimnasio.
  * 3. UN JOB DIARIO NO TIENE TENANT: `runUnscoped` para listar los gimnasios y
  *    un `runWithTenant` por cada uno.
@@ -81,26 +80,13 @@ export class VencimientoPackProcessor extends WorkerHost {
       }),
     );
 
-    const hechos = new Set(job.data.gimnasiosHechos ?? []);
-
     let avisados = 0;
     for (const tenant of tenants) {
-      if (hechos.has(tenant.id)) {
-        this.logger.log(
-          `${tenant.nombre} ya se proceso en una ejecucion anterior del job ${job.id}; se omite`,
-        );
-        continue;
-      }
-
-      // SE MARCA ANTES DE MANDAR: al reves, un corte entre el envio y la marca
-      // repite el gimnasio entero. Ver `JobDiario`.
-      hechos.add(tenant.id);
-      await job.updateData({ ...job.data, gimnasiosHechos: [...hechos] });
-
       avisados += await this.deUnGimnasio(tenant, ahora);
     }
 
-    // Cuenta lo de ESTA ejecucion: los avisos de una anterior no estan aqui.
+    // Cuenta lo de ESTA ejecucion: a quien ya tenia la marca de hoy no se le
+    // mando nada, y no esta aqui.
     this.logger.log(
       `Vencimiento de pack: ${avisados} avisos en ${tenants.length} gimnasios (job ${job.id})`,
     );
@@ -155,7 +141,17 @@ export class VencimientoPackProcessor extends WorkerHost {
           `${tenant.diasAvisoVencimiento} dias`,
       );
 
+      let avisados = 0;
       for (const perfil of aAvisar) {
+        // SE MARCA ANTES DE MANDAR, persona por persona. Ver `JobDiario`.
+        const marcada = await marcarAvisoDeHoy(this.prisma.db, this.logger, {
+          tenantId: tenant.id,
+          perfilId: perfil.id,
+          tipo: 'vencimiento-pack',
+          ahora,
+        });
+        if (!marcada) continue;
+
         await this.mensajero.avisar(
           {
             perfilId: perfil.id,
@@ -177,9 +173,10 @@ export class VencimientoPackProcessor extends WorkerHost {
           // cerrada. El motivo entero esta en el processor de recordatorio.
           `/${tenant.slug}/mi-pack`,
         );
+        avisados += 1;
       }
 
-      return aAvisar.length;
+      return avisados;
     });
   }
 

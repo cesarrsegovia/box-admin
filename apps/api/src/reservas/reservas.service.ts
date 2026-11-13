@@ -168,8 +168,8 @@ export class ReservasService {
           const tieneAcceso = perfil.salas.some((union) => union.salaId === turno.salaId);
           if (!tieneAcceso) {
             throw new ForbiddenException(
-              'El usuario no tiene acceso a la sala de este turno. ' +
-                'Asignasela con PATCH /usuarios/:id/salas.',
+              'Esta persona no tiene acceso a la sala de este turno. ' +
+                'Asignásela desde su ficha, en Salas.',
             );
           }
 

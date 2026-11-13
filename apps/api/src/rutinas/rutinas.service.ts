@@ -206,7 +206,7 @@ export class RutinasService {
     const tieneAcceso = perfil.salas.some((union) => union.salaId === salaId);
     if (!tieneAcceso) {
       throw new ForbiddenException(
-        'El usuario no tiene acceso a esa sala. Asignasela con PATCH /usuarios/:id/salas.',
+        'El usuario no tiene acceso a esa sala. Asignasela desde su ficha, en Salas.',
       );
     }
   }

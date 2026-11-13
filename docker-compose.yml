@@ -46,6 +46,29 @@ services:
       context: .
       dockerfile: ./apps/api/Dockerfile.dev
     env_file: .env
+    # Los volúmenes anónimos de node_modules (abajo) sobreviven a cada
+    # recreación del contenedor y tapan el node_modules de la imagen nueva: tras
+    # un cambio de dependencias, `docker compose up -d --build api` (sin -V)
+    # arrancaba con el node_modules viejo y moría con
+    # «Cannot find module '@nestjs/throttler'». Por eso el arranque reconcilia
+    # primero ese node_modules con el lockfile de la imagen:
+    # - `pnpm install --frozen-lockfile --offline` sale sólo del store de pnpm
+    #   que trae la imagen (instalado con ese mismo lockfile), sin red. Si no
+    #   hay nada que cambiar tarda ~1 s, y reparar una dependencia que falta,
+    #   también ~1 s (medido en la Fase 20).
+    # - `prisma generate`, porque el cliente generado vive en
+    #   node_modules/.prisma, dentro del mismo volumen anónimo.
+    # Se eligió esto antes que documentar `up -V`, porque así no depende de
+    # que alguien se acuerde del flag.
+    command:
+      - sh
+      - -c
+      - >-
+        cd /repo &&
+        pnpm install --frozen-lockfile --offline &&
+        pnpm --filter @boxadmin/api exec prisma generate &&
+        cd apps/api &&
+        exec pnpm start:dev
     environment:
       DATABASE_URL: postgresql://boxadmin:boxadmin_dev@postgres:5432/boxadmin?schema=public
       REDIS_URL: redis://redis:6379

@@ -75,7 +75,6 @@ const CLASE = {
   horaFin: '10:00',
   cupo: 12,
   reservasActivas: 2,
-  listaPasada: false,
 };
 
 const RANGO = { desde: '2026-10-01', hasta: '2026-10-31' };

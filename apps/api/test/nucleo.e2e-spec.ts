@@ -91,20 +91,57 @@ describe('Fase 1 — nucleo operativo (e2e)', () => {
       const { body } = await request(servidor)
         .post('/salas')
         .set(auth(gym.adminToken))
-        .send({ nombre: 'Sala A', cupoBase: 12, minMinutosCancelar: 120, exclusiva: true })
+        .send({ nombre: 'Sala A', cupoBase: 12, minMinutosCancelar: 120 })
         .expect(201);
 
       expect(body).toMatchObject({
         nombre: 'Sala A',
         cupoBase: 12,
         minMinutosCancelar: 120,
-        exclusiva: true,
         activa: true,
       });
 
       const lista = await request(servidor).get('/salas').set(auth(gym.adminToken)).expect(200);
 
       expect(lista.body).toHaveLength(1);
+    });
+
+    /**
+     * `exclusiva` SE QUITO EN LA FASE 20: se guardaba y nadie la leia. Con el
+     * `forbidNonWhitelisted` del pipe global, un cliente que todavia la mande se
+     * entera con un 400 que la nombra, en vez de creer que pide algo.
+     */
+    it('mandar exclusiva al crear o editar una sala es 400 y la nombra', async () => {
+      const alta = await request(servidor)
+        .post('/salas')
+        .set(auth(gym.adminToken))
+        .send({ nombre: 'Sala Exclusiva', exclusiva: true })
+        .expect(400);
+
+      expect(alta.body.message).toContain('property exclusiva should not exist');
+
+      const salaId = await crearSala();
+      const edicion = await request(servidor)
+        .patch(`/salas/${salaId}`)
+        .set(auth(gym.adminToken))
+        .send({ exclusiva: true })
+        .expect(400);
+
+      expect(edicion.body.message).toContain('property exclusiva should not exist');
+    });
+
+    it('ni el alta ni el listado devuelven exclusiva', async () => {
+      const { body } = await request(servidor)
+        .post('/salas')
+        .set(auth(gym.adminToken))
+        .send({ nombre: 'Sala C' })
+        .expect(201);
+
+      expect(body).not.toHaveProperty('exclusiva');
+
+      const lista = await request(servidor).get('/salas').set(auth(gym.adminToken)).expect(200);
+
+      expect(lista.body[0]).not.toHaveProperty('exclusiva');
     });
 
     it('la sala que no configura reglas las deja en null, para heredarlas mas adelante', async () => {

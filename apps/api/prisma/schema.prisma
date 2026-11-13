@@ -75,6 +75,7 @@ model Tenant {
   configuracionSmtp ConfiguracionSMTP?
   plantillasEmail   PlantillaEmail[]
   suscripcionesPush SuscripcionPush[]
+  avisosDiarios     AvisoDiario[]
 
   configCheckInQR     ConfigCheckInQR?
   asistencias         Asistencia[]
@@ -187,7 +188,6 @@ model Sala {
   activa             Boolean @default(true)
   visibleAlumnos     Boolean @default(true)
   soloCuposLiberados Boolean @default(false)
-  exclusiva          Boolean @default(false)
 
   // null = "hereda de la configuracion general del tenant". Esa configuracion
   // no existe todavia (llega en Fase 2), asi que en Fase 1 null significa "sin
@@ -269,6 +269,7 @@ model Perfil {
   horariosAsignados  HorarioProfesorAsignado[]
   pagos              Pago[]
   suscripcionesPush  SuscripcionPush[]
+  avisosDiarios      AvisoDiario[]
 
   // Destino de las FK compuestas de UsuarioSala y Reserva. Ver Usuario.
   @@unique([tenantId, id])
@@ -616,8 +617,10 @@ model VacacionAlumno {
 
 model Ausencia {
   // Cierre de una sala o de todo el salon: feriado, evento, reforma. salaId null
-  // = todo el salon. La Fase 6 la expondra completa en Mantenimiento; el motor
-  // ya la respeta desde aqui.
+  // = todo el salon. Siempre dias enteros: el motor, el calendario y la
+  // liquidacion deciden con fechaEnRango(fecha, desde, hasta). Una franja
+  // horaria (todoElDia, horaInicio, horaFin) y "recuperable" se quitaron en la
+  // Fase 20 porque nadie los aplicaba.
   id       String @id @default(cuid())
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
@@ -625,18 +628,11 @@ model Ausencia {
   salaId String?
   sala   Sala?   @relation(fields: [tenantId, salaId], references: [tenantId, id], onDelete: Cascade)
 
-  // El PDF usaba DateTime completo junto a un todoElDia. Aqui las fechas son
-  // @db.Date y el tramo horario va aparte en "HH:MM", la misma convencion que
-  // Turno: cubre "cerramos el sabado de 14 a 18" sin arrastrar husos horarios.
+  // @db.Date: dias de calendario, sin husos horarios.
   desde DateTime @db.Date
   hasta DateTime @db.Date
 
-  todoElDia  Boolean @default(true)
-  horaInicio String? // solo si todoElDia = false
-  horaFin    String?
-
-  recuperable Boolean @default(true)
-  motivo      String?
+  motivo String?
 
   createdAt DateTime @default(now())
 
@@ -661,7 +657,7 @@ model ClaveInvitacion {
   activa Boolean @default(true)
 
   usosMax      Int? // null = ilimitada
-  usosActuales Int  @default(0)
+  usosActuales Int       @default(0)
   expiraEn     DateTime?
 
   // El pack que recibe el alumno. FK compuesta y OPCIONAL: en Postgres una FK
@@ -780,12 +776,12 @@ model Comprobante {
   // pueden avisar a la API de que el PUT termino, asi que hace falta un paso
   // explicito de confirmacion. Una fila sin confirmar no aparece en el listado
   // del admin: es lo que evita que vea enlaces rotos.
-  subidoEn DateTime?
+  subidoEn       DateTime?
 
   // Enum y no `String @default("pendiente")` como el PDF: un typo en un string
   // libre es un bug silencioso, y el enum lo convierte en error de compilacion.
   // Mismo criterio que TipoCancelacion en la Fase 1.
-  estado EstadoComprobante @default(PENDIENTE)
+  estado      EstadoComprobante @default(PENDIENTE)
   // Escalar sin FK, igual que HistorialAccion.usuarioId: es auditoria.
   revisadoPor String?
   revisadoEn  DateTime?
@@ -969,6 +965,31 @@ model SuscripcionPush {
   // una migracion mas. El dia que alguien limpie indices, este sobra.
   @@index([tenantId, perfilId])
   @@map("suscripciones_push")
+}
+
+/// La marca de «ya avisado hoy» de los jobs diarios, UNA por persona, tipo y dia.
+/// Se inserta ANTES de mandar: si choca con la clave unica, esa persona ya recibio
+/// el aviso de hoy y se salta. Ver el docblock de recordatorio-pago.processor.ts.
+///
+/// Las filas viejas NO se borran: una por persona avisada y dia (Fase 20, ver
+/// PROGRESO). No hay job de limpieza.
+model AvisoDiario {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// FK COMPUESTA, como todas las que cuelgan de Perfil: la base impide marcar a
+  /// una persona de otro gimnasio. `Cascade` porque la marca no tiene sentido sin
+  /// la persona, y con RESTRICT borrar un perfil reventaria por una marca vieja.
+  perfilId String
+  perfil   Perfil @relation(fields: [tenantId, perfilId], references: [tenantId, id], onDelete: Cascade)
+
+  tipo     String // 'recordatorio-pago' | 'vencimiento-pack'
+  dia      DateTime @db.Date
+  creadoEn DateTime @default(now())
+
+  @@unique([tenantId, tipo, perfilId, dia])
+  @@map("avisos_diarios")
 }
 
 // ---------------------------------------------------------------------------

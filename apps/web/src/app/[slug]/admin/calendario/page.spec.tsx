@@ -77,7 +77,6 @@ function unaSala(cambios: Partial<SalaPublica> = {}): SalaPublica {
     activa: true,
     visibleAlumnos: true,
     soloCuposLiberados: false,
-    exclusiva: false,
     cupoBase: 10,
     minMinutosCancelar: null,
     minMinutosAnotarse: null,

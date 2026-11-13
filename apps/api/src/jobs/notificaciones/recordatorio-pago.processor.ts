@@ -5,10 +5,11 @@ import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-context';
 import { MensajeroService } from '../../comunicacion/mensajero.service';
 import { PagosService } from '../../pagos/pagos.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { marcarAvisoDeHoy } from './aviso-diario';
 import { RECORDATORIO_PAGO_QUEUE, type DatosDiarios } from './colas';
 
 /**
- * LA MARCA DE IDEMPOTENCIA DE LOS JOBS DIARIOS, Y POR QUE VA POR GIMNASIO.
+ * LA MARCA DE IDEMPOTENCIA DE LOS JOBS DIARIOS, Y POR QUE VA POR PERSONA.
  *
  * ⚠️ LO PRIMERO, PORQUE DESMIENTE LO QUE PARECE OBVIO: **`attempts: 1` NO
  * garantiza que este `process` corra una sola vez.** No es una sutileza teorica
@@ -32,46 +33,54 @@ import { RECORDATORIO_PAGO_QUEUE, type DatosDiarios } from './colas';
  * plantilla, una de SMTP, un descifrado y un envio, todo secuencial — un
  * gimnasio de 300 alumnos son minutos de exposicion.
  *
- * POR GIMNASIO, Y NO EN LAS OTRAS DOS GRANULARIDADES POSIBLES:
+ * LA MARCA, DESDE LA FASE 20: UNA FILA DE `AvisoDiario` POR PERSONA, TIPO Y DIA,
+ * con la clave unica `(tenantId, tipo, perfilId, dia)`. Antes de mandarle el
+ * aviso a alguien se INSERTA su fila (`marcarAvisoDeHoy`, en `aviso-diario.ts`):
  *
- * - POR JOB ENTERO (`if (job.data.iniciado) return;`) convierte "re-mandar
- *   cientos" en "no mandar NADA hoy", y se lleva por delante a todos los
- *   gimnasios que aun no se habian procesado. Cambia un problema por otro.
- * - POR DESTINATARIO es una escritura a Redis por email —cara— y deja el payload
- *   creciendo sin control.
- * - POR GIMNASIO acota la perdida a UNA tanda parcial, la del gimnasio que
- *   estaba en curso cuando se corto, y garantiza que ningun alumno reciba dos.
+ * - si entra, se le manda;
+ * - si choca con la clave unica (P2002), ya se le aviso hoy —una ejecucion
+ *   anterior del mismo job— y se salta;
+ * - si falla por cualquier otra cosa, se registra con el logger y se salta a
+ *   ESA persona. Sin marca no se sabe si ya lo recibio, y mandar a ciegas es lo
+ *   que duplica. Las demas siguen.
  *
- * Y SE MARCA ANTES DE MANDAR, como en los dos processors hermanos: al reves, un
- * corte entre el envio y la marca repite el gimnasio entero. Asi el peor caso es
- * el contrario —la tanda de ese gimnasio se pierde— y es el mismo intercambio
- * que eligio toda la fase: perder antes que duplicar.
+ * EL INTERCAMBIO NUEVO, frente a la marca por gimnasio en `job.updateData` que
+ * habia hasta la Fase 19:
  *
- * EL PRECIO DE ESA MARCA, ENTERO, PORQUE ES MAS CARO DE LO QUE PARECE: si
- * `updateData` falla, se propaga sin haber mandado nada de ese gimnasio —esa es
- * la mitad buena— pero al propagarse ABORTA EL `process` COMPLETO, y con
- * `attempts: 1` no hay reintento: los gimnasios que aun no se habian recorrido
- * se quedan sin tanda ese dia. Un blip de Redis en el gimnasio 2 de 30 cuesta 28
- * gimnasios sin aviso.
+ * - UN CORTE PIERDE A LO SUMO UN AVISO: el de la persona marcada y todavia no
+ *   enviada. Antes se perdia la tanda entera del gimnasio en curso.
+ * - UN FALLO DE MARCA YA NO ABORTA: cuesta el aviso de esa persona y nada mas.
+ *   Antes un `updateData` que fallaba propagaba, abortaba el `process` y, con
+ *   `attempts: 1`, dejaba sin tanda a todos los gimnasios que faltaban — un blip
+ *   de Redis en el gimnasio 2 de 30 costaba 28 gimnasios sin aviso.
+ * - La marca vive en la base y no en el payload: el job ya no se escribe nada a
+ *   si mismo, y `DatosDiarios` vuelve a ser solo lo que pone quien encola.
  *
- * Se acepta igual, y no se envuelve en un try/catch para seguir con el
- * siguiente: eso dejaria el gimnasio en curso SIN marcar despues de haber
- * mandado —o a medio mandar—, y volveria a mandarle entero en la proxima
- * ejecucion. Seguir es justo lo que reintroduce la duplicacion que esta marca
- * viene a evitar.
+ * LO QUE SIGUE IGUAL:
  *
- * Y LO QUE UN ABORTO NO ROMPE, que es lo que hace esto llevadero: NO mata el
- * cron. La siguiente iteracion se programa al RECOGER el job, no al completarlo
- * (`nextJobFromJobData`, en `bullmq/dist/cjs/classes/worker.js`), asi que un job
- * que revienta a mitad no rompe la cadena: manana el cron vuelve a disparar, y
- * la condicion que dispara cada aviso —seguir sin pagar, seguir cerca del
- * vencimiento— sigue ahi.
+ * - BullMQ re-encola el job atascado sin mirar `attempts` (lo de arriba). La
+ *   marca existe por eso, y `attempts: 1` se queda igual.
+ * - SE MARCA ANTES DE MANDAR: perder antes que duplicar. Al reves, un corte
+ *   entre el envio y la marca le repite el correo a esa persona.
+ * - Un aborto —ahora solo por algo que no sea marcar, como el `findMany` de los
+ *   perfiles— NO mata el cron: la siguiente iteracion se programa al RECOGER el
+ *   job, no al completarlo (`nextJobFromJobData`, en
+ *   `bullmq/dist/cjs/classes/worker.js`), y la condicion que dispara cada aviso
+ *   —seguir sin pagar, seguir cerca del vencimiento— sigue ahi manana.
  *
- * NO es un dato del payload en el sentido de `colas.ts`: no lo pone quien
- * encola, no se lee como identificador y no sale de `datosDeEnvio()`. Es una
- * lista que el worker se escribe a si mismo.
+ * EL DIA es el del job (`ahoraISO` si viene, si no el reloj del worker al
+ * empezar), a medianoche UTC porque la columna es `@db.Date`. El cron corre a
+ * las 09:00 de `ZONA_HORARIA`: una re-ejecucion por atasco cae el mismo dia UTC
+ * salvo que tarde horas, y ahi lo peor es un segundo aviso, que es lo que haria
+ * el cron de manana de todos modos.
+ *
+ * EL COSTO: un INSERT por destinatario —al lado de las cuatro consultas y el
+ * envio que ya hace `avisar`, no se nota— y UNA FILA POR PERSONA AVISADA Y DIA,
+ * que se queda. No hay limpieza: las filas son chicas y el volumen es el de los
+ * correos que ya se mandan (la cuenta esta en PROGRESO, Fase 20). Si algun dia
+ * pesa, se borran las de dias pasados sin riesgo: solo la de HOY tiene uso.
  */
-type JobDiario = Job<DatosDiarios & { gimnasiosHechos?: string[] }>;
+type JobDiario = Job<DatosDiarios>;
 
 /**
  * PAUSA ENTRE CORREOS DE LA TANDA MASIVA, en milisegundos.
@@ -94,8 +103,8 @@ type JobDiario = Job<DatosDiarios & { gimnasiosHechos?: string[] }>;
  *   renueva el worker cada 15 s y esta pausa deja el event loop LIBRE (es un
  *   timer, no trabajo), asi que no acerca el job al camino de "atascado".
  * - Y el riesgo de una tanda mas larga es conocido y acotado: una tanda
- *   interrumpida pierde la del gimnasio en curso, que es el intercambio que
- *   toda esta fase ya eligio (ver `JobDiario`).
+ *   interrumpida pierde a lo sumo el aviso de la persona en curso, y la
+ *   re-ejecucion salta a los ya marcados (ver `JobDiario`).
  *
  * CONFIGURABLE, con el mismo molde que `common/throttling.ts`: constante de
  * modulo leida de `process.env` con el valor de produccion como DEFECTO, para
@@ -125,7 +134,7 @@ export const PAUSA_ENTRE_EMAILS_MS = Number(process.env.PAUSA_ENTRE_EMAILS_MS ??
  *    no se "unifica" con el `attempts: 3` de `NotificacionesService`: un
  *    reintento de este job es una segunda tanda de correo a los mismos alumnos.
  *    Pero `attempts: 1` NO ALCANZA —el camino de job atascado re-encola sin
- *    mirarlo—, y por eso hay ademas una marca por gimnasio: ver `JobDiario`.
+ *    mirarlo—, y por eso hay ademas una marca por persona: ver `JobDiario`.
  *
  * 2. SE CUENTA ANTES DE MANDAR. Hay un `logger.log` por gimnasio con cuantos
  *    avisos van a salir, ANTES del bucle de envio. Si algun dia `perfilesAlDia`
@@ -138,10 +147,10 @@ export const PAUSA_ENTRE_EMAILS_MS = Number(process.env.PAUSA_ENTRE_EMAILS_MS ??
  *    dispara un cron, que no viene de ninguno. De ahi el `runUnscoped` para
  *    listar los gimnasios y un `runWithTenant` por cada uno.
  *
- * ES IDEMPOTENTE POR GIMNASIO, no por job: si este `process` vuelve a correr con
- * el mismo job, los gimnasios ya procesados se saltan y el que se estaba
- * procesando se pierde. Ver `JobDiario`, que explica por que esa granularidad y
- * por que `attempts: 1` no basta.
+ * ES IDEMPOTENTE POR PERSONA Y DIA, no por job: si este `process` vuelve a
+ * correr el mismo dia, quien ya tiene su marca se salta y, como mucho, se pierde
+ * el aviso de quien estaba en curso. Ver `JobDiario`, que explica por que esa
+ * granularidad y por que `attempts: 1` no basta.
  *
  * `MensajeroService.avisar` NUNCA LANZA: si el SMTP esta caido, el job termina
  * OK, el contador dice que se avisaron N y los N avisos se pierden con un
@@ -183,28 +192,13 @@ export class RecordatorioPagoProcessor extends WorkerHost {
       }),
     );
 
-    const hechos = new Set(job.data.gimnasiosHechos ?? []);
-
     let avisados = 0;
     for (const tenant of tenants) {
-      if (hechos.has(tenant.id)) {
-        this.logger.log(
-          `${tenant.nombre} ya se proceso en una ejecucion anterior del job ${job.id}; se omite`,
-        );
-        continue;
-      }
-
-      // SE MARCA ANTES DE MANDAR, y ese orden es la mitad que importa: al reves,
-      // un corte entre el envio y la marca repite el gimnasio ENTERO. Ver
-      // `JobDiario`. Si esto falla, se propaga sin haber mandado nada.
-      hechos.add(tenant.id);
-      await job.updateData({ ...job.data, gimnasiosHechos: [...hechos] });
-
       avisados += await this.deUnGimnasio(tenant, ahora);
     }
 
-    // Cuenta lo de ESTA ejecucion. Si el job ya venia con gimnasios marcados, los
-    // avisos que salieron en la anterior no estan aqui.
+    // Cuenta lo de ESTA ejecucion: a quien ya tenia la marca de hoy no se le
+    // mando nada, y no esta aqui.
     this.logger.log(
       `Recordatorio de pago: ${avisados} avisos en ${tenants.length} gimnasios (job ${job.id})`,
     );
@@ -254,7 +248,19 @@ export class RecordatorioPagoProcessor extends WorkerHost {
         `${tenant.nombre}: ${pendientes.length} recordatorios de pago sobre ${perfiles.length} alumnos con pack`,
       );
 
+      let avisados = 0;
       for (const perfil of pendientes) {
+        // SE MARCA ANTES DE MANDAR, persona por persona: al reves, un corte
+        // entre el envio y la marca le repite el correo. Ya marcada hoy, o un
+        // fallo al marcar, y se salta SOLO a esta persona. Ver `JobDiario`.
+        const marcada = await marcarAvisoDeHoy(this.prisma.db, this.logger, {
+          tenantId: tenant.id,
+          perfilId: perfil.id,
+          tipo: 'recordatorio-pago',
+          ahora,
+        });
+        if (!marcada) continue;
+
         await this.mensajero.avisar(
           {
             perfilId: perfil.id,
@@ -287,9 +293,10 @@ export class RecordatorioPagoProcessor extends WorkerHost {
         //
         // Ver `PAUSA_ENTRE_EMAILS_MS` para por que es ritmo y no tope.
         await this.pausar(PAUSA_ENTRE_EMAILS_MS);
+        avisados += 1;
       }
 
-      return pendientes.length;
+      return avisados;
     });
   }
 

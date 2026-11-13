@@ -45,8 +45,9 @@ export function claveDesdeHex(hex: string): Buffer {
  * El formato lleva VERSION delante: `v1:<iv>:<tag>:<datos>`, todo en base64.
  * Sin la version, rotar la clave obligaria a que cada gimnasio volviera a
  * teclear su contrasena SMTP — y hasta que lo hiciera, sus emails dejarian de
- * salir sin un error que lo explicara. Esta fase no implementa la rotacion;
- * implementa el formato que la hace posible.
+ * salir sin un error que lo explicara. La rotacion de clave (Fase 20) no
+ * cambia el formato: cifra siempre con la actual, y `descifrar` prueba la
+ * actual y la anterior (ver `clavesDeApp` y el comando `cifrado:rotar`).
  *
  * El IV es aleatorio en cada llamada: con uno fijo, dos gimnasios con la misma
  * contrasena tendrian el mismo texto cifrado, y eso ya es informacion.
@@ -65,10 +66,37 @@ export function cifrar(claro: string, clave: Buffer): string {
 }
 
 /**
- * Descifra. Lanza si la clave no es la correcta o si el texto fue manipulado:
- * GCM autentica, asi que no devuelve basura en silencio.
+ * Las claves de la app, ya convertidas: `actual` es la UNICA con la que se
+ * cifra; `paraDescifrar` es la actual y, si hay, la anterior, en ese orden.
+ *
+ * La anterior existe solo durante una rotacion (ver el README): se despliega
+ * la nueva como APP_ENCRYPTION_KEY y la vieja como APP_ENCRYPTION_KEY_ANTERIOR,
+ * se corre `cifrado:rotar` y se quita la anterior. Una anterior vacia cuenta
+ * como ausente: es lo que deja un .env con la variable escrita y sin valor.
  */
-export function descifrar(guardado: string, clave: Buffer): string {
+export function clavesDeApp(
+  actualHex: string,
+  anteriorHex: string | undefined,
+): { actual: Buffer; paraDescifrar: readonly Buffer[] } {
+  const actual = claveDesdeHex(actualHex);
+  const paraDescifrar =
+    anteriorHex === undefined || anteriorHex === ''
+      ? [actual]
+      : [actual, claveDesdeHex(anteriorHex)];
+
+  return { actual, paraDescifrar };
+}
+
+/**
+ * Descifra probando las claves EN ORDEN (la actual primero) y devuelve con la
+ * primera que GCM acepta. Lanza si el texto fue manipulado o si no lo cifro
+ * ninguna: GCM autentica, asi que una clave equivocada no devuelve basura en
+ * silencio, lanza, y eso es lo que permite probar la siguiente.
+ *
+ * Si ninguna sirve se relanza el error de la ULTIMA. Los errores de formato
+ * (version, partes) no dependen de la clave y saltan antes de probar ninguna.
+ */
+export function descifrar(guardado: string, claves: readonly Buffer[]): string {
   const partes = guardado.split(':');
   // split no limita cuantas partes devuelve: un ':' de mas en <datos> (base64
   // no lo lleva, pero nada impide que un valor corrupto lo tenga) haria que la
@@ -89,11 +117,24 @@ export function descifrar(guardado: string, clave: Buffer): string {
     throw new Error('El valor cifrado no tiene la forma v1:<iv>:<tag>:<datos>.');
   }
 
-  const descifrador = createDecipheriv(ALGORITMO, clave, Buffer.from(iv, 'base64'));
-  descifrador.setAuthTag(Buffer.from(tag, 'base64'));
+  if (claves.length === 0) {
+    throw new Error('No se paso ninguna clave para descifrar.');
+  }
 
-  return Buffer.concat([
-    descifrador.update(Buffer.from(datos, 'base64')),
-    descifrador.final(),
-  ]).toString('utf8');
+  let ultimoError: unknown;
+  for (const clave of claves) {
+    try {
+      const descifrador = createDecipheriv(ALGORITMO, clave, Buffer.from(iv, 'base64'));
+      descifrador.setAuthTag(Buffer.from(tag, 'base64'));
+
+      return Buffer.concat([
+        descifrador.update(Buffer.from(datos, 'base64')),
+        descifrador.final(),
+      ]).toString('utf8');
+    } catch (error) {
+      ultimoError = error;
+    }
+  }
+
+  throw ultimoError;
 }

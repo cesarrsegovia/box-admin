@@ -29,8 +29,9 @@ const MS_POR_DIA = 86_400_000;
  *
  * No sale de un gusto: sale de que **la agenda cuesta una peticion por clase**.
  *
- * `ClaseDelProfesor` trae `listaPasada`, que seria gratis, y NO SE USA: ver el
- * bloque de abajo. Lo que esta pantalla dice —«faltan 7 de 9»— solo se puede
+ * Hasta la Fase 20 `ClaseDelProfesor` traia `listaPasada`, que era gratis, y NO
+ * SE USABA (ver el bloque de abajo); desde entonces el contrato ya no lo trae.
+ * Lo que esta pantalla dice —«faltan 7 de 9»— solo se puede
  * saber pidiendo `GET /mis-clases/:id/alumnos` de cada clase, porque es el
  * unico sitio donde esta el `asistio` de cada reserva. O sea: 1 peticion de
  * agenda + N peticiones de detalle.
@@ -65,10 +66,11 @@ export const DIAS_POR_DEFECTO = 1;
  *  1. PEDIR IGUAL. Veinticinco peticiones en paralelo desde un telefono contra
  *     una API que resuelve el perfil del actor en cada una. La pantalla se
  *     arrastra y la profesora no entiende por que.
- *  2. CAER AL `listaPasada` QUE YA VIENE EN LA AGENDA, que es gratis y es un
- *     si/no. **Es la peor de las tres**, porque es un si/no QUE PUEDE SER
- *     FALSO —ver el bloque siguiente— y porque solo mentiria en los rangos
- *     largos, que es donde nadie va a ir a comprobarlo.
+ *  2. CAER A UN SI/NO DE «LISTA PASADA» —el `listaPasada` que la agenda traia
+ *     gratis hasta la Fase 20, cuando salio del contrato—. **Es la peor de las
+ *     tres**, porque es un si/no QUE PUEDE SER FALSO —ver `page.tsx`— y porque
+ *     solo mentiria en los rangos largos, que es donde nadie va a ir a
+ *     comprobarlo.
  *  3. NO PEDIRLO Y DECIRLO. Es la que se implementa. La agenda sigue
  *     listando las clases, cada una sigue llevando a su lista, y donde iria la
  *     cuenta hay una frase que dice que no se pregunto y por que.

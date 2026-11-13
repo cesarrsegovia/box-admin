@@ -67,7 +67,6 @@ function unaSala(cambios: Partial<SalaPublica> = {}): SalaPublica {
     activa: true,
     visibleAlumnos: true,
     soloCuposLiberados: false,
-    exclusiva: false,
     cupoBase: 12,
     minMinutosCancelar: null,
     minMinutosAnotarse: null,
@@ -262,14 +261,14 @@ describe('el listado de salas', () => {
   /**
    * `exclusiva` NO SE DIBUJA tampoco aqui.
    *
-   * Es un campo muerto: se escribe en el alta y se mapea al contrato, y
-   * ninguna regla del sistema lo lee. Se afirma sobre el MARCADO porque
+   * Era un campo muerto —se guardaba y ninguna regla lo leia— y se quito del
+   * contrato en la Fase 20. Se afirma sobre el MARCADO porque
    * `queryByRole` consulta el arbol de accesibilidad, que ya excluye por su
    * cuenta lo que lleva `hidden`: un control escondido pasaria en verde y
    * seguiria en el HTML.
    */
   it('NO dibuja el campo exclusiva', () => {
-    montar({ salas: [unaSala({ exclusiva: true })] });
+    montar();
 
     expect(document.body.innerHTML).not.toMatch(/exclusiv/i);
   });

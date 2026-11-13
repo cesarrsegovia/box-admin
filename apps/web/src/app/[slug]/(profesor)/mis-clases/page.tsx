@@ -22,15 +22,16 @@ import {
  *
  * ===========================================================================
  * LO PRIMERO, PORQUE ES UNA DECISION Y NO UN DETALLE:
- * **`ClaseDelProfesor.listaPasada` NO SE DIBUJA EN NINGUN SITIO.**
+ * **NINGUNA MARCA DE «LISTA PASADA» SE DIBUJA EN NINGUN SITIO.**
  * ===========================================================================
  *
- * El contrato lo trae, seria gratis, y es exactamente el cartel que una agenda
- * de clases pediria a gritos —un tilde verde en las que ya estan—. No se usa
- * porque **MIENTE**, y la mentira no es una posibilidad teorica: esta escrita
- * en el service, verificada linea por linea y no deducida del nombre.
+ * Hasta la Fase 20 el contrato traia `ClaseDelProfesor.listaPasada`; desde
+ * entonces ya no lo trae. Era gratis y era exactamente el cartel que una
+ * agenda de clases pediria a gritos —un tilde verde en las que ya estan—. No se
+ * usaba porque **MENTIA**, y la mentira no era una posibilidad teorica: estaba
+ * escrita en el service, verificada linea por linea y no deducida del nombre.
  *
- *     // mis-clases.service.ts
+ *     // mis-clases.service.ts, hasta la Fase 20
  *     listaPasada: turno.reservas.some((reserva) => reserva.asistio !== null)
  *
  * Y `Reserva.asistio` NO LO ESCRIBE SOLO LA PROFESORA. Lo escribe tambien el
@@ -55,11 +56,12 @@ import {
  *     //  distintos, y porque fusionarlos le diria "ya marcaste" a alguien que
  *     //  no marco.»
  *
- * El contrato de la profesora los fusiona, y para ella la fusion dice lo
- * simetrico y peor: «ya pasaste lista» a quien no la paso. Un booleano que no
- * se puede corregir desde el front —el arreglo esta en la API, y esta tarea no
- * toca la API— se deja SIN DIBUJAR. Un dato que puede ser falso no mejora por
- * pintarse en gris.
+ * El contrato de la profesora los fusionaba, y para ella la fusion decia lo
+ * simetrico y peor: «ya pasaste lista» a quien no la paso. Ese booleano se dejo
+ * SIN DIBUJAR, y en la Fase 20 salio del contrato; la regla vive ahora solo en
+ * el check-in, donde si es correcta. Y NO SE RECALCULA AQUI desde el detalle:
+ * `lista.some(a => a.asistio !== null)` repetiria la misma mentira. Un dato
+ * que puede ser falso no mejora por pintarse en gris.
  *
  * ===========================================================================
  * LO QUE SE DIBUJA EN SU LUGAR: **CUANTOS QUEDAN SIN MARCAR**.
@@ -75,7 +77,7 @@ import {
  * por defecto —hoy— y el tope a partir del cual el detalle NO se pide estan
  * decididos y razonados en `filtros.ts`, que es donde viven los dos numeros.
  * Lo que importa aqui: cuando el detalle no se pide, **se dice**, y no se cae
- * al `listaPasada` gratis. La alternativa seria enseñar un si/no que puede ser
+ * a un si/no de «lista pasada». La alternativa seria enseñar un si/no que puede ser
  * falso justo en los rangos largos, que es donde nadie va a ir a comprobarlo.
  *
  * ===========================================================================

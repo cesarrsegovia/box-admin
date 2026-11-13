@@ -87,6 +87,27 @@ export function validarEntorno(config: Record<string, unknown>): Record<string, 
     );
   }
 
+  // La anterior solo existe durante una rotacion (Fase 20, ver el README).
+  // AUSENTE O VACIA ES VALIDO: es el estado normal. Si esta, misma forma que la
+  // actual; y distinta de ella, porque igual es un despliegue que cree estar
+  // rotando y no rota nada (el comando dejaria todo "al dia" sin tocarlo).
+  // Se comparan en minusculas: 'A'*64 y 'a'*64 son la misma clave.
+  const anterior = config.APP_ENCRYPTION_KEY_ANTERIOR;
+  if (anterior !== undefined && anterior !== '') {
+    if (typeof anterior !== 'string' || !PATRON_CLAVE_HEX.test(anterior)) {
+      throw new Error(
+        'APP_ENCRYPTION_KEY_ANTERIOR debe ser 32 bytes en hexadecimal (64 caracteres), ' +
+          'como APP_ENCRYPTION_KEY. Si no estas rotando la clave, quitala.',
+      );
+    }
+    if (anterior.toLowerCase() === clave.toLowerCase()) {
+      throw new Error(
+        'APP_ENCRYPTION_KEY_ANTERIOR es igual a APP_ENCRYPTION_KEY. Para rotar, la NUEVA va ' +
+          'en APP_ENCRYPTION_KEY y la VIEJA en APP_ENCRYPTION_KEY_ANTERIOR.',
+      );
+    }
+  }
+
   const email = config.EMAIL_TIPO;
   if (email !== 'memoria' && email !== 'smtp') {
     throw new Error(`EMAIL_TIPO debe ser "memoria" o "smtp", no ${JSON.stringify(email)}.`);

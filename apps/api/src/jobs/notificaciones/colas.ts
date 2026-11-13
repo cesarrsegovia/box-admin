@@ -62,9 +62,11 @@ export const VENCIMIENTO_PACK_QUEUE = 'vencimiento-pack-queue';
  * llega, no hay fila que marcar.
  *
  * LOS DOS JOBS DIARIOS (`recordatorio-pago` y `vencimiento-pack`) SON OTRA
- * COSA: su marca es `gimnasiosHechos` en `job.updateData`, una lista de que
- * gimnasios ya se procesaron DENTRO de una tanda. No cuelga de ninguna reserva
- * y se queda donde esta.
+ * COSA: no cuelgan de ninguna reserva. Su marca es una fila de `AvisoDiario` por
+ * persona, tipo y dia, insertada antes de mandar (Fase 20; hasta la 19 era
+ * `gimnasiosHechos` en `job.updateData`). El payload de `DatosDiarios` ya no
+ * lleva nada que escriba el worker. El razonamiento esta en la cabecera de
+ * `recordatorio-pago.processor.ts`.
  */
 export interface DatosNotificacionReserva {
   tenantId: string;

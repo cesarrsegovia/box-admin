@@ -245,6 +245,7 @@ const CAJA: CajaDelMes = {
   // 100000 - 40000 = 60000, y aqui dice 55555: el margen es el del servidor.
   margen: { centavos: 55_555, texto: '555.55' },
   pendienteEstimado: { centavos: 12_300, texto: '123.00' },
+  sinPrecio: 0,
 };
 
 /** La misma caja de otro mes: la respuesta trae el mes que se pidio. */
@@ -1463,6 +1464,43 @@ describe('la caja del mes', () => {
     expect(importeDe('pendienteEstimado')).toBe('123.00');
     expect(notaDe('pendienteEstimado')).toContain('estimado evaluado al cerrar este mes');
     expect(notaDe('pendienteEstimado')).toContain('no una deuda calculada');
+  });
+
+  /** Lo que dice la cifra del pendiente sobre los que quedaron fuera, o null. */
+  function sinPrecioDelPendiente(): string | null {
+    const nodo = dentroDe('caja').querySelector(
+      '[data-cifra="pendienteEstimado"] [data-sin-precio]',
+    );
+    return nodo === null ? null : (nodo.textContent?.trim() ?? '');
+  }
+
+  it('con alumnos sin precio, el pendiente dice cuantos quedaron fuera del total', () => {
+    // Fase 20: el total suma solo los precios conocidos. Sin esta frase, 123.00
+    // se leeria como todo lo que falta cobrar, y es menos. El 3 no aparece en
+    // ningun otro sitio del fijo: si la frase lo dice, lo leyo de `sinPrecio`.
+    montarLaCaja({ caja: { ...CAJA, sinPrecio: 3 } });
+
+    expect(importeDe('pendienteEstimado')).toBe('123.00');
+    expect(sinPrecioDelPendiente()).toBe(
+      'Mas 3 a consultar: deben, pero no se sabe cuanto, y no entran en este total.',
+    );
+  });
+
+  it('con uno solo, la frase va en singular', () => {
+    montarLaCaja({ caja: { ...CAJA, sinPrecio: 1 } });
+
+    expect(sinPrecioDelPendiente()).toBe(
+      'Mas 1 a consultar: debe, pero no se sabe cuanto, y no entra en este total.',
+    );
+  });
+
+  it('con 0 sin precio, el pendiente NO dice nada de los que quedaron fuera', () => {
+    // La otra mitad: con la frase siempre puesta, el test de arriba pasaria
+    // sobre una pantalla que avisa de alumnos a consultar que no existen.
+    montarLaCaja();
+
+    expect(sinPrecioDelPendiente()).toBeNull();
+    expect(dentroDe('caja').textContent).not.toContain('a consultar');
   });
 
   it('la caja dice el mes QUE VOLVIO', () => {

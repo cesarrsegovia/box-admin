@@ -30,7 +30,6 @@ const SALA = {
   activa: true,
   visibleAlumnos: true,
   soloCuposLiberados: false,
-  exclusiva: false,
   cupoBase: 8,
   minMinutosCancelar: null,
   minMinutosAnotarse: null,

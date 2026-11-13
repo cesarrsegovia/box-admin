@@ -175,6 +175,42 @@ describe('validarEntorno — comunicacion', () => {
     ).not.toThrow();
   });
 
+  it('APP_ENCRYPTION_KEY_ANTERIOR es opcional: ausente o vacia, arranca', () => {
+    expect(() => validarEntorno({ ...ENTORNO_COMPLETO })).not.toThrow();
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, APP_ENCRYPTION_KEY_ANTERIOR: '' }),
+    ).not.toThrow();
+  });
+
+  it('acepta una APP_ENCRYPTION_KEY_ANTERIOR valida y distinta de la actual', () => {
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, APP_ENCRYPTION_KEY_ANTERIOR: 'f'.repeat(64) }),
+    ).not.toThrow();
+  });
+
+  it('rechaza una APP_ENCRYPTION_KEY_ANTERIOR de longitud equivocada', () => {
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, APP_ENCRYPTION_KEY_ANTERIOR: 'f'.repeat(32) }),
+    ).toThrow(/APP_ENCRYPTION_KEY_ANTERIOR debe ser 32 bytes en hexadecimal/);
+  });
+
+  it('rechaza una APP_ENCRYPTION_KEY_ANTERIOR no hexadecimal', () => {
+    expect(() =>
+      validarEntorno({ ...ENTORNO_COMPLETO, APP_ENCRYPTION_KEY_ANTERIOR: 'z'.repeat(64) }),
+    ).toThrow(/APP_ENCRYPTION_KEY_ANTERIOR debe ser 32 bytes en hexadecimal/);
+  });
+
+  it('rechaza una APP_ENCRYPTION_KEY_ANTERIOR igual a la actual: es un error de despliegue', () => {
+    // Igual sin importar mayusculas: 'A'*64 y 'a'*64 son la misma clave.
+    expect(() =>
+      validarEntorno({
+        ...ENTORNO_COMPLETO,
+        APP_ENCRYPTION_KEY: 'a'.repeat(64),
+        APP_ENCRYPTION_KEY_ANTERIOR: 'A'.repeat(64),
+      }),
+    ).toThrow(/APP_ENCRYPTION_KEY_ANTERIOR es igual a APP_ENCRYPTION_KEY/);
+  });
+
   it('rechaza un EMAIL_TIPO que no sea memoria ni smtp', () => {
     expect(() => validarEntorno({ ...ENTORNO_COMPLETO, EMAIL_TIPO: 'sendgrid' })).toThrow(
       /EMAIL_TIPO/,

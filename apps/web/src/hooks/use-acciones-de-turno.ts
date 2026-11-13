@@ -67,10 +67,23 @@ export function useAccionesDeTurno(desde: string, hasta: string) {
     if (contexto?.anterior !== undefined) cliente.setQueryData(clave, contexto.anterior);
   }
 
-  async function refrescar(): Promise<void> {
+  /**
+   * Lo que cambia con CUALQUIER accion: los turnos de la semana y mis clases.
+   *
+   * Entrar o salir de la lista de espera no gasta clases del pack, asi que la
+   * cola refresca solo esto y no `/mi-pack`.
+   */
+  async function refrescarAgenda(): Promise<void> {
     await Promise.all([
       cliente.invalidateQueries({ queryKey: clave }),
       cliente.invalidateQueries({ queryKey: claves.misClases(desde, hasta) }),
+    ]);
+  }
+
+  /** La agenda y ademas el pack: reservar y cancelar SI cambian su consumo. */
+  async function refrescar(): Promise<void> {
+    await Promise.all([
+      refrescarAgenda(),
       // Una reserva cambia el consumo del pack, y esa pantalla es otra.
       cliente.invalidateQueries({ queryKey: claves.miPack() }),
     ]);
@@ -138,7 +151,8 @@ export function useAccionesDeTurno(desde: string, hasta: string) {
       return contexto;
     },
     onError: (_error, _turnoId, contexto) => revertir(contexto),
-    onSettled: refrescar,
+    // Entrar o salir de la lista de espera no gasta clases del pack.
+    onSettled: refrescarAgenda,
     gcTime: 0,
   });
 
@@ -170,7 +184,8 @@ export function useAccionesDeTurno(desde: string, hasta: string) {
       return contexto;
     },
     onError: (_error, _variables, contexto) => revertir(contexto),
-    onSettled: refrescar,
+    // Entrar o salir de la lista de espera no gasta clases del pack.
+    onSettled: refrescarAgenda,
     gcTime: 0,
   });
 

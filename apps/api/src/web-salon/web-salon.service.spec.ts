@@ -361,6 +361,36 @@ describe('WebSalonService.guardar', () => {
 
     expect(config.planDestacadoId).toBe('p-1');
   });
+
+  it('un plan destacado null lo QUITA, sin consultar packs', async () => {
+    // Es lo que manda «Ninguno» en Configuracion -> Web. `@IsOptional` deja
+    // pasar el `null`; sin tratarlo llegaba a Prisma como `where: { id: null }`
+    // y salia un 500.
+    const { servicio, db } = crearServicio({ packs: [{ id: 'p-1', tenantId: 't1' }] });
+
+    const config = await runWithTenant('t1', async () => {
+      await servicio.guardar(ACTOR, { planDestacadoId: 'p-1' });
+      return await servicio.guardar(ACTOR, { planDestacadoId: null });
+    });
+
+    expect(config.planDestacadoId).toBeNull();
+    expect(db.pack.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('un plan destacado DADO DE BAJA se conserva: el PUT no mira `activo`', async () => {
+    // Guardar el tagline reenvia el destacado tal cual. Si el pack se dio de
+    // baja y esto fuera un 400, el formulario entero quedaria bloqueado hasta
+    // elegir otro plan. La landing ya no lo muestra: `packs()` lee solo activos.
+    const { servicio } = crearServicio({
+      packs: [{ id: 'p-viejo', tenantId: 't1', activo: false }],
+    });
+
+    const config = await runWithTenant('t1', () =>
+      servicio.guardar(ACTOR, { planDestacadoId: 'p-viejo' }),
+    );
+
+    expect(config.planDestacadoId).toBe('p-viejo');
+  });
 });
 
 describe('WebSalonService: testimonios y preguntas', () => {

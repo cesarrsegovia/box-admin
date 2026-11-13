@@ -27,14 +27,10 @@ const AUSENCIA = {
   salaId: 's1',
   desde: '2026-12-24',
   hasta: '2026-12-26',
-  todoElDia: true,
-  horaInicio: null,
-  horaFin: null,
-  recuperable: false,
   motivo: 'Feriado-Marcador',
 };
 
-const ALTA = { salaId: 's1', desde: '2026-12-24', hasta: '2026-12-26', todoElDia: true };
+const ALTA = { salaId: 's1', desde: '2026-12-24', hasta: '2026-12-26', motivo: 'Feriado' };
 
 // ---------------------------------------------------------------------------
 // La funcion pura
@@ -125,47 +121,13 @@ describe('useCrearAusencia', () => {
     // (`@IsString` + `@IsNotEmpty`), y cerrar el salon entero dejaria de poder
     // cargarse.
     const doble = dobleDeFetch(AUSENCIA);
-    const sinSala = { desde: '2026-12-24', hasta: '2026-12-26', todoElDia: true };
+    const sinSala = { desde: '2026-12-24', hasta: '2026-12-26', motivo: 'Feriado' };
 
     const { result } = montar(() => useCrearAusencia());
     result.current.mutate(sinSala);
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(Object.keys(llamada(doble).cuerpo as object)).toEqual(['desde', 'hasta', 'todoElDia']);
-  });
-
-  /**
-   * ESTE CUERPO LA PANTALLA DE AUSENCIAS YA NO LO MANDA NUNCA. NO ES UN OLVIDO.
-   *
-   * La franja horaria —`todoElDia: false` con `horaInicio`/`horaFin`— se saco
-   * de la pantalla porque NINGUN consumidor de la API la honra: un cierre de
-   * 18 a 20 excluye el dia entero igual. Dejarla era un control que promete
-   * cerrar dos horas y cierra ocho.
-   *
-   * Lo que este test fija sigue siendo verdad y por eso sigue aqui, pero es
-   * una propiedad DEL HOOK y no de la pantalla: el hook es transporte generico
-   * —manda el cuerpo que le den, tal cual— y no puede comerse un `false` con
-   * un `if (datos.todoElDia)` por el camino. El dia que la API honre las
-   * franjas y la pantalla vuelva a mandarlas, el transporte ya esta probado.
-   *
-   * O sea: esto NO documenta que la pantalla mande franjas. No las manda.
-   */
-  it('`todoElDia: false` SI viaja: es un valor, no la ausencia de valor', async () => {
-    const doble = dobleDeFetch({ ...AUSENCIA, todoElDia: false });
-    const porHoras = {
-      salaId: 's1',
-      desde: '2026-12-24',
-      hasta: '2026-12-24',
-      todoElDia: false,
-      horaInicio: '18:00',
-      horaFin: '20:00',
-    };
-
-    const { result } = montar(() => useCrearAusencia());
-    result.current.mutate(porHoras);
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-    expect(llamada(doble).cuerpo).toEqual(porHoras);
+    expect(Object.keys(llamada(doble).cuerpo as object)).toEqual(['desde', 'hasta', 'motivo']);
   });
 
   it('es UNA sola peticion', async () => {

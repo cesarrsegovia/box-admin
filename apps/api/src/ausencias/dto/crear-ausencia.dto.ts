@@ -1,5 +1,5 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
-import { PATRON_FECHA, PATRON_HORA } from '@boxadmin/shared';
+import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { PATRON_FECHA } from '@boxadmin/shared';
 import { Recortado } from '../../common/decorators/recortado.decorator';
 
 export class CrearAusenciaDto {
@@ -14,22 +14,6 @@ export class CrearAusenciaDto {
 
   @Matches(PATRON_FECHA, { message: 'hasta debe tener formato YYYY-MM-DD' })
   hasta!: string;
-
-  @IsOptional()
-  @IsBoolean()
-  todoElDia?: boolean;
-
-  @IsOptional()
-  @Matches(PATRON_HORA, { message: 'horaInicio debe tener formato HH:MM en 24 h' })
-  horaInicio?: string;
-
-  @IsOptional()
-  @Matches(PATRON_HORA, { message: 'horaFin debe tener formato HH:MM en 24 h' })
-  horaFin?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  recuperable?: boolean;
 
   @Recortado()
   @IsOptional()

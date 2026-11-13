@@ -41,8 +41,6 @@ export interface ClaseDelProfesor {
   horaFin: string;
   cupo: number;
   reservasActivas: number;
-  /** Si ya se paso lista en esta clase. */
-  listaPasada: boolean;
 }
 
 /**

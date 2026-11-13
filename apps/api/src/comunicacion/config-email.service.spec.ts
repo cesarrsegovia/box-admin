@@ -1,12 +1,14 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { runWithTenant } from '../common/tenant/tenant-context';
 import { aplicarScopeDeTenant } from '../common/tenant/tenant-scoped.extension';
-import { cifrar, claveDesdeHex } from './cifrado';
+import { cifrar, claveDesdeHex, descifrar } from './cifrado';
 import { ConfigEmailService, motivoSeguro } from './config-email.service';
 
 const ACTOR = { sub: 'admin-1', tenantId: 't1', rol: 'ADMIN_SALON' } as never;
 const HEX = 'a'.repeat(64);
 const CLAVE = claveDesdeHex(HEX);
+/** La clave "nueva" de una rotacion; HEX hace de anterior. */
+const NUEVA_HEX = 'b'.repeat(64);
 const AHORA = new Date('2026-09-22T00:00:00.000Z');
 
 const ALTA = {
@@ -23,7 +25,9 @@ const ALTA = {
  * que devolviera `null` fijo haria fallar el guardado con un 404 que no tiene
  * nada que ver con lo que el test mide.
  */
-function crearServicio(estado: { config?: Record<string, unknown> | null } = {}) {
+function crearServicio(
+  estado: { config?: Record<string, unknown> | null; entorno?: Record<string, string> } = {},
+) {
   let fila = estado.config ?? null;
   const plantillas: Record<string, unknown>[] = [];
 
@@ -66,7 +70,11 @@ function crearServicio(estado: { config?: Record<string, unknown> | null } = {})
   };
   const envios = { enviar: jest.fn(), verificar: jest.fn().mockResolvedValue(undefined) };
   const historial = { registrar: jest.fn().mockResolvedValue(undefined) };
-  const config = { get: jest.fn().mockReturnValue(HEX) };
+  // Por nombre, y no `mockReturnValue(HEX)` para todo: con eso la
+  // APP_ENCRYPTION_KEY_ANTERIOR tambien valdria HEX y ningun test podria
+  // distinguir la clave actual de la anterior.
+  const entorno: Record<string, string> = estado.entorno ?? { APP_ENCRYPTION_KEY: HEX };
+  const config = { get: jest.fn().mockImplementation((nombre: string) => entorno[nombre]) };
 
   return {
     servicio: new ConfigEmailService(
@@ -91,6 +99,18 @@ describe('ConfigEmailService.guardarSmtp', () => {
     const guardado = db.configuracionSMTP.create.mock.calls[0]![0].data.claveCifrada as string;
     expect(guardado).not.toContain('la-secreta');
     expect(guardado.startsWith('v1:')).toBe(true);
+  });
+
+  it('cifra SIEMPRE con la actual, aunque haya anterior', async () => {
+    const { servicio, db } = crearServicio({
+      entorno: { APP_ENCRYPTION_KEY: NUEVA_HEX, APP_ENCRYPTION_KEY_ANTERIOR: HEX },
+    });
+
+    await servicio.guardarSmtp(ACTOR, ALTA);
+
+    const guardado = db.configuracionSMTP.create.mock.calls[0]![0].data.claveCifrada as string;
+    expect(descifrar(guardado, [claveDesdeHex(NUEVA_HEX)])).toBe('la-secreta');
+    expect(() => descifrar(guardado, [CLAVE])).toThrow();
   });
 
   it('verifica la conexion ANTES de guardar', async () => {
@@ -447,6 +467,30 @@ describe('ConfigEmailService.datosDeEnvio', () => {
 
     expect(datos!.smtp.clave).toBe('la-secreta');
     expect(datos!.copia).toBe('copia@test.io');
+  });
+
+  it('con APP_ENCRYPTION_KEY_ANTERIOR, descifra una clave guardada con la anterior', async () => {
+    // Es la ventana de una rotacion: la app ya arranco con la nueva y el
+    // comando todavia no re-cifro esta fila. Los emails tienen que seguir
+    // saliendo.
+    const { servicio } = crearServicio({
+      entorno: { APP_ENCRYPTION_KEY: NUEVA_HEX, APP_ENCRYPTION_KEY_ANTERIOR: HEX },
+      config: {
+        tenantId: 't1',
+        host: 'smtp.test',
+        puerto: 587,
+        seguro: false,
+        usuario: 'u',
+        claveCifrada: cifrar('la-secreta', CLAVE),
+        emailOrigen: 'gym@test.io',
+        emailDestino: null,
+        updatedAt: AHORA,
+      },
+    });
+
+    const datos = await servicio.datosDeEnvio();
+
+    expect(datos!.smtp.clave).toBe('la-secreta');
   });
 
   it('null si el gimnasio no configuro SMTP: no se manda nada', async () => {

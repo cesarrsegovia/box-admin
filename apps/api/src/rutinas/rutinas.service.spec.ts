@@ -107,6 +107,23 @@ describe('RutinasService.crear', () => {
     await expect(servicio.crear(ADMIN, BASE)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('el 403 de sala dice, entero, donde se asigna la sala', async () => {
+    const { servicio, perfil } = crearServicio();
+    perfil.findFirst.mockResolvedValue({
+      id: 'perf-1',
+      tenantId: 'gym-1',
+      salas: [{ salaId: 'sala-9' }],
+    });
+
+    const error = await servicio.crear(ADMIN, BASE).catch((e) => e);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect(error.message).toBe(
+      'El usuario no tiene acceso a esa sala. Asignasela desde su ficha, en Salas.',
+    );
+    expect(error.message).not.toContain('PATCH');
+  });
+
   it('404 si el perfil no existe en este gimnasio', async () => {
     const { servicio, perfil } = crearServicio();
     perfil.findFirst.mockResolvedValue(null);

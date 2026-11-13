@@ -83,6 +83,7 @@ const CAJA: CajaDelMes = {
   // NO es `cobrado - costoProfesoras`: si alguna pantalla hace la resta, se ve.
   margen: { centavos: 777777, texto: '6666.66' },
   pendienteEstimado: { centavos: 99999, texto: '7777.77' },
+  sinPrecio: 0,
 };
 
 const OPERATIVO: Operativo = {

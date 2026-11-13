@@ -221,8 +221,8 @@ describe('useAccionesDeTurno — sin conexion', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * `refrescar()` invalida tres claves a mano. Lo que esto fija es que no sean
- * mas: en un spec que monta el hook SOLO, una invalidacion global y una
+ * `refrescar()` invalida tres claves a mano (`refrescarAgenda()`, dos). Lo
+ * que esto fija es que no sean mas: en un spec que monta el hook SOLO, una invalidacion global y una
  * dirigida dan exactamente el mismo resultado, porque no hay ninguna otra
  * consulta a la que la diferencia pueda notarse. Ver `src/test/consulta-ajena.ts`.
  *
@@ -286,5 +286,90 @@ describe('las acciones no refrescan consultas ajenas', () => {
     await waitFor(() => expect(hook.result.current.salirme.isSuccess).toBe(true));
 
     await sinTocarLoAjeno();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// QUE es "suyo": la lista de espera no toca el pack
+// ---------------------------------------------------------------------------
+
+/**
+ * El centinela de arriba no ve si una de las claves propias sobra. Esto si:
+ * entrar o salir de la lista de espera no gasta clases del pack, asi que
+ * refrescar `/mi-pack` ahi es una peticion de mas en cada toque de la cola.
+ * Reservar y cancelar SI cambian el consumo, y por eso lo invalidan.
+ *
+ * Las claves van escritas a mano y no con `claves.*`: compararlas contra la
+ * funcion que las produce seria autorreferencial.
+ */
+describe('que claves invalida cada accion', () => {
+  const MI_PACK = { queryKey: ['mi-pack'] };
+  const TURNOS = { queryKey: ['turnos-disponibles', DESDE, HASTA] };
+  const MIS_CLASES = { queryKey: ['mis-clases', DESDE, HASTA] };
+
+  function dobleOk() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
+      ),
+    );
+  }
+
+  it('entrar a la lista de espera NO invalida `/mi-pack`, y si la agenda', async () => {
+    dobleOk();
+    const { cliente, hook } = montar();
+    const espia = vi.spyOn(cliente, 'invalidateQueries');
+
+    hook.result.current.anotarme.mutate('turno-1');
+    await waitFor(() => expect(hook.result.current.anotarme.isSuccess).toBe(true));
+
+    expect(espia).not.toHaveBeenCalledWith(MI_PACK);
+    expect(espia).toHaveBeenCalledWith(TURNOS);
+    expect(espia).toHaveBeenCalledWith(MIS_CLASES);
+  });
+
+  it('salir de la lista de espera NO invalida `/mi-pack`, y si la agenda', async () => {
+    dobleOk();
+    const { cliente, hook } = montar();
+    const espia = vi.spyOn(cliente, 'invalidateQueries');
+
+    hook.result.current.salirme.mutate({ turnoId: 'turno-1', entradaId: 'e1' });
+    await waitFor(() => expect(hook.result.current.salirme.isSuccess).toBe(true));
+
+    expect(espia).not.toHaveBeenCalledWith(MI_PACK);
+    expect(espia).toHaveBeenCalledWith(TURNOS);
+    expect(espia).toHaveBeenCalledWith(MIS_CLASES);
+  });
+
+  it('reservar SI invalida `/mi-pack`: gasta una clase', async () => {
+    dobleOk();
+    const { cliente, hook } = montar();
+    const espia = vi.spyOn(cliente, 'invalidateQueries');
+
+    hook.result.current.reservar.mutate('turno-1');
+    await waitFor(() => expect(hook.result.current.reservar.isSuccess).toBe(true));
+
+    expect(espia).toHaveBeenCalledWith(MI_PACK);
+    expect(espia).toHaveBeenCalledWith(TURNOS);
+    expect(espia).toHaveBeenCalledWith(MIS_CLASES);
+  });
+
+  it('cancelar SI invalida `/mi-pack`: devuelve la clase', async () => {
+    dobleOk();
+    const { cliente, hook } = montar();
+    const espia = vi.spyOn(cliente, 'invalidateQueries');
+
+    hook.result.current.cancelar.mutate({ turnoId: 'turno-1', reservaId: 'r1' });
+    await waitFor(() => expect(hook.result.current.cancelar.isSuccess).toBe(true));
+
+    expect(espia).toHaveBeenCalledWith(MI_PACK);
+    expect(espia).toHaveBeenCalledWith(TURNOS);
+    expect(espia).toHaveBeenCalledWith(MIS_CLASES);
   });
 });
